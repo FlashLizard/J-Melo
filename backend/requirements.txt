@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+yt-dlp
+
+# For transcription
+git+https://github.com/m-bain/whisperx.git
+torch
+torchaudio
+transformers
+ffmpeg-python

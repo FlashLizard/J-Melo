@@ -1,0 +1,43 @@
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+
+# Editor files
+*.swp
+*~
+.tmp
+
+# Logs
+*.log
+log/
+
+# Misc
+*.bak
+*.orig
+*.swp
+*.swo
+
+# Dependencies
+node_modules/
+venv/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+.next/
+__pycache__/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Docker
+.dockerignore

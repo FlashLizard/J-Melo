@@ -4,10 +4,10 @@ import usePlayerStore from '@/stores/usePlayerStore';
 import cn from 'classnames';
 
 // A simple set of SVG icons for the controls
-const PlayIcon = () => (
+const PauseIcon = () => (
   <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20"><path d="M4.516 3.87A1.5 1.5 0 0 1 7.5 5.066v9.868a1.5 1.5 0 0 1-2.984.996L4.516 3.87zM12.5 5.066a1.5 1.5 0 0 1 2.984-.996l.001 12.06a1.5 1.5 0 0 1-2.985-.996V5.066z"></path></svg>
 );
-const PauseIcon = () => (
+const PlayIcon = () => (
     <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20"><path d="M15.84 8.747a1.5 1.5 0 0 1 0 2.506l-8.25 4.95A1.5 1.5 0 0 1 5.25 15V5a1.5 1.5 0 0 1 2.34-1.253l8.25 4.95z"></path></svg>
 );
 

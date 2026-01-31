@@ -2,53 +2,36 @@ import os
 import json
 import subprocess
 import torch
-import whisperx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from omegaconf import ListConfig, DictConfig # 显式导入配置类
-
-# --- 🟢 核心修复：双重保险 ---
-
-# 1. 白名单策略：告诉 PyTorch 信任 Omegaconf (解决 WeightsUnpickler error)
-try:
-    torch.serialization.add_safe_globals([ListConfig, DictConfig])
-except Exception as e:
-    print(f"Warning: Could not add safe globals: {e}")
-
-# 2. 强制覆盖策略：Monkey Patch torch.load
-# 无论调用者传什么参数，都强制 weights_only=False
-original_torch_load = torch.load
-
-def patched_torch_load(*args, **kwargs):
-    # 强制覆盖，不进行 if 判断
-    kwargs['weights_only'] = False 
-    return original_torch_load(*args, **kwargs)
-
-torch.load = patched_torch_load
-# --- 🟢 核心修复结束 ---
+from faster_whisper import WhisperModel
 
 
 # --- Configuration & Setup ---
 
+# Check for GPU
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {DEVICE}")
 
+# Create cache directory if it doesn't exist
 CACHE_DIR = "media_cache"
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 app = FastAPI()
 
 # --- Global Models ---
-print("Loading WhisperX model...")
+# Load the WhisperX model on startup.
+print("Loading Whisper model...")
 try:
-    # 这里的 language="ja" 预设可以加快加载速度，但如果不确定可以去掉
-    model = whisperx.load_model("base", DEVICE, compute_type="int8")
-    print("WhisperX model loaded successfully.")
+    model_size = "medium"
+
+    # Run on GPU with FP16
+    model = WhisperModel(model_size, device=DEVICE, compute_type="int8")
 except Exception as e:
     import traceback
-    traceback.print_exc()
+    traceback.print_exc() # 打印详细报错堆栈
     print(f"Error loading WhisperX model: {e}")
     model = None
 
@@ -75,6 +58,7 @@ class TranscribeRequest(BaseModel):
 def fetch_media_info(url: str) -> dict:
     command = ["yt-dlp", "--dump-json", "--no-playlist", url]
     try:
+        # 增加 encoding='utf-8' 防止 Windows 下中文乱码
         result = subprocess.run(command, capture_output=True, text=True, check=True, encoding='utf-8')
         return json.loads(result.stdout)
     except (subprocess.CalledProcessError, json.JSONDecodeError) as e:
@@ -85,18 +69,19 @@ def fetch_media_info(url: str) -> dict:
 
 def download_media(info: dict, destination: str) -> None:
     url = info.get("webpage_url")
+    # 增加 --cookies-from-browser firefox (可选，如果B站下载失败可能需要)
     command = ["yt-dlp", "-f", "bestaudio/best", "--extract-audio", "--audio-format", "mp3", "-o", destination, url]
     try:
         subprocess.run(command, check=True, capture_output=True)
     except subprocess.CalledProcessError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to download media: {e.stderr.decode('utf-8', errors='ignore')}")
+        raise HTTPException(status_code=500, detail=f"Failed to download media. yt-dlp error: {e.stderr.decode('utf-8', errors='ignore')}")
 
 # --- API Endpoints ---
 
 app.mount(f"/{CACHE_DIR}", StaticFiles(directory=CACHE_DIR), name="media_cache")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"], # 开发阶段允许所有来源，避免跨域烦恼
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -118,50 +103,30 @@ async def media_fetch(request: MediaFetchRequest):
         cached_filename = f"{media_id}.{file_extension}"
         local_path = os.path.join(CACHE_DIR, cached_filename)
 
-        media_is_video = info.get("is_video", False)
-        returned_media_type = "video" if media_is_video else "audio"
-
         if not os.path.exists(local_path) or request.force_redownload:
             print(f"Cache miss for {media_id}. Downloading...")
+            # yt-dlp 的 output template 需要 %(ext)s
             download_destination_template = os.path.join(CACHE_DIR, f"{media_id}.%(ext)s")
-            # If it's a video, don't extract audio, download best video format
-            if media_is_video:
-                command = ["yt-dlp", "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]", "--recode-video", "mp4", "-o", download_destination_template, info.get("webpage_url")]
-            else:
-                command = ["yt-dlp", "-f", "bestaudio/best", "--extract-audio", "--audio-format", "mp3", "-o", download_destination_template, info.get("webpage_url")]
-            
-            try:
-                subprocess.run(command, check=True, capture_output=True)
-                # Update cached_filename based on actual downloaded extension if it's video
-                if media_is_video:
-                    actual_ext = "mp4" # Assuming recode-video to mp4
-                    cached_filename = f"{media_id}.{actual_ext}"
-                    local_path = os.path.join(CACHE_DIR, cached_filename)
-            except subprocess.CalledProcessError as e:
-                raise HTTPException(status_code=500, detail=f"Failed to download media: {e.stderr.decode('utf-8', errors='ignore')}")
+            download_media(info, download_destination_template)
             print("Download complete.")
         else:
             print(f"Cache hit for {media_id}.")
-            # If it's a video, ensure filename reflects mp4
-            if media_is_video:
-                actual_ext = "mp4"
-                cached_filename = f"{media_id}.{actual_ext}"
-                local_path = os.path.join(CACHE_DIR, cached_filename)
 
         return MediaFetchResponse(
-            media_type=returned_media_type,
+            media_type="audio",
             title=info.get("title", "Unknown Title"),
             artist=info.get("artist") or info.get("uploader"),
             cover_url=info.get("thumbnail"),
             duration=info.get("duration", 0),
-            media_url=f"/{CACHE_DIR}/{cached_filename}",
+            media_url=f"/{CACHE_DIR}/{cached_filename}", # 返回完整 URL 方便前端调试
             local_path=local_path
         )
-
+    except HTTPException as e:
+        raise e
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
 @app.post("/api/transcribe")
 async def transcribe_audio(request: TranscribeRequest):
@@ -173,32 +138,72 @@ async def transcribe_audio(request: TranscribeRequest):
         raise HTTPException(status_code=404, detail=f"Audio file not found at path: {audio_path}")
 
     try:
-        print(f"Loading audio from {audio_path}...")
-        audio = whisperx.load_audio(audio_path)
-
-        print("Transcribing audio...")
-        # 显式指定日语，提高准确率
-        result = model.transcribe(audio, batch_size=4, language="ja")
+        print(f"Transcribing audio from {audio_path}...")
         
-        print("Transcription complete. Aligning...")
+        # 假设 model.transcribe 返回的是 segments 生成器
+        # 注意：Faster-Whisper 返回的是 (segments, info)
+        segments, info = model.transcribe(
+            audio_path, 
+            language="ja", 
+            word_timestamps=True # 关键：必须开启这个才有 words
+        )
         
-        # --- 强制对齐逻辑 ---
-        model_a, metadata = whisperx.load_align_model(language_code=result["language"], device=DEVICE)
-        result = whisperx.align(result["segments"], model_a, metadata, audio, DEVICE, return_char_alignments=False)
+        # 因为 segments 是一个生成器，我们需要把它转换成列表
+        # 这一步会真正执行推理
+        segments_list = list(segments) 
         
-        # 清理显存
+        print("Transcription complete. Formatting output...")
+        
+        # --- 调用上面的转换函数 ---
+        formatted_result = format_whisper_output(segments_list)
+        
+        # 清理内存
         import gc
-        del model_a
-        torch.cuda.empty_cache()
         gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
-        print("Alignment complete.")
-        return result
+        return formatted_result
 
     except Exception as e:
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Transcribe error: {str(e)}")
+
+def format_whisper_output(segments):
+    """
+    将 Faster-Whisper 或类似库的 Segment 对象列表转换为前端所需的 JSON 格式。
+    同时处理 np.float64 类型转换。
+    """
+    formatted_segments = []
+
+    for segment in segments:
+        # 1. 处理单词列表 (Words)
+        formatted_words = []
+        # 检查 segment 是否有 words 属性 (Faster-Whisper 默认就有)
+        if hasattr(segment, 'words') and segment.words:
+            for word in segment.words:
+                formatted_words.append({
+                    "word": word.word,
+                    # 必须使用 float() 将 np.float64 转换为原生 float
+                    "start": float(word.start),
+                    "end": float(word.end),
+                    # 前端叫 'score'，后端模型输出通常叫 'probability'
+                    "score": float(word.probability)
+                })
+
+        # 2. 处理段落 (Segment)
+        formatted_segment = {
+            "start": float(segment.start),
+            "end": float(segment.end),
+            "text": segment.text.strip(), # 去除首尾空格
+            "words": formatted_words
+        }
+        
+        formatted_segments.append(formatted_segment)
+
+    # 3. 返回前端要求的根结构 {"segments": [...]}
+    return {"segments": formatted_segments}
 
 if __name__ == "__main__":
     import uvicorn

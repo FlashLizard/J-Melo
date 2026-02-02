@@ -13,26 +13,37 @@ interface Props {
 const ProgressHighlighter: React.FC<Props> = ({ surface, startTime, endTime, isActive, isHovered }) => {
   const [width, setWidth] = useState(0);
   const animationFrameId = useRef<number>();
+  const animationStartTimestamp = useRef<number>();
 
   useEffect(() => {
-    const animate = () => {
-      const { currentTime } = usePlayerStore.getState();
-      const duration = endTime - startTime;
+    const wordDuration = (endTime - startTime) * 1000; // in milliseconds
 
-      if (currentTime >= startTime && currentTime <= endTime) {
-        const progress = (currentTime - startTime) / duration;
-        setWidth(progress * 100);
+    const animate = (timestamp: number) => {
+      if (animationStartTimestamp.current === undefined) {
+        animationStartTimestamp.current = timestamp;
+      }
+      
+      const elapsed = timestamp - animationStartTimestamp.current;
+      const progress = Math.min(1, elapsed / wordDuration);
+      
+      setWidth(progress * 100);
+
+      if (progress < 1) {
         animationFrameId.current = requestAnimationFrame(animate);
-      } else {
-        // Ensure it completes or resets
-        setWidth(currentTime > endTime ? 100 : 0);
       }
     };
 
     if (isActive) {
+      // Correctly handle starting animation midway through a word
+      const initialPlayerTime = usePlayerStore.getState().currentTime;
+      const initialOffset = (initialPlayerTime - startTime) * 1000;
+      animationStartTimestamp.current = performance.now() - initialOffset;
+
       animationFrameId.current = requestAnimationFrame(animate);
     } else {
+      // Reset when not active
       setWidth(0);
+      animationStartTimestamp.current = undefined;
     }
 
     return () => {
@@ -47,12 +58,9 @@ const ProgressHighlighter: React.FC<Props> = ({ surface, startTime, endTime, isA
 
   return (
     <span className={`relative block text-lg ${baseColor}`}>
-      {/* Base text */}
       <span>{surface}</span>
-
-      {/* Highlighted text overlay */}
       <span
-        className={`absolute top-0 left-0 h-full overflow-hidden ${highlightColor}`}
+        className={`absolute top-0 left-0 h-full overflow-hidden whitespace-nowrap ${highlightColor}`}
         style={{ width: `${width}%` }}
       >
         {surface}
@@ -62,3 +70,4 @@ const ProgressHighlighter: React.FC<Props> = ({ surface, startTime, endTime, isA
 };
 
 export default ProgressHighlighter;
+

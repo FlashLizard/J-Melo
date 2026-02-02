@@ -3,6 +3,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import { LyricLine, LyricToken } from '@/lib/mock-data';
 import { editorStoreActions } from '@/stores/useEditorStore';
 import { tutorStoreActions } from '@/stores/useTutorStore';
+import { playerStoreActions } from '@/stores/usePlayerStore'; // Import playerStoreActions
 import ContextMenu, { MenuItem } from '@/components/common/ContextMenu';
 import cn from 'classnames';
 import ProgressHighlighter from './ProgressHighlighter';
@@ -22,6 +23,10 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
       activeLineRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [lyrics, currentTime]);
+
+  const handleWordClick = (startTime: number) => {
+    playerStoreActions.seek(startTime);
+  };
 
   const handleContextMenu = (event: React.MouseEvent, token: LyricToken, line: LyricLine) => {
     event.preventDefault();
@@ -57,6 +62,7 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
                   <span
                     key={token.startTime}
                     className="inline-block align-bottom mr-1 cursor-pointer"
+                    onClick={() => handleWordClick(token.startTime)}
                     onMouseEnter={() => setHoveredToken(token)}
                     onMouseLeave={() => setHoveredToken(null)}
                     onContextMenu={(e) => handleContextMenu(e, token, line)}

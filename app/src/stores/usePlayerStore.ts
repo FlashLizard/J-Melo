@@ -1,114 +1,88 @@
-// src/stores/usePlayerStore.ts
 import { create } from 'zustand';
-import { devtools } from 'zustand/middleware';
 
-// 接口定义不变
 interface PlayerState {
   isPlaying: boolean;
   currentTime: number;
   duration: number;
   loopA: number | null;
   loopB: number | null;
-  actions: {
-    setMediaElement: (element: HTMLAudioElement | HTMLVideoElement | null) => void;
-    play: () => void;
-    pause: () => void;
-    seek: (time: number) => void;
-    togglePlay: () => void;
-    setLoopA: () => void;
-    setLoopB: () => void;
-    clearLoop: () => void;
-  };
 }
 
-const usePlayerStore = create<PlayerState>()(
-  devtools(
-    (set, get) => {
-      // 内部变量，用于存储 DOM 引用，这部分保持不变
-      let _mediaElement: HTMLAudioElement | HTMLVideoElement | null = null;
+let mediaElement: HTMLAudioElement | HTMLVideoElement | null = null;
 
-      // ✅ 核心修复：将事件处理函数直接定义在 create 的作用域内
-      // 它们会捕获到被 devtools 包装过的 set 和 get
-      const handlePlay = () => set({ isPlaying: true });
-      const handlePause = () => set({ isPlaying: false });
-      const handleEnded = () => set({ isPlaying: false });
-      
-      const handleLoadedMetadata = () => {
-        if (_mediaElement) {
-          set({ duration: _mediaElement.duration });
-        }
-      };
+const usePlayerStore = create<PlayerState>(() => ({
+  isPlaying: false,
+  currentTime: 0,
+  duration: 0,
+  loopA: null,
+  loopB: null,
+}));
 
-      const handleTimeUpdate = () => {
-        if (_mediaElement) {
-          const { loopA, loopB } = get();
-          const newTime = _mediaElement.currentTime;
-          
-          if (loopA !== null && loopB !== null && newTime >= loopB) {
-            _mediaElement.currentTime = loopA;
-            // 确保循环时也更新状态
-            set({ currentTime: loopA }); 
-          } else {
-            set({ currentTime: newTime });
-          }
-        }
-      };
+const handleTimeUpdate = () => {
+    if (!mediaElement) return;
+    const { loopA, loopB, currentTime } = usePlayerStore.getState();
+    const newTime = mediaElement.currentTime;
 
-      return {
-        // 初始状态
-        isPlaying: false,
-        currentTime: 0,
-        duration: 0,
-        loopA: null,
-        loopB: null,
-        
-        actions: {
-          setMediaElement: (element) => {
-            // 清理旧的监听器
-            if (_mediaElement) {
-              _mediaElement.removeEventListener('play', handlePlay);
-              _mediaElement.removeEventListener('pause', handlePause);
-              _mediaElement.removeEventListener('ended', handleEnded);
-              _mediaElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
-              _mediaElement.removeEventListener('timeupdate', handleTimeUpdate);
-            }
+    // Check for looping
+    if (loopA !== null && loopB !== null && newTime >= loopB) {
+        mediaElement.currentTime = loopA;
+        usePlayerStore.setState({ currentTime: loopA });
+    } else {
+        // Update time directly for smooth animation
+        usePlayerStore.setState({ currentTime: newTime });
+    }
+};
+const handleLoadedMetadata = () => mediaElement && usePlayerStore.setState({ duration: mediaElement.duration });
+const handlePlay = () => usePlayerStore.setState({ isPlaying: true });
+const handlePause = () => usePlayerStore.setState({ isPlaying: false });
+const handleEnded = () => usePlayerStore.setState({ isPlaying: false });
 
-            // 更新引用并重置状态
-            _mediaElement = element;
-            set({ isPlaying: false, currentTime: 0, duration: 0 });
-
-            // 绑定新的监听器，使用在上面定义的、能访问正确`set`的函数
-            if (element) {
-              element.addEventListener('play', handlePlay);
-              element.addEventListener('pause', handlePause);
-              element.addEventListener('ended', handleEnded);
-              element.addEventListener('loadedmetadata', handleLoadedMetadata);
-              element.addEventListener('timeupdate', handleTimeUpdate);
-            }
-          },
-          // 其他 actions 保持不变
-          play: () => _mediaElement?.play(),
-          pause: () => _mediaElement?.pause(),
-          togglePlay: () => {
-            if (!_mediaElement) return;
-            get().isPlaying ? _mediaElement.pause() : _mediaElement.play();
-          },
-          seek: (time) => {
-            if (_mediaElement) _mediaElement.currentTime = time;
-          },
-          setLoopA: () => set({ loopA: get().currentTime, loopB: null }),
-          setLoopB: () => {
-            const { currentTime, loopA } = get();
-            if (loopA !== null && currentTime > loopA) {
-              set({ loopB: currentTime });
-            }
-          },
-          clearLoop: () => set({ loopA: null, loopB: null }),
-        },
-      };
-    },
-    { name: 'PlayerStore' }
-  )
-);
+export const playerStoreActions = {
+  setMediaElement: (element: HTMLAudioElement | HTMLVideoElement | null) => {
+    console.log("playerStoreActions.setMediaElement called with:", element);
+    if (mediaElement) {
+        mediaElement.removeEventListener('timeupdate', handleTimeUpdate);
+        mediaElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
+        mediaElement.removeEventListener('play', handlePlay);
+        mediaElement.removeEventListener('pause', handlePause);
+        mediaElement.removeEventListener('ended', handleEnded);
+    }
+    mediaElement = element;
+    usePlayerStore.setState({ isPlaying: false, currentTime: 0, duration: 0 });
+    if (element) {
+        element.addEventListener('timeupdate', handleTimeUpdate);
+        element.addEventListener('loadedmetadata', handleLoadedMetadata);
+        element.addEventListener('play', handlePlay);
+        element.addEventListener('pause', handlePause);
+        element.addEventListener('ended', handleEnded);
+    }
+  },
+  play: () => {
+    console.log("play action. Current mediaElement:", mediaElement);
+    mediaElement?.play();
+  },
+  pause: () => {
+    console.log("pause action. Current mediaElement:", mediaElement);
+    mediaElement?.pause();
+  },
+  togglePlay: () => {
+    const { isPlaying } = usePlayerStore.getState();
+    console.log(`togglePlay action. isPlaying: ${isPlaying}. Current mediaElement:`, mediaElement);
+    if (isPlaying) {
+      mediaElement?.pause();
+    } else {
+      mediaElement?.play();
+    }
+  },
+  seek: (time: number) => { 
+    if (mediaElement) mediaElement.currentTime = time; 
+  },
+  setLoopA: () => usePlayerStore.setState({ loopA: usePlayerStore.getState().currentTime, loopB: null }),
+  setLoopB: () => {
+    const { currentTime, loopA } = usePlayerStore.getState();
+    if (loopA !== null && currentTime > loopA) usePlayerStore.setState({ loopB: currentTime });
+  },
+  clearLoop: () => usePlayerStore.setState({ loopA: null, loopB: null }),
+};
 
 export default usePlayerStore;

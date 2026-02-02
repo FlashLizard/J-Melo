@@ -23,6 +23,9 @@ export interface WordRecord {
 export interface Settings {
   id?: number; // Should always be 0 for singleton
   openaiApiKey: string | null;
+  llmApiUrl: string | null;
+  llmModelType: string | null;
+  aiResponseLanguage: 'en' | 'zh'; // 'en' for English, 'zh' for Chinese
   uiLanguage: 'en' | 'zh';
 }
 
@@ -34,13 +37,21 @@ class JeloDB extends Dexie {
   public constructor() {
     super('JeloDB');
     this.version(1).stores({
-      // sourceUrl is indexed for quick lookups
       songs: '++id, sourceUrl',
-      // surface is indexed for the vocabulary list
       words: '++id, surface, sourceSongId',
-      // Singleton settings table
       settings: 'id',
     });
+    this.version(2).stores({
+      settings: 'id, openaiApiKey, llmApiUrl, llmModelType, uiLanguage',
+    }).upgrade(tx => {});
+    // Add a new version for the aiResponseLanguage field
+    this.version(3).stores({
+      settings: 'id, openaiApiKey, llmApiUrl, llmModelType, aiResponseLanguage, uiLanguage',
+    }).upgrade(tx => {});
+    // Add a new version for the words table change (adding createdAt index)
+    this.version(4).stores({
+      words: '++id, surface, sourceSongId, createdAt',
+    }).upgrade(tx => {});
   }
 }
 

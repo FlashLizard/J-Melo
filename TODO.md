@@ -41,3 +41,18 @@ This file tracks the development tasks for the J-Melo project, based on the requ
 - [ ] **Task 6.2**: 对前端性能进行分析和优化，特别是歌词高亮部分。
 - [ ] **Task 6.3**: 对后端 API 进行压力测试。
 - [/] **Task 6.4**: 修复 Bug 和 UI/UX 细节调整。 (已修复生词本保存的 bug)
+
+## Phase 7: 新功能
+- [x] **Task 7.1**: 在设置页面增加 AI 回复语言的选择功能。
+    - [x] **Task 7.1.1**: 更新 `db.ts` 中的 `Settings` 接口，增加 `aiResponseLanguage` 字段。
+    - [x] **Task 7.1.2**: 更新 `settings.tsx` 页面，增加一个下拉选择框，用于选择 "中文" 或 "英文"。
+    - [x] **Task 7.1.3**: 更新 `useTutorStore.ts` 的 `fetchExplanation` 方法，使其在构建 prompt 时，根据设置的语言，向 AI 提出不同的语言要求。
+
+- [x] **Task 7.2**: 重构歌词点击行为，引入右键菜单和编辑功能。
+    - [x] **Task 7.2.1**: **隐藏 AI 面板**：当没有选中任何文本或解释时，隐藏 `AIPanel`。
+    - [x] **Task 7.2.2**: **创建右键菜单组件 (`ContextMenu.tsx`)**。
+    - [x] **Task 7.2.3**: **实现歌词高亮与右键菜单**：在 `LyricsDisplay.tsx` 中实现鼠标悬停高亮和右键菜单。
+    - [x] **Task 7.2.4**: **创建歌词编辑面板 (`LyricsEditor.tsx`)**。
+    - [x] **Task 7.2.5**: **集成编辑面板与状态管理**：创建 `useEditorStore.ts`，并在主页中根据状态显示 `AIPanel` 或 `LyricsEditor`。
+    - [x] **Task 7.2.6**: **实现编辑逻辑**：在 `LyricsEditor.tsx` 中实现时间调整的验证和保存。
+

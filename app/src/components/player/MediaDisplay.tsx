@@ -1,40 +1,27 @@
 import React, { useRef, useEffect } from 'react';
-import usePlayerStore from '@/stores/usePlayerStore';
+import usePlayerStore, { playerStoreActions } from '@/stores/usePlayerStore';
 
-interface Props {
-  mediaType: 'video' | 'audio';
-  mediaUrl?: string;
-  coverUrl?: string;
-}
+// ...
 
 const MediaDisplay: React.FC<Props> = ({ mediaType, mediaUrl, coverUrl }) => {
-  // 使用 Ref 获取真实的 DOM 节点
   const mediaRef = useRef<HTMLVideoElement | HTMLAudioElement | null>(null);
-  
-  // 从 Store 中只取 setMediaElement
-  // 因为事件监听、播放状态改变、时间更新逻辑全都在 Store 的 setMediaElement 里定义好了
-  const setMediaElement = usePlayerStore((state) => state.actions.setMediaElement);
 
   useEffect(() => {
-    const element = mediaRef.current;
-    
-    // 1. 将 DOM 元素交给 Store
-    // Store 会自动绑定 timeupdate, play, pause, ended 等事件
-    // 并将 isPlaying 重置为 false
-    if (element) {
-      setMediaElement(element);
+    console.log("MediaDisplay effect RUN. mediaUrl:", mediaUrl);
+    if (mediaRef.current) {
+      console.log("-> Setting media element:", mediaRef.current);
+      playerStoreActions.setMediaElement(mediaRef.current);
+    } else {
+      // This might happen on the first render before the ref is attached
+      console.log("-> mediaRef.current is null, setting store element to null.");
+      playerStoreActions.setMediaElement(null);
     }
 
-    // 2. 清理函数
     return () => {
-      // 组件卸载或 mediaUrl 改变时，告诉 Store 元素没了
-      // Store 会自动移除 event listeners
-      // 这里的 setMediaElement(null) 不会触碰 src 或 pause()，完美避开 AbortError
-      setMediaElement(null);
+      console.log("MediaDisplay effect CLEANUP. Setting media element to null.");
+      playerStoreActions.setMediaElement(null);
     };
-  }, [mediaUrl, mediaType, setMediaElement]); 
-  // 注意：mediaUrl 变化时，React 会重新渲染，Ref 指向的元素 src 改变，
-  // 触发 useEffect 重新注册，Store 会重置状态 (isPlaying: false, currentTime: 0)
+  }, [mediaUrl]);
 
   // 通用属性
   const commonProps = {

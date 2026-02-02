@@ -1,6 +1,6 @@
 // src/components/player/PlayerControls.tsx
 import React from 'react';
-import usePlayerStore from '@/stores/usePlayerStore';
+import usePlayerStore, { playerStoreActions } from '@/stores/usePlayerStore';
 import cn from 'classnames';
 
 // A simple set of SVG icons for the controls
@@ -23,17 +23,16 @@ const PlayerControls: React.FC = () => {
   const currentTime = usePlayerStore((state) => state.currentTime);
   const duration = usePlayerStore((state) => state.duration);
   const { loopA, loopB } = usePlayerStore();
-  const { togglePlay, seek, setLoopA, setLoopB, clearLoop } = usePlayerStore((state) => state.actions);
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    seek(Number(e.target.value));
+    playerStoreActions.seek(Number(e.target.value));
   };
 
   return (
     <div className="p-4 bg-gray-900 text-white flex flex-col items-center">
       <div className="flex items-center space-x-4">
         <button
-          onClick={setLoopA}
+          onClick={playerStoreActions.setLoopA}
           className={cn('text-sm font-bold px-3 py-1 rounded', {
             'bg-blue-500 text-white': loopA !== null,
             'bg-gray-700': loopA === null,
@@ -42,7 +41,7 @@ const PlayerControls: React.FC = () => {
           A {loopA !== null && `(${formatTime(loopA)})`}
         </button>
         <button
-          onClick={setLoopB}
+          onClick={playerStoreActions.setLoopB}
           disabled={loopA === null}
           className={cn('text-sm font-bold px-3 py-1 rounded', {
             'bg-blue-500 text-white': loopB !== null,
@@ -54,7 +53,7 @@ const PlayerControls: React.FC = () => {
         </button>
 
         <button
-          onClick={togglePlay}
+          onClick={playerStoreActions.togglePlay}
           className="p-2 rounded-full bg-green-500 hover:bg-green-400"
           aria-label={isPlaying ? 'Pause' : 'Play'}
         >
@@ -62,7 +61,7 @@ const PlayerControls: React.FC = () => {
         </button>
 
         <button
-          onClick={clearLoop}
+          onClick={playerStoreActions.clearLoop}
           className="text-sm font-bold px-3 py-1 rounded bg-red-600 hover:bg-red-500"
         >
           Clear

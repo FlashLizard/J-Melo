@@ -1,10 +1,9 @@
 // src/components/tutor/AIPanel.tsx
 import React from 'react';
-import useTutorStore from '@/stores/useTutorStore';
+import useTutorStore, { tutorStoreActions } from '@/stores/useTutorStore';
 
 const AIPanel: React.FC = () => {
   const { selectedText, explanation, isLoading, error } = useTutorStore();
-  const { addWordToVocabulary } = useTutorStore((state) => state.actions);
 
   const renderContent = () => {
     if (isLoading) {
@@ -14,7 +13,6 @@ const AIPanel: React.FC = () => {
       return <p className="text-red-500">{error}</p>;
     }
     if (explanation) {
-      // Using whitespace-pre-wrap to respect newlines from the AI response
       return <p className="whitespace-pre-wrap">{explanation}</p>;
     }
     if (selectedText) {
@@ -22,7 +20,7 @@ const AIPanel: React.FC = () => {
     }
     return (
       <p className="text-gray-400">
-        Click on a word or sentence in the lyrics to get an AI-powered explanation.
+        Right-click on a word in the lyrics to get an AI-powered explanation.
       </p>
     );
   };
@@ -35,7 +33,7 @@ const AIPanel: React.FC = () => {
       </div>
       <div className="mt-4">
         <button
-          onClick={addWordToVocabulary}
+          onClick={tutorStoreActions.addWordToVocabulary}
           className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-500 w-full disabled:bg-gray-500"
           disabled={!explanation || isLoading}
         >

@@ -1,101 +1,81 @@
 // src/hooks/useLyricsProcessor.ts
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import Kuroshiro from 'kuroshiro';
 import KuroshiroManager from '@/lib/kuroshiro';
 import { LyricLine, LyricToken } from '@/lib/mock-data';
 
-// This is a simplified type for the WhisperX output
-// Based on the whisperx documentation
-interface WhisperXWord {
+export interface WhisperXWord {
   word: string;
   start: number;
   end: number;
   score: number;
 }
-
-interface WhisperXSegment {
+export interface WhisperXSegment {
   start: number;
   end: number;
   text: string;
   words: WhisperXWord[];
 }
-
 export interface WhisperXOutput {
   segments: WhisperXSegment[];
   language: string;
 }
 
-const useLyricsProcessor = () => {
-  const [isLoading, setIsLoading] = useState(false);
+interface LyricsProcessorProps {
+  whisperData: WhisperXOutput | null;
+  onProcessed: (lyrics: LyricLine[]) => void;
+}
+
+const useLyricsProcessor = ({ whisperData, onProcessed }: LyricsProcessorProps) => {
+  const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [kuroshiroInstance, setKuroshiroInstance] = useState<Kuroshiro | null>(null);
+  const [kuroshiro, setKuroshiro] = useState<Kuroshiro | null>(null);
 
   useEffect(() => {
-    // Initialize Kuroshiro only on the client side
-    if (typeof window !== 'undefined' && !kuroshiroInstance) {
-      KuroshiroManager.getInstance().then(instance => {
-        setKuroshiroInstance(instance);
-      }).catch(err => {
-        console.error("Failed to initialize Kuroshiro:", err);
-        setError("Failed to load Japanese text processor.");
-      });
-    }
-  }, [kuroshiroInstance]);
+    KuroshiroManager.getInstance().then(setKuroshiro).catch(() => setError("Failed to load processor."));
+  }, []);
 
-  const processLyrics = useCallback(async (whisperData: WhisperXOutput): Promise<LyricLine[]> => {
-    if (!kuroshiroInstance) {
-      setError("Japanese text processor not initialized.");
-      return [];
-    }
+  useEffect(() => {
+    if (!whisperData || !kuroshiro) return;
 
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const lyricLines: LyricLine[] = [];
-
-      for (const segment of whisperData.segments) {
-        const tokens: LyricToken[] = [];
-        
-        // Use Promise.all to process tokens in parallel for each line
-        await Promise.all(segment.words.map(async (word) => {
-          const romaji = await kuroshiroInstance.convert(word.word, { to: 'romaji', mode: 'spaced' });
-          const reading = await kuroshiroInstance.convert(word.word, { to: 'hiragana', mode: 'spaced' });
-
-          tokens.push({
-            surface: word.word,
-            reading: reading,
-            romaji: romaji,
-            startTime: word.start,
-            endTime: word.end,
-            partOfSpeech: '', // WhisperX doesn't provide this, so it's left empty
-          });
+    const process = async () => {
+      setIsProcessing(true);
+      setError(null);
+      try {
+        const lyricLines: LyricLine[] = await Promise.all(whisperData.segments.map(async (segment) => {
+          const tokens: LyricToken[] = await Promise.all(segment.words.map(async (word) => {
+            const romaji = await kuroshiro.convert(word.word, { to: 'romaji', mode: 'spaced' });
+            const reading = await kuroshiro.convert(word.word, { to: 'hiragana', mode: 'spaced' });
+            return {
+              surface: word.word,
+              reading,
+              romaji,
+              startTime: word.start,
+              endTime: word.end,
+              partOfSpeech: '',
+            };
+          }));
+          tokens.sort((a, b) => a.startTime - b.startTime);
+          return {
+            id: `line-${segment.start}`,
+            startTime: segment.start,
+            endTime: segment.end,
+            text: segment.text,
+            tokens,
+          };
         }));
-        
-        // Sort tokens by start time as they might finish processing out of order
-        tokens.sort((a, b) => a.startTime - b.startTime);
-
-        lyricLines.push({
-          id: `line-${segment.start}`,
-          startTime: segment.start,
-          endTime: segment.end,
-          text: segment.text,
-          tokens: tokens,
-        });
+        onProcessed(lyricLines);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "An unknown error occurred during processing.");
+      } finally {
+        setIsProcessing(false);
       }
+    };
 
-      setIsLoading(false);
-      return lyricLines;
-    } catch (err) {
-      console.error("Error processing lyrics:", err);
-      const message = err instanceof Error ? err.message : 'An unknown error occurred';
-      setError(message);
-      setIsLoading(false);
-      return [];
-    }
-  }, [kuroshiroInstance]);
+    process();
+  }, [whisperData, kuroshiro, onProcessed]);
 
-  return { processLyrics, isLoading, error };
+  return { isProcessing, error };
 };
 
 export default useLyricsProcessor;

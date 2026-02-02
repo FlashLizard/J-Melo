@@ -8,18 +8,31 @@ import { db } from '@/lib/db';
 const SettingsPage = () => {
   const settings = useLiveQuery(() => db.settings.get(0));
   const [apiKey, setApiKey] = useState('');
+  const [apiUrl, setApiUrl] = useState('');
+  const [modelType, setModelType] = useState('');
+  const [aiLanguage, setAiLanguage] = useState<'en' | 'zh'>('en');
 
   useEffect(() => {
-    if (settings?.openaiApiKey) {
-      setApiKey(settings.openaiApiKey);
-    }
-  }, [settings]);
+    console.log("SettingsPage useEffect running.");
+    db.settings.get(0).then(settings => {
+      console.log("Settings from DB:", settings);
+      if (settings) {
+        setApiKey(settings.openaiApiKey || '');
+        setApiUrl(settings.llmApiUrl || 'https://api.openai.com/v1/chat/completions');
+        setModelType(settings.llmModelType || 'gpt-3.5-turbo');
+        setAiLanguage(settings.aiResponseLanguage || 'en');
+      }
+    });
+  }, []);
 
   const handleSave = async () => {
     await db.settings.put({
       id: 0,
       openaiApiKey: apiKey,
-      uiLanguage: 'en', // Default for now
+      llmApiUrl: apiUrl,
+      llmModelType: modelType,
+      aiResponseLanguage: aiLanguage,
+      uiLanguage: settings?.uiLanguage || 'en',
     });
     alert('Settings saved!');
   };
@@ -40,8 +53,51 @@ const SettingsPage = () => {
 
           <div className="space-y-6 bg-gray-800 p-6 rounded-lg">
             <div>
+              <label htmlFor="aiLanguage" className="block text-lg font-medium mb-2">
+                AI Response Language
+              </label>
+              <select
+                id="aiLanguage"
+                value={aiLanguage}
+                onChange={(e) => setAiLanguage(e.target.value as 'en' | 'zh')}
+                className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500"
+              >
+                <option value="en">English</option>
+                <option value="zh">中文</option>
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="apiUrl" className="block text-lg font-medium mb-2">
+                LLM API URL
+              </label>
+              <input
+                type="text"
+                id="apiUrl"
+                value={apiUrl}
+                onChange={(e) => setApiUrl(e.target.value)}
+                className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500"
+                placeholder="e.g., https://api.openai.com/v1/chat/completions"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="modelType" className="block text-lg font-medium mb-2">
+                Model Type
+              </label>
+              <input
+                type="text"
+                id="modelType"
+                value={modelType}
+                onChange={(e) => setModelType(e.target.value)}
+                className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500"
+                placeholder="e.g., gpt-3.5-turbo, claude-3-opus-20240229"
+              />
+            </div>
+            
+            <div>
               <label htmlFor="apiKey" className="block text-lg font-medium mb-2">
-                OpenAI API Key
+                API Key
               </label>
               <input
                 type="password"
@@ -49,10 +105,10 @@ const SettingsPage = () => {
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500"
-                placeholder="sk-..."
+                placeholder="Your API key (e.g., sk-...)"
               />
               <p className="text-xs text-gray-400 mt-2">
-                Your API key is stored locally in your browser's IndexedDB and is never sent to our servers.
+                Your API key is stored locally in your browser's IndexedDB.
               </p>
             </div>
 

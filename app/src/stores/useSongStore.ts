@@ -4,7 +4,6 @@ import { LyricLine } from '@/lib/mock-data';
 import { WhisperXOutput } from '@/hooks/useLyricsProcessor';
 import { db, SongRecord } from '@/lib/db';
 
-// This matches the backend's MediaFetchResponse model
 export interface SongData {
   media_type: 'video' | 'audio';
   title: string;
@@ -12,94 +11,86 @@ export interface SongData {
   cover_url: string | null;
   duration: number;
   media_url: string;
-  local_path: string; // Add local_path to be used for transcription
+  local_path: string;
+  sourceUrl: string;
 }
 
 interface SongState {
   song: SongData | null;
   lyrics: LyricLine[] | null;
+  whisperData: WhisperXOutput | null; // Add whisperData to the state
   isLoading: boolean;
   error: string | null;
-  actions: {
-    fetchSong: (url: string, lyricsProcessor: (data: WhisperXOutput) => Promise<LyricLine[]>) => Promise<void>;
-  };
 }
 
-const useSongStore = create<SongState>((set) => ({
+const useSongStore = create<SongState>(() => ({
   song: null,
   lyrics: null,
+  whisperData: null,
   isLoading: false,
   error: null,
-  actions: {
-    fetchSong: async (url, lyricsProcessor) => {
-      set({ isLoading: true, error: null, song: null, lyrics: null });
-      try {
-        // Optimization: Check if the song already exists in the DB
-        const existingSong = await db.songs.where('sourceUrl').equals(url).first();
-        if (existingSong) {
-          console.log("Found song in DB, loading from there.");
-          set({ song: existingSong, lyrics: existingSong.lyrics, isLoading: false });
-          return;
-        }
-
-        // 1. Fetch media info from our backend
-        const mediaResponse = await fetch('http://localhost:8000/api/media/fetch', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url }),
-        });
-
-        if (!mediaResponse.ok) {
-          const errorData = await mediaResponse.json();
-          throw new Error(errorData.detail || 'Failed to fetch media');
-        }
-
-        const songData: SongData = await mediaResponse.json();
-        set({ song: songData }); // Set song data immediately
-
-        // 2. Transcribe the audio
-        const transcribeResponse = await fetch('http://localhost:8000/api/transcribe', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ local_path: songData.local_path }),
-        });
-
-        if (!transcribeResponse.ok) {
-            const errorData = await transcribeResponse.json();
-            throw new Error(errorData.detail || 'Failed to transcribe audio');
-        }
-
-        const whisperData: WhisperXOutput = await transcribeResponse.json();
-
-        // 3. Process the lyrics only if lyricsProcessor is provided (i.e., on the client)
-        let processedLyrics: LyricLine[] = [];
-        if (lyricsProcessor) {
-            processedLyrics = await lyricsProcessor(whisperData);
-        } else {
-            // Fallback for SSR or if lyricsProcessor is not available
-            // This might mean lyrics won't be available on first render for SSR
-            console.warn("lyricsProcessor not available, skipping lyric processing.");
-        }
-
-        // 4. Save to IndexedDB
-        const newSongRecord: SongRecord = {
-          ...songData,
-          sourceUrl: url,
-          lyrics: processedLyrics,
-          createdAt: new Date(),
-        };
-        await db.songs.add(newSongRecord);
-        console.log("Saved new song to IndexedDB.");
-
-        set({ lyrics: processedLyrics, isLoading: false });
-
-      } catch (err) {
-        const error = err as Error;
-        console.error("Error in fetchSong action:", err);
-        set({ error: error.message, isLoading: false, song: null, lyrics: null });
-      }
-    },
-  },
 }));
 
+export const songStoreActions = {
+  fetchSong: async (url: string) => {
+    useSongStore.setState({ isLoading: true, error: null, song: null, lyrics: null, whisperData: null });
+    try {
+      const existingSong = await db.songs.where('sourceUrl').equals(url).first();
+      if (existingSong) {
+        useSongStore.setState({ song: existingSong, lyrics: existingSong.lyrics, isLoading: false });
+        return;
+      }
+      const mediaResponse = await fetch('http://localhost:8000/api/media/fetch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      if (!mediaResponse.ok) throw new Error((await mediaResponse.json()).detail || 'Failed to fetch media');
+      const songData: Omit<SongData, 'sourceUrl'> = await mediaResponse.json();
+      
+      // Manually re-attach the original source URL to the song object
+      const songDataWithSource: SongData = { ...songData, sourceUrl: url };
+
+      const transcribeResponse = await fetch('http://localhost:8000/api/transcribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ local_path: songData.local_path }),
+      });
+      if (!transcribeResponse.ok) throw new Error((await transcribeResponse.json()).detail || 'Failed to transcribe audio');
+      const whisperData: WhisperXOutput = await transcribeResponse.json();
+      
+      // Store songData (with sourceUrl) and whisperData
+      useSongStore.setState({ song: songDataWithSource, whisperData: whisperData, isLoading: false });
+
+    } catch (err) {
+      useSongStore.setState({ error: (err as Error).message, isLoading: false, song: null, lyrics: null });
+    }
+  },
+  setProcessedLyrics: (processedLyrics: LyricLine[]) => {
+    useSongStore.setState((state) => {
+      if (!state.song) return {};
+      // Save to DB after processing
+      const newSongRecord: SongRecord = {
+        ...state.song,
+        lyrics: processedLyrics,
+        createdAt: new Date(),
+      };
+      db.songs.add(newSongRecord);
+      return { lyrics: processedLyrics };
+    });
+  },
+  updateLyricToken: (lineId: string, updatedToken: LyricToken) => {
+    useSongStore.setState((state) => {
+      if (!state.lyrics) return {};
+      const newLyrics = state.lyrics.map(line =>
+        line.id === lineId
+          ? { ...line, tokens: line.tokens.map(t => t.startTime === updatedToken.startTime ? updatedToken : t) }
+          : line
+      );
+      return { lyrics: newLyrics };
+    });
+  },
+};
+
 export default useSongStore;
+

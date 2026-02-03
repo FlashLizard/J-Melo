@@ -80,54 +80,35 @@ const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, onSave, onCancel,
         const newTokens = [...prevLine.tokens];
         const minDuration = 0.05;
 
-        // Ensure minimum duration on the active token
-        if (newEnd - newStart < minDuration) {
-            if (type === 'resize-left' || (type === 'move' && newStart < newTokens[index].startTime)) {
-                newStart = newEnd - minDuration;
-            } else {
-                newEnd = newStart + minDuration;
-            }
-        }
-        
         if (type === 'move') {
             const prevBoundary = index > 0 ? newTokens[index - 1].endTime : prevLine.startTime;
             const nextBoundary = index < newTokens.length - 1 ? newTokens[index + 1].startTime : prevLine.endTime;
             const duration = newEnd - newStart;
-
             newStart = Math.max(prevBoundary, newStart);
             newEnd = newStart + duration;
             if (newEnd > nextBoundary) {
                 newEnd = nextBoundary;
                 newStart = newEnd - duration;
             }
-        } else if (type === 'resize-right') {
-            const nextToken = newTokens[index + 1];
-            if (nextToken && newEnd > nextToken.startTime) {
-                newTokens[index + 1] = { ...nextToken, startTime: newEnd };
+        } else { 
+             if (newEnd - newStart < minDuration) {
+                if (type === 'resize-left') newStart = newEnd - minDuration;
+                else newEnd = newStart + minDuration;
             }
-             newEnd = Math.min(newEnd, nextToken ? nextToken.endTime : prevLine.endTime);
-
-        } else if (type === 'resize-left') {
-            const prevToken = newTokens[index - 1];
-            if (prevToken && newStart < prevToken.endTime) {
-                newTokens[index - 1] = { ...prevToken, endTime: newStart };
-            }
-            newStart = Math.max(newStart, prevToken ? prevToken.startTime : prevLine.startTime);
-        }
-
-        newTokens[index] = { ...newTokens[index], startTime: newStart, endTime: newEnd };
-        
-        // Final validation pass to ensure no blocks are smaller than minDuration after erosion
-        for(let i = 0; i < newTokens.length; i++) {
-            if (newTokens[i].endTime - newTokens[i].startTime < minDuration) {
-                if (i < newTokens.length - 1 && newTokens[i+1].startTime - newTokens[i].startTime >= minDuration) {
-                    newTokens[i].endTime = newTokens[i].startTime + minDuration;
-                } else if (i > 0 && newTokens[i].endTime - newTokens[i-1].endTime >= minDuration) {
-                     newTokens[i].startTime = newTokens[i].endTime - minDuration;
+            if (type === 'resize-right') {
+                const nextToken = newTokens[index + 1];
+                if (nextToken && newEnd > nextToken.startTime) {
+                    newTokens[index + 1] = { ...nextToken, startTime: newEnd };
+                }
+            } else if (type === 'resize-left') {
+                const prevToken = newTokens[index - 1];
+                if (prevToken && newStart < prevToken.endTime) {
+                    newTokens[index - 1] = { ...prevToken, endTime: newStart };
                 }
             }
         }
 
+        newTokens[index] = { ...newTokens[index], startTime: newStart, endTime: newEnd };
         return { ...prevLine, tokens: newTokens.sort((a,b) => a.startTime - b.startTime) };
     });
   }, []);
@@ -158,7 +139,7 @@ const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, onSave, onCancel,
       setCurrentLine(prevLine => ({ ...prevLine, tokens: [...prevLine.tokens, newToken].sort((a, b) => a.startTime - b.startTime) }));
       setAddMode(false);
     } else {
-        setSelectedTokenIndex(null); // Deselect on timeline click
+        setSelectedTokenIndex(null);
     }
   };
 
@@ -218,26 +199,40 @@ const ResizableWordBlock: React.FC<ResizableWordBlockProps> = ({ index, token, l
     const leftRef = useRef(null);
     const rightRef = useRef(null);
 
+    const [dragState, setDragState] = useState({ x: 0, width: 0 });
+
     const timeToPx = (time: number) => ((time - lineStartTime) / lineDuration) * timelineWidth;
     const pxToTime = (px: number) => (px / timelineWidth) * lineDuration;
 
-    const x = timeToPx(token.startTime);
-    const width = timeToPx(token.endTime) - x;
+    useEffect(() => {
+        setDragState({
+            x: timeToPx(token.startTime),
+            width: timeToPx(token.endTime) - timeToPx(token.startTime)
+        });
+    }, [token, lineStartTime, lineDuration, timelineWidth]);
 
     const handleDrag = (e: any, data: any) => {
-        const newStartTime = token.startTime + pxToTime(data.deltaX);
-        const newEndTime = token.endTime + pxToTime(data.deltaX);
-        onTimeUpdate(index, 'move', newStartTime, newEndTime);
+        setDragState(prev => ({ ...prev, x: prev.x + data.deltaX }));
     };
     
     const handleResize = (e: any, data: any, edge: 'left' | 'right') => {
         if (edge === 'left') {
-            const newStartTime = token.startTime + pxToTime(data.deltaX);
-            onTimeUpdate(index, 'resize-left', newStartTime, token.endTime);
+            setDragState(prev => ({
+                x: prev.x + data.deltaX,
+                width: prev.width - data.deltaX
+            }));
         } else {
-            const newEndTime = token.endTime + pxToTime(data.deltaX);
-            onTimeUpdate(index, 'resize-right', token.startTime, newEndTime);
+            setDragState(prev => ({
+                ...prev,
+                width: prev.width + data.deltaX
+            }));
         }
+    };
+
+    const handleStop = (type: 'move' | 'resize-left' | 'resize-right') => {
+        const newStartTime = lineStartTime + pxToTime(dragState.x);
+        const newEndTime = lineStartTime + pxToTime(dragState.x + dragState.width);
+        onTimeUpdate(index, type, newStartTime, newEndTime);
     };
 
     const handleClick = (e: React.MouseEvent) => {
@@ -247,23 +242,25 @@ const ResizableWordBlock: React.FC<ResizableWordBlockProps> = ({ index, token, l
     };
 
     return (
-        <div style={{ left: x, width: width, zIndex: isSelected ? 20 : 10 }} onClick={handleClick}
+        <div style={{ left: dragState.x, width: dragState.width, zIndex: isSelected ? 20 : 10 }} onClick={handleClick}
             className={`word-block absolute top-1/2 -translate-y-1/2 h-10 rounded-md border-2 flex justify-center items-center text-sm font-bold text-white select-none
                 ${isPlaying ? 'bg-yellow-400 border-yellow-600' : 'bg-green-500 border-green-700'} 
                 ${isSelected ? 'border-blue-400' : ''}
                 ${deleteMode ? 'cursor-not-allowed bg-red-500' : 'cursor-pointer'}`}
             title={token.surface}
         >
-            <span className="pointer-events-none">{index + 1}</span>
+            <div className="relative w-full h-full flex items-center justify-center">
+              <span className="pointer-events-none">{index + 1}</span>
+            </div>
             {isSelected && !deleteMode && (
               <>
-                <Draggable nodeRef={leftRef} axis="x" onDrag={(e, data) => handleResize(e, data, 'left')}>
+                <Draggable nodeRef={leftRef} axis="x" onDrag={(e, data) => handleResize(e, data, 'left')} onStop={() => handleStop('resize-left')} position={{x:0,y:0}}>
                   <div ref={leftRef} className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize z-30" />
                 </Draggable>
-                <Draggable nodeRef={moveRef} axis="x" onDrag={handleDrag}>
+                <Draggable nodeRef={moveRef} axis="x" onDrag={handleDrag} onStop={() => handleStop('move')}>
                   <div ref={moveRef} className="absolute inset-0 cursor-move z-20" />
                 </Draggable>
-                <Draggable nodeRef={rightRef} axis="x" onDrag={(e, data) => handleResize(e, data, 'right')}>
+                <Draggable nodeRef={rightRef} axis="x" onDrag={(e, data) => handleResize(e, data, 'right')} onStop={() => handleStop('resize-right')}>
                   <div ref={rightRef} className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize z-30" />
                 </Draggable>
               </>

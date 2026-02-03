@@ -86,8 +86,9 @@ export const songStoreActions = {
         line.id === updatedLine.id ? updatedLine : line
       );
       // Also update in DB
-      if (state.song) {
-        db.songs.update(state.song.sourceUrl, { lyrics: newLyrics });
+      const songRecord = state.song as SongRecord;
+      if (songRecord && songRecord.id) {
+        db.songs.update(songRecord.id, { lyrics: newLyrics });
       }
       return { lyrics: newLyrics };
     });

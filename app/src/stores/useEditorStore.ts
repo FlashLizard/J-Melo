@@ -1,18 +1,18 @@
 // src/stores/useEditorStore.ts
 import { create } from 'zustand';
-import { LyricToken, LyricLine } from '@/lib/mock-data';
+import { LyricLine, LyricToken } from '@/interfaces/lyrics';
 
 interface EditorState {
-  editingToken: { token: LyricToken, line: LyricLine } | null;
+  editingLine: LyricLine | null;
 }
 
 const useEditorStore = create<EditorState>(() => ({
-  editingToken: null,
+  editingLine: null,
 }));
 
 export const editorStoreActions = {
-  setEditingToken: (token: LyricToken, line: LyricLine) => useEditorStore.setState({ editingToken: { token, line } }),
-  clearEditingToken: () => useEditorStore.setState({ editingToken: null }),
+  setEditingLine: (line: LyricLine) => useEditorStore.setState({ editingLine: line }),
+  clearEditingLine: () => useEditorStore.setState({ editingLine: null }),
 };
 
 export default useEditorStore;

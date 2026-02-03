@@ -5,13 +5,14 @@ import Link from 'next/link';
 import Player from '@/components/player/Player';
 import LyricsDisplay from '@/components/lyrics/LyricsDisplay';
 import AIPanel from '@/components/tutor/AIPanel';
-import LyricsEditor from '@/components/editor/LyricsEditor';
+import SentenceEditor from '@/components/editor/SentenceEditor'; // Changed import
 import useSongStore, { songStoreActions } from '@/stores/useSongStore';
 import usePlayerStore from '@/stores/usePlayerStore';
 import useLyricsProcessor from '@/hooks/useLyricsProcessor';
 import useTutorStore from '@/stores/useTutorStore';
 import useEditorStore, { editorStoreActions } from '@/stores/useEditorStore';
 import { mockLyrics } from '@/lib/mock-data';
+import { LyricLine } from '@/interfaces/lyrics'; // Added LyricLine import
 
 const SongInput: React.FC = () => {
   const [url, setUrl] = useState('');
@@ -64,7 +65,7 @@ const IndexPage = () => {
   const { song, lyrics, whisperData, isLoading } = useSongStore();
   const currentTime = usePlayerStore((state) => state.currentTime);
   const { selectedText, explanation } = useTutorStore();
-  const editingToken = useEditorStore((state) => state.editingToken);
+  const editingLine = useEditorStore((state) => state.editingLine);
   
   useLyricsProcessor({
     whisperData,
@@ -79,11 +80,11 @@ const IndexPage = () => {
     }
   }, []);
 
-  const handleSaveLyricEdit = (updatedToken: any) => {
-    if (editingToken) {
-      songStoreActions.updateLyricToken(editingToken.line.id, updatedToken);
+  const handleSaveSentenceEdit = (updatedLine: LyricLine) => {
+    if (editingLine) {
+      songStoreActions.updateLyricLine(updatedLine);
     }
-    editorStoreActions.clearEditingToken();
+    editorStoreActions.clearEditingLine();
   };
 
   const displayLyrics = lyrics && lyrics.length > 0 ? lyrics : (isLoading ? [] : mockLyrics);
@@ -114,13 +115,12 @@ const IndexPage = () => {
             {isLoading ? <div>Loading lyrics...</div> : <LyricsDisplay lyrics={displayLyrics} currentTime={currentTime} />}
           </div>
           <div className="lg:col-span-1 h-full">
-            {editingToken ? (
-              <LyricsEditor
-                token={editingToken.token}
-                line={editingToken.line}
-                lyrics={displayLyrics}
-                onSave={handleSaveLyricEdit}
-                onCancel={editorStoreActions.clearEditingToken}
+            {editingLine && song && song.media_url ? (
+              <SentenceEditor
+                line={editingLine}
+                onSave={handleSaveSentenceEdit}
+                onCancel={editorStoreActions.clearEditingLine}
+                relativeAudioUrl={song.media_url}
               />
             ) : (
               (selectedText || explanation) && <AIPanel />
@@ -133,3 +133,4 @@ const IndexPage = () => {
 };
 
 export default IndexPage;
+

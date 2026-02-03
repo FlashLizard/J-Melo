@@ -1,6 +1,6 @@
 // src/stores/useSongStore.ts
 import { create } from 'zustand';
-import { LyricLine } from '@/lib/mock-data';
+import { LyricLine, LyricToken } from '@/interfaces/lyrics';
 import { WhisperXOutput } from '@/hooks/useLyricsProcessor';
 import { db, SongRecord } from '@/lib/db';
 
@@ -79,14 +79,16 @@ export const songStoreActions = {
       return { lyrics: processedLyrics };
     });
   },
-  updateLyricToken: (lineId: string, updatedToken: LyricToken) => {
+  updateLyricLine: (updatedLine: LyricLine) => {
     useSongStore.setState((state) => {
       if (!state.lyrics) return {};
       const newLyrics = state.lyrics.map(line =>
-        line.id === lineId
-          ? { ...line, tokens: line.tokens.map(t => t.startTime === updatedToken.startTime ? updatedToken : t) }
-          : line
+        line.id === updatedLine.id ? updatedLine : line
       );
+      // Also update in DB
+      if (state.song) {
+        db.songs.update(state.song.sourceUrl, { lyrics: newLyrics });
+      }
       return { lyrics: newLyrics };
     });
   },

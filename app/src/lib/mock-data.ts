@@ -1,23 +1,7 @@
 // src/lib/mock-data.ts
 
 // Based on the data structure from docs/smart_lyrics_system.md
-export interface LyricToken {
-  surface: string;
-  reading: string;
-  romaji: string;
-  startTime: number;
-  endTime: number;
-  partOfSpeech: string;
-}
-
-export interface LyricLine {
-  id: string;
-  startTime: number;
-  endTime: number;
-  text: string;
-  translation?: string;
-  tokens: LyricToken[];
-}
+import { LyricToken, LyricLine } from '@/interfaces/lyrics';
 
 export const mockLyrics: LyricLine[] = [
   {

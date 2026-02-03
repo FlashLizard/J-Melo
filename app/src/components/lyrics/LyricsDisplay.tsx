@@ -37,7 +37,7 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
 
   const getMenuItems = (token: LyricToken, line: LyricLine): MenuItem[] => [
     { label: `解释 "${token.surface}"`, action: () => tutorStoreActions.setSelectedText(token.surface) },
-    { label: '编辑词语', action: () => editorStoreActions.setEditingToken(token, line) },
+    { label: '编辑句子', action: () => editorStoreActions.setEditingLine(line) },
     { label: '自定义动作 1', action: () => alert('Custom action 1'), disabled: true },
     { label: '自定义动作 2', action: () => alert('Custom action 2'), disabled: true },
   ];
@@ -53,21 +53,20 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
             className={cn('mb-6 transition-all duration-300', { 'opacity-50': !isLineActive, 'scale-105': isLineActive })}
           >
             <p className="text-2xl font-semibold tracking-wider mb-2">
-              {line.tokens.map((token) => {
+              {line.tokens.map((token, index) => {
                 const isTokenActive = isLineActive && currentTime >= token.startTime && currentTime < token.endTime;
                 const hasTokenPassed = isLineActive && currentTime >= token.endTime;
                 const isHovered = hoveredToken === token;
 
                 return (
-                  <span
-                    key={token.startTime}
-                    className="inline-block align-bottom mr-1 cursor-pointer"
-                    onClick={() => handleWordClick(token.startTime)}
-                    onMouseEnter={() => setHoveredToken(token)}
-                    onMouseLeave={() => setHoveredToken(null)}
-                    onContextMenu={(e) => handleContextMenu(e, token, line)}
-                  >
-                    <span className="text-xs text-gray-400">{token.reading}</span>
+                                      <span
+                                      key={`${token.surface}-${token.startTime}-${index}`}
+                                      className="inline-block align-bottom mr-1 cursor-pointer"
+                                      onClick={() => handleWordClick(token.startTime)}
+                                      onMouseEnter={() => setHoveredToken(token)}
+                                      onMouseLeave={() => setHoveredToken(null)}
+                                      onContextMenu={(e) => handleContextMenu(e, token, line)}
+                                    >                    <span className="text-xs text-gray-400">{token.reading}</span>
                     
                     {isTokenActive ? (
                       <ProgressHighlighter 

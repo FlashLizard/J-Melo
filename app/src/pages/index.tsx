@@ -61,11 +61,74 @@ const SongInput: React.FC = () => {
   );
 };
 
-const IndexPage = () => {
-  const { song, lyrics, whisperData, isLoading } = useSongStore();
-  const currentTime = usePlayerStore((state) => state.currentTime);
+import useUIPanelStore from '@/stores/useUIPanelStore';
+import ToolPanel from '@/components/tutor/ToolPanel';
+import AILyricCorrector from '@/components/tutor/AILyricCorrector';
+import FullLyricsEditor from '@/components/editor/FullLyricsEditor';
+
+// ... (existing imports)
+
+// ... (SongInput component remains the same)
+
+const RightHandPanel = () => {
+  const { song } = useSongStore();
   const { selectedText, explanation } = useTutorStore();
   const editingLine = useEditorStore((state) => state.editingLine);
+  const { activePanel, setActivePanel } = useUIPanelStore();
+
+  const handleSaveSentenceEdit = (updatedLine: LyricLine) => {
+    if (editingLine) {
+      songStoreActions.updateLyricLine(updatedLine);
+    }
+    editorStoreActions.clearEditingLine();
+    setActivePanel('TOOL_PANEL');
+  };
+
+  const handleCancelSentenceEdit = () => {
+    editorStoreActions.clearEditingLine();
+    setActivePanel('TOOL_PANEL');
+  }
+
+  useEffect(() => {
+    if (editingLine) {
+      setActivePanel('SENTENCE_EDITOR');
+    } else if (selectedText || explanation) {
+      setActivePanel('AI_TUTOR');
+    } else if (activePanel !== 'AI_CORRECTOR' && activePanel !== 'FULL_LYRICS_EDITOR') {
+      setActivePanel('TOOL_PANEL');
+    }
+  }, [editingLine, selectedText, explanation, setActivePanel, activePanel]);
+
+  if (activePanel === 'SENTENCE_EDITOR' && editingLine && song?.media_url) {
+    return (
+      <SentenceEditor
+        line={editingLine}
+        onSave={handleSaveSentenceEdit}
+        onCancel={handleCancelSentenceEdit}
+        relativeAudioUrl={song.media_url}
+      />
+    );
+  }
+
+  if (activePanel === 'AI_TUTOR') {
+    return <AIPanel />;
+  }
+  
+  if (activePanel === 'AI_CORRECTOR') {
+    return <AILyricCorrector />;
+  }
+
+  if (activePanel === 'FULL_LYRICS_EDITOR') {
+    return <FullLyricsEditor />;
+  }
+
+  return <ToolPanel />;
+};
+
+
+const IndexPage = () => {
+  const { song, lyrics, previewLyrics, whisperData, isLoading } = useSongStore();
+  const currentTime = usePlayerStore((state) => state.currentTime);
   
   useLyricsProcessor({
     whisperData,
@@ -80,14 +143,7 @@ const IndexPage = () => {
     }
   }, []);
 
-  const handleSaveSentenceEdit = (updatedLine: LyricLine) => {
-    if (editingLine) {
-      songStoreActions.updateLyricLine(updatedLine);
-    }
-    editorStoreActions.clearEditingLine();
-  };
-
-  const displayLyrics = lyrics && lyrics.length > 0 ? lyrics : (isLoading ? [] : mockLyrics);
+  const displayLyrics = previewLyrics || lyrics || (isLoading ? [] : mockLyrics);
 
   return (
     <>
@@ -115,16 +171,7 @@ const IndexPage = () => {
             {isLoading ? <div>Loading lyrics...</div> : <LyricsDisplay lyrics={displayLyrics} currentTime={currentTime} />}
           </div>
           <div className="lg:col-span-1 h-full">
-            {editingLine && song && song.media_url ? (
-              <SentenceEditor
-                line={editingLine}
-                onSave={handleSaveSentenceEdit}
-                onCancel={editorStoreActions.clearEditingLine}
-                relativeAudioUrl={song.media_url}
-              />
-            ) : (
-              (selectedText || explanation) && <AIPanel />
-            )}
+            <RightHandPanel />
           </div>
         </div>
       </main>

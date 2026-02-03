@@ -82,3 +82,7 @@ J-Melo 是一个通过音乐学习日语的沉浸式 Web 应用。用户可以�
   - `StaticFiles`: FastAPI 通过 `app.mount` 将 `media_cache` 目录挂载为静态文件服务，使前端可以通过 URL 直接访问。
   - `Dockerfile`: 提供了一个完整的 `Dockerfile`，用于构建后端的容器化镜像，简化了部署流程。
   - **模型加载修复**: 包含了针对新版 PyTorch `weights_only` 安全限制的修复，确保 WhisperX 模型能被正确加载。
+
+## 5. AI Lyric Correction
+
+This tool allows users to fix incorrect or poorly timed lyrics using an LLM. Users can provide a block of correct lyric text. The system then uses a configurable prompt template to ask an LLM to re-transcribe the song's audio, using the provided text as a reference, and to output a perfectly structured and timed lyric JSON. The user can then preview and apply these new, corrected lyrics.

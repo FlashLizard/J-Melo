@@ -4,6 +4,10 @@ import { LyricLine, LyricToken } from '@/interfaces/lyrics';
 import Draggable from 'react-draggable';
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
+// Memoize child components to prevent re-renders when only the parent's time state changes.
+const MemoizedResizableWordBlock = React.memo(ResizableWordBlock);
+const MemoizedEditableWordRow = React.memo(EditableWordRow);
+
 interface SentenceEditorProps {
   line: LyricLine;
   onSave: (updatedLine: LyricLine) => void;
@@ -25,10 +29,26 @@ const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, onSave, onCancel,
   const audioRef = useRef<HTMLAudioElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const [timelineWidth, setTimelineWidth] = useState(0);
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const animationFrameRef = useRef<number>();
+
+  const [editorMode, setEditorMode] = useState<'visual' | 'json'>('visual');
+  const [jsonString, setJsonString] = useState('');
+  const [jsonError, setJsonError] = useState<string | null>(null);
+
+  const lineDuration = useMemo(() => currentLine.endTime - currentLine.startTime, [currentLine]);
 
   useEffect(() => {
     setCurrentLine(line);
+    setCurrentAudioTime(line.startTime);
+    setJsonString(JSON.stringify(line, null, 2));
+    setJsonError(null);
     setSelectedTokenIndex(null);
+    setIsAudioPlaying(false);
+    if (audioRef.current) {
+        audioRef.current.currentTime = line.startTime;
+        audioRef.current.pause();
+    }
   }, [line]);
 
   useEffect(() => {
@@ -40,41 +60,64 @@ const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, onSave, onCancel,
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const lineDuration = useMemo(() => currentLine.endTime - currentLine.startTime, [currentLine]);
+  useEffect(() => {
+    const animate = () => {
+      if (audioRef.current && !isScrubbing) {
+        setCurrentAudioTime(audioRef.current.currentTime);
+        if (audioRef.current.currentTime >= currentLine.endTime) {
+          setIsAudioPlaying(false);
+          setCurrentAudioTime(currentLine.startTime);
+          audioRef.current.pause();
+        } else {
+          animationFrameRef.current = requestAnimationFrame(animate);
+        }
+      }
+    };
 
-  const handlePlay = () => {
+    if (isAudioPlaying) {
+      animationFrameRef.current = requestAnimationFrame(animate);
+    }
+    return () => {
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    };
+  }, [isAudioPlaying, currentLine.endTime, currentLine.startTime, isScrubbing]);
+
+  useEffect(() => {
+    const activeIndex = currentLine.tokens.findIndex(t => currentAudioTime >= t.startTime && currentAudioTime < t.endTime);
+    setActiveTokenIndex(activeIndex);
+  }, [currentAudioTime, currentLine.tokens]);
+
+  const handlePlay = useCallback(() => {
     if (audioRef.current) {
-      audioRef.current.currentTime = currentLine.startTime;
+      if (audioRef.current.currentTime < currentLine.startTime || audioRef.current.currentTime >= currentLine.endTime) {
+        audioRef.current.currentTime = currentLine.startTime;
+      }
       audioRef.current.playbackRate = playbackRate;
       audioRef.current.play();
       setIsAudioPlaying(true);
     }
-  };
-
-  const handleAudioTimeUpdate = () => {
-    if (audioRef.current) {
-      const time = audioRef.current.currentTime;
-      setCurrentAudioTime(time);
-      const activeIndex = currentLine.tokens.findIndex(t => time >= t.startTime && time < t.endTime);
-      setActiveTokenIndex(activeIndex);
-      if (time >= currentLine.endTime) handleStop();
-    }
-  };
-
-  const handleStop = () => {
+  }, [currentLine.startTime, currentLine.endTime, playbackRate]);
+  
+  const handleStop = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.pause();
       setIsAudioPlaying(false);
-      setCurrentAudioTime(currentLine.startTime);
-      setActiveTokenIndex(null);
     }
-  };
+  }, []);
 
-  const handlePlaybackRateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setPlaybackRate(Number(e.target.value));
-    if (audioRef.current) audioRef.current.playbackRate = Number(e.target.value);
-  };
+  const handlePlaybackRateChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newRate = Number(e.target.value);
+    setPlaybackRate(newRate);
+    if (audioRef.current) audioRef.current.playbackRate = newRate;
+  }, []);
   
+  const handleScrubberChange = useCallback((newTime: number) => {
+    if (audioRef.current) {
+      setCurrentAudioTime(newTime);
+      audioRef.current.currentTime = newTime;
+    }
+  }, []);
+
   const handleTimeUpdate = useCallback((index: number, type: 'move' | 'resize-left' | 'resize-right', newStart: number, newEnd: number) => {
     setCurrentLine(prevLine => {
         const newTokens = [...prevLine.tokens];
@@ -109,25 +152,21 @@ const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, onSave, onCancel,
         }
 
         newTokens[index] = { ...newTokens[index], startTime: newStart, endTime: newEnd };
-        return { ...prevLine, tokens: newTokens.sort((a,b) => a.startTime - b.startTime) };
+        const updatedLine = { ...prevLine, tokens: newTokens.sort((a,b) => a.startTime - b.startTime) };
+        setJsonString(JSON.stringify(updatedLine, null, 2));
+        return updatedLine;
     });
   }, []);
 
   const handleTokenChange = useCallback((index: number, field: keyof LyricToken, value: any) => {
-      const token = currentLine.tokens[index];
-      if (field === 'startTime' || field === 'endTime') {
-          const newStartTime = field === 'startTime' ? Number(value) : token.startTime;
-          const newEndTime = field === 'endTime' ? Number(value) : token.endTime;
-          handleTimeUpdate(index, 'move', newStartTime, newEndTime)
-      } else {
-           setCurrentLine(prevLine => {
-              const newTokens = [...prevLine.tokens];
-              newTokens[index] = { ...newTokens[index], [field]: value };
-              return { ...prevLine, tokens: newTokens };
-          });
-      }
-  }, [currentLine.tokens, handleTimeUpdate]);
-
+      setCurrentLine(prevLine => {
+          const newTokens = [...prevLine.tokens];
+          newTokens[index] = { ...newTokens[index], [field]: value };
+          const updatedLine = { ...prevLine, tokens: newTokens };
+          setJsonString(JSON.stringify(updatedLine, null, 2));
+          return updatedLine;
+      });
+  }, []);
 
   const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (addMode) {
@@ -136,49 +175,149 @@ const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, onSave, onCancel,
       const clickX = e.clientX - rect.left;
       const clickTime = currentLine.startTime + (clickX / timelineWidth) * lineDuration;
       const newToken: LyricToken = { surface: 'new', reading: 'new', romaji: 'new', startTime: clickTime, endTime: Math.min(clickTime + 0.5, currentLine.endTime), partOfSpeech: 'noun' };
-      setCurrentLine(prevLine => ({ ...prevLine, tokens: [...prevLine.tokens, newToken].sort((a, b) => a.startTime - b.startTime) }));
+      setCurrentLine(prevLine => {
+        const updatedLine = { ...prevLine, tokens: [...prevLine.tokens, newToken].sort((a, b) => a.startTime - b.startTime) };
+        setJsonString(JSON.stringify(updatedLine, null, 2));
+        return updatedLine;
+      });
       setAddMode(false);
     } else {
         setSelectedTokenIndex(null);
     }
   };
 
-  const handleDeleteToken = (tokenIndex: number) => {
-    setCurrentLine(prevLine => ({
-      ...prevLine,
-      tokens: prevLine.tokens.filter((_, index) => index !== tokenIndex),
-    }));
+  const handleDeleteToken = useCallback((tokenIndex: number) => {
+    setCurrentLine(prevLine => {
+      const updatedLine = {
+        ...prevLine,
+        tokens: prevLine.tokens.filter((_, index) => index !== tokenIndex),
+      };
+      setJsonString(JSON.stringify(updatedLine, null, 2));
+      return updatedLine;
+    });
     setDeleteMode(false);
+  }, []);
+
+  const handleJsonChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newJsonString = e.target.value;
+    setJsonString(newJsonString);
+    try {
+      const parsed = JSON.parse(newJsonString);
+      setCurrentLine(parsed);
+      setJsonError(null);
+    } catch (error) {
+      setJsonError((error as Error).message);
+    }
   };
 
+  const handleSaveClick = () => {
+    if (jsonError) {
+      alert(`Cannot save due to invalid JSON: ${jsonError}`);
+      return;
+    }
+    onSave(currentLine);
+  };
+  
   return (
     <div className="bg-gray-800 p-4 rounded-lg h-full flex flex-col">
-      <h2 className="text-white text-xl font-bold mb-4">Sentence Editor</h2>
-      <div className="flex justify-end space-x-2 mb-4">
-        <button onClick={() => { setAddMode(!addMode); setDeleteMode(false); }} className={`p-2 rounded-full ${addMode ? 'bg-green-500' : 'bg-gray-600'} hover:bg-green-500 text-white`} title="Add Word"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg></button>
-        <button onClick={() => { setDeleteMode(!deleteMode); setAddMode(false); }} className={`p-2 rounded-full ${deleteMode ? 'bg-red-500' : 'bg-gray-600'} hover:bg-red-500 text-white`} title="Delete Word"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" /></svg></button>
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xl font-bold text-white">Sentence Editor</h2>
+        <div className="flex space-x-1 bg-gray-700 rounded-lg p-1">
+          <button onClick={() => setEditorMode('visual')} className={`px-3 py-1 rounded-md text-sm ${editorMode === 'visual' ? 'bg-green-600 text-white' : 'text-gray-300'}`}>Visual</button>
+          <button onClick={() => setEditorMode('json')} className={`px-3 py-1 rounded-md text-sm ${editorMode === 'json' ? 'bg-green-600 text-white' : 'text-gray-300'}`}>JSON</button>
+        </div>
       </div>
-      <div ref={timelineRef} className={`flex-grow border border-gray-700 rounded-lg p-2 relative h-24 mb-4 overflow-hidden ${addMode ? 'cursor-crosshair' : ''}`} onClick={handleTimelineClick}>
-        {timelineWidth > 0 && currentLine.tokens.map((token, index) => (
-            <ResizableWordBlock key={index} index={index} token={token} lineStartTime={currentLine.startTime} lineDuration={lineDuration} timelineWidth={timelineWidth} onTimeUpdate={handleTimeUpdate} onDelete={() => handleDeleteToken(index)} isPlaying={activeTokenIndex === index} deleteMode={deleteMode} isSelected={selectedTokenIndex === index} onSelect={() => setSelectedTokenIndex(index)} />
-        ))}
+      
+      <div className="flex-grow flex flex-col min-h-0">
+        {editorMode === 'visual' ? 
+          <VisualEditor 
+            {...{
+              addMode, setAddMode, deleteMode, setDeleteMode, timelineRef, timelineWidth, 
+              currentLine, lineDuration, handleTimelineClick, activeTokenIndex, selectedTokenIndex, 
+              setSelectedTokenIndex, handleTimeUpdate, handleDeleteToken, handleTokenChange,
+              currentAudioTime, handleScrubberChange, setIsScrubbing, handlePlay
+            }}
+          /> : 
+          <JsonEditor jsonString={jsonString} handleJsonChange={handleJsonChange} jsonError={jsonError} />}
       </div>
-      <div className="flex-grow overflow-y-auto space-y-2 pr-2">
-        <div className="grid grid-cols-5 gap-2 items-center p-2 text-white text-sm font-bold"><div>#</div><div>Surface</div><div>Reading</div><div>Start (s)</div><div>End (s)</div></div>
-        {currentLine.tokens.map((token, index) => (<EditableWordRow key={index} index={index} token={token} onTokenChange={handleTokenChange}/>))}
-      </div>
+      
       <div className="flex items-center justify-center space-x-4 mt-auto pt-4">
         <button onClick={isAudioPlaying ? handleStop : handlePlay} className="p-3 rounded-full bg-blue-600 hover:bg-blue-500 text-white" title={isAudioPlaying ? 'Stop' : 'Play'}>{isAudioPlaying ? 'Stop' : 'Play'}</button>
         <select value={playbackRate} onChange={handlePlaybackRateChange} className="p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"><option value={0.5}>0.5x</option><option value={0.75}>0.75x</option><option value={1}>1x</option><option value={1.25}>1.25x</option><option value={1.5}>1.5x</option></select>
       </div>
       <div className="mt-4 flex justify-end space-x-2">
-        <button onClick={() => onSave(currentLine)} className="px-4 py-2 bg-green-600 rounded-lg hover:bg-green-500 text-white">Save</button>
+        <button onClick={handleSaveClick} className="px-4 py-2 bg-green-600 rounded-lg hover:bg-green-500 text-white disabled:opacity-50" disabled={jsonError !== null}>Save</button>
         <button onClick={onCancel} className="px-4 py-2 bg-gray-600 rounded-lg hover:bg-gray-500 text-white">Cancel</button>
       </div>
-      <audio ref={audioRef} src={songAudioUrl} preload="auto" onTimeUpdate={handleAudioTimeUpdate} onEnded={handleStop} />
+      <audio ref={audioRef} src={songAudioUrl} preload="auto" />
     </div>
   );
 };
+
+const VisualEditor = ({
+  addMode, setAddMode, deleteMode, setDeleteMode, timelineRef, timelineWidth, 
+  currentLine, lineDuration, handleTimelineClick, activeTokenIndex, selectedTokenIndex, 
+  setSelectedTokenIndex, handleTimeUpdate, handleDeleteToken, handleTokenChange,
+  currentAudioTime, handleScrubberChange, setIsScrubbing, handlePlay
+}: any) => {
+  const progressPercent = lineDuration > 0 ? ((currentAudioTime - currentLine.startTime) / lineDuration) * 100 : 0;
+  return (
+    <>
+      <div className="flex justify-end space-x-2 mb-4">
+        <button onClick={() => { setAddMode(!addMode); setDeleteMode(false); }} className={`p-2 rounded-full ${addMode ? 'bg-green-500' : 'bg-gray-600'} hover:bg-green-500 text-white`} title="Add Word"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg></button>
+        <button onClick={() => { setDeleteMode(!deleteMode); setAddMode(false); }} className={`p-2 rounded-full ${deleteMode ? 'bg-red-500' : 'bg-gray-600'} hover:bg-red-500 text-white`} title="Delete Word"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" /></svg></button>
+      </div>
+      
+      {/* Aligned Container for Timeline and Scrubber */}
+      <div className="px-4">
+        <div ref={timelineRef} className="border border-gray-700 rounded-lg p-2 relative h-24 overflow-hidden" onClick={handleTimelineClick}>
+          {timelineWidth > 0 && currentLine.tokens.map((token: LyricToken, index: number) => (
+              <MemoizedResizableWordBlock key={`${token.startTime}-${token.surface}`} index={index} token={token} lineStartTime={currentLine.startTime} lineDuration={lineDuration} timelineWidth={timelineWidth} onTimeUpdate={handleTimeUpdate} onDelete={() => handleDeleteToken(index)} isPlaying={activeTokenIndex === index} deleteMode={deleteMode} isSelected={selectedTokenIndex === index} onSelect={() => setSelectedTokenIndex(index)} />
+          ))}
+          <div 
+            className="absolute top-0 w-px h-full bg-yellow-400 opacity-50 pointer-events-none z-30"
+            style={{ left: `${progressPercent}%` }} 
+          />
+        </div>
+        <input
+            type="range"
+            min={currentLine.startTime}
+            max={currentLine.endTime}
+            step={0.01}
+            value={currentAudioTime}
+            onMouseDown={() => setIsScrubbing(true)}
+            onMouseUp={() => { setIsScrubbing(false); if (handlePlay) handlePlay(); }}
+            onChange={(e) => handleScrubberChange(parseFloat(e.target.value))}
+            className="w-full mt-2"
+        />
+        <div className="flex justify-between text-xs text-gray-400 font-mono mt-1">
+          <span>{currentLine.startTime.toFixed(2)}s</span>
+          <span>{currentLine.endTime.toFixed(2)}s</span>
+        </div>
+      </div>
+
+      <div className="flex-grow overflow-y-auto space-y-2 pr-2 mt-4">
+        <div className="grid grid-cols-5 gap-2 items-center p-2 text-white text-sm font-bold"><div>#</div><div>Surface</div><div>Reading</div><div>Start (s)</div><div>End (s)</div></div>
+        {currentLine.tokens.map((token: LyricToken, index: number) => (<MemoizedEditableWordRow key={`${token.startTime}-${token.surface}`} index={index} token={token} onTokenChange={handleTokenChange}/>))}
+      </div>
+    </>
+  )
+};
+
+const JsonEditor = ({ jsonString, handleJsonChange, jsonError }: any) => (
+  <div className="flex flex-col h-full flex-grow">
+    <textarea
+      className="w-full h-full flex-grow bg-gray-900 text-white p-2 rounded border border-gray-700 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+      value={jsonString}
+      onChange={handleJsonChange}
+    />
+    {jsonError && (
+      <div className="mt-2 p-2 bg-red-800 border border-red-600 rounded text-red-200 text-sm">
+        <strong>JSON Error:</strong> {jsonError}
+      </div>
+    )}
+  </div>
+);
 
 interface ResizableWordBlockProps {
     index: number;
@@ -194,22 +333,27 @@ interface ResizableWordBlockProps {
     deleteMode: boolean;
 }
 
-const ResizableWordBlock: React.FC<ResizableWordBlockProps> = ({ index, token, lineStartTime, lineDuration, timelineWidth, onTimeUpdate, onDelete, onSelect, isSelected, isPlaying, deleteMode }) => {
+function ResizableWordBlock({ index, token, lineStartTime, lineDuration, timelineWidth, onTimeUpdate, onDelete, onSelect, isSelected, isPlaying, deleteMode }: ResizableWordBlockProps) {
     const moveRef = useRef(null);
     const leftRef = useRef(null);
     const rightRef = useRef(null);
 
     const [dragState, setDragState] = useState({ x: 0, width: 0 });
 
-    const timeToPx = (time: number) => ((time - lineStartTime) / lineDuration) * timelineWidth;
+    const timeToPx = (time: number) => {
+      if (lineDuration <= 0) return 0;
+      return ((time - lineStartTime) / lineDuration) * timelineWidth;
+    }
     const pxToTime = (px: number) => (px / timelineWidth) * lineDuration;
 
     useEffect(() => {
+      if (lineDuration > 0) {
         setDragState({
             x: timeToPx(token.startTime),
             width: timeToPx(token.endTime) - timeToPx(token.startTime)
         });
-    }, [token, lineStartTime, lineDuration, timelineWidth]);
+      }
+    }, [token.startTime, token.endTime, lineStartTime, lineDuration, timelineWidth]);
 
     const handleDrag = (e: any, data: any) => {
         setDragState(prev => ({ ...prev, x: prev.x + data.deltaX }));

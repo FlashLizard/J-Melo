@@ -27,6 +27,10 @@ export interface Settings {
   llmModelType: string | null;
   aiResponseLanguage: 'en' | 'zh'; // 'en' for English, 'zh' for Chinese
   uiLanguage: 'en' | 'zh';
+  // New fields for lyric fix LLM
+  lyricFixLLMApiKey?: string | null;
+  lyricFixLLMApiUrl?: string | null;
+  lyricFixLLMModelType?: string | null;
 }
 
 class JeloDB extends Dexie {
@@ -52,6 +56,23 @@ class JeloDB extends Dexie {
     this.version(4).stores({
       words: '++id, surface, sourceSongId, createdAt',
     }).upgrade(tx => {});
+    // New version for lyric fix LLM settings
+    this.version(5).stores({
+      settings: 'id, openaiApiKey, llmApiUrl, llmModelType, aiResponseLanguage, uiLanguage, lyricFixLLMApiKey, lyricFixLLMModelType, lyricFixLLMApiUrl',
+    }).upgrade(async (tx) => {
+      // For existing settings, initialize new fields to null or existing general settings if appropriate
+      await tx.table('settings').toCollection().modify(setting => {
+        if (setting.lyricFixLLMApiKey === undefined) {
+          setting.lyricFixLLMApiKey = setting.openaiApiKey; // Default to general API key
+        }
+        if (setting.lyricFixLLMModelType === undefined) {
+          setting.lyricFixLLMModelType = setting.llmModelType; // Default to general model type
+        }
+        if (setting.lyricFixLLMApiUrl === undefined) {
+          setting.lyricFixLLMApiUrl = setting.llmApiUrl; // Default to general API URL
+        }
+      });
+    });
   }
 }
 

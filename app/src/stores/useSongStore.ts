@@ -18,18 +18,32 @@ export interface SongData {
 interface SongState {
   song: SongData | null;
   lyrics: LyricLine[] | null;
+  previewLyrics: LyricLine[] | null; // For live preview from FullLyricsEditor
   whisperData: WhisperXOutput | null; // Add whisperData to the state
   isLoading: boolean;
   error: string | null;
 }
 
-const useSongStore = create<SongState>(() => ({
+const useSongStore = create<SongState>(((set) => ({
   song: null,
   lyrics: null,
+  previewLyrics: null,
   whisperData: null,
   isLoading: false,
   error: null,
-}));
+  setPreviewLyrics: (lyrics) => set({ previewLyrics: lyrics }),
+  clearPreviewLyrics: () => set({ previewLyrics: null }),
+  commitPreviewLyrics: () => set((state) => {
+    if (state.previewLyrics) {
+      const newLyrics = state.previewLyrics;
+      if (state.song) { // Assuming song has an id
+        db.songs.update(state.song.id as number, { lyrics: newLyrics });
+      }
+      return { lyrics: newLyrics, previewLyrics: null };
+    }
+    return {};
+  }),
+})));
 
 export const songStoreActions = {
   fetchSong: async (url: string) => {

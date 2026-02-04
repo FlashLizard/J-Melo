@@ -12,18 +12,21 @@ import SentenceEditor from '@/components/editor/SentenceEditor';
 import FullLyricsEditor from '@/components/editor/FullLyricsEditor';
 import ToolPanel from '@/components/tutor/ToolPanel';
 import SongInfoEditor from '@/components/editor/SongInfoEditor';
+import AILyricCorrector from '@/components/tutor/AILyricCorrector'; // Add this import
 import useSongStore from '@/stores/useSongStore';
 import usePlayerStore from '@/stores/usePlayerStore';
 import useLyricsProcessor from '@/hooks/useLyricsProcessor';
 import useEditorStore, { editorStoreActions } from '@/stores/useEditorStore';
 import useUIPanelStore from '@/stores/useUIPanelStore';
 import useMobileViewStore from '@/stores/useMobileViewStore';
+import useTranslation from '@/hooks/useTranslation'; // Import useTranslation
 import { LyricLine } from '@/interfaces/lyrics';
 import { mockLyrics } from '@/lib/mock-data';
 
 const SongInput: React.FC = () => {
   const [url, setUrl] = useState('');
   const { song, isLoading, error, fetchSong } = useSongStore();
+  const { t } = useTranslation();
 
   const handleFetch = () => {
     if (url) fetchSong(url);
@@ -32,19 +35,19 @@ const SongInput: React.FC = () => {
   const handleShare = () => {
     if (song) {
       const shareUrl = `${window.location.origin}?url=${encodeURIComponent(song.sourceUrl)}`;
-      navigator.clipboard.writeText(shareUrl).then(() => alert('Share link copied!'));
+      navigator.clipboard.writeText(shareUrl).then(() => alert(t('index.shareLinkCopied')));
     }
   };
 
   return (
     <div className="p-4 bg-gray-800">
-      <h2 className="text-white text-lg mb-2">Load a song from URL</h2>
+      <h2 className="text-white text-lg mb-2">{t('index.loadSongFromUrl')}</h2>
       <div className="flex space-x-2">
         <input
           type="text"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          placeholder="Enter song URL"
+          placeholder={t('index.enterSongUrl')}
           className="flex-grow p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500"
           disabled={isLoading}
         />
@@ -53,14 +56,14 @@ const SongInput: React.FC = () => {
           className="px-4 py-2 rounded bg-green-600 hover:bg-green-500 text-white font-bold disabled:bg-gray-500"
           disabled={isLoading}
         >
-          Load
+          {t('index.loadButton')}
         </button>
         <button
           onClick={handleShare}
           className="px-4 py-2 rounded bg-yellow-600 hover:bg-yellow-500 text-white font-bold disabled:bg-gray-500"
           disabled={!song}
         >
-          Share
+          {t('index.shareButton')}
         </button>
       </div>
       {error && <p className="text-red-500 mt-2">{error}</p>}
@@ -125,6 +128,7 @@ const IndexPage = () => {
   const { song, lyrics, previewLyrics, whisperData, isLoading, fetchSong, setProcessedLyrics } = useSongStore();
   const currentTime = usePlayerStore((state) => state.currentTime);
   const { activeView, goToNextView, goToPrevView } = useMobileViewStore();
+  const { t } = useTranslation();
 
   const swipeHandlers = useSwipeable({
     onSwipedLeft: () => goToNextView(),
@@ -158,10 +162,10 @@ const IndexPage = () => {
           <h1 className="text-white text-lg font-bold">J-Melo</h1>
           <div className="flex gap-2">
             <Link href="/vocabulary" className="px-3 py-1 text-sm bg-blue-600 rounded-lg hover:bg-blue-500 text-white">
-              Vocab
+              {t('index.vocabularyButton')}
             </Link>
             <Link href="/settings" className="px-3 py-1 text-sm bg-gray-600 rounded-lg hover:bg-gray-500 text-white">
-              Settings
+              {t('index.settingsButton')}
             </Link>
           </div>
         </div>
@@ -175,7 +179,7 @@ const IndexPage = () => {
 
           <div className={cn("h-full overflow-y-auto", { 'block': activeView === 'lyrics', 'hidden lg:block': activeView !== 'lyrics' })}>
             {isLoading ? 
-              <div className="text-white p-4">Loading lyrics...</div> : 
+              <div className="text-white p-4">{t('index.loadingLyrics')}</div> : 
               <LyricsDisplay lyrics={displayLyrics} currentTime={currentTime} />
             }
           </div>

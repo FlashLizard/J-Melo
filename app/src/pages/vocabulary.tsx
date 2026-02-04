@@ -8,6 +8,7 @@ import cn from 'classnames';
 import CardViewer from '@/components/vocabulary/CardViewer';
 import ReviewSetup from '@/components/vocabulary/ReviewSetup';
 import Reviewer from '@/components/vocabulary/Reviewer';
+import useTranslation from '@/hooks/useTranslation'; // Import useTranslation
 
 const VocabularyPage = () => {
   const { 
@@ -18,6 +19,7 @@ const VocabularyPage = () => {
   } = useVocabularyStore();
 
   const [isReviewSetupOpen, setIsReviewSetupOpen] = useState(false);
+  const { t } = useTranslation(); // Initialize useTranslation
 
   useEffect(() => {
     loadWordsAndSongs();
@@ -60,6 +62,32 @@ const VocabularyPage = () => {
     }
   };
 
+  const handleExportSelected = () => {
+    if (selectedIds.size === 0) {
+      alert(t('vocabulary.noWordsSelectedForExport'));
+      return;
+    }
+
+    const selectedWords = words.filter(word => selectedIds.has(word.id!));
+    const ankiCards = selectedWords.map(word => {
+      const song = songMap.get(word.sourceSongId);
+      const tags = song ? song.title.replace(/[,;]/g, '') : 'J-Melo'; // Clean song title for tags
+      return `${word.cardFront};${word.cardBack};${tags}`;
+    }).join('\n');
+
+    const blob = new Blob([ankiCards], { type: 'text/csv;charset=utf-8' });
+    const href = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = href;
+    link.download = 'anki_export.csv';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(href);
+
+    alert(t('vocabulary.ankiExportSuccess', { count: selectedIds.size }));
+  };
+
   if (isReviewing) {
     return (
       <main className="bg-gray-900 min-h-screen text-white">
@@ -71,26 +99,26 @@ const VocabularyPage = () => {
   return (
     <>
       <Head>
-        <title>Vocabulary - J-Melo</title>
+        <title>{t('vocabulary.pageTitle')}</title>
       </Head>
       {isReviewSetupOpen && <ReviewSetup onClose={() => setIsReviewSetupOpen(false)} />}
       <main className="bg-gray-900 min-h-screen text-white p-4 lg:p-8">
         <div className="max-w-4xl mx-auto">
           <div className="flex justify-between items-center mb-6">
-            <h1 className="text-3xl font-bold">Vocabulary</h1>
-            <Link href="/" className="px-4 py-2 bg-green-600 rounded-lg hover:bg-green-500">Back to Player</Link>
+            <h1 className="text-3xl font-bold">{t('vocabulary.mainTitle')}</h1>
+            <Link href="/" className="px-4 py-2 bg-green-600 rounded-lg hover:bg-green-500">{t('vocabulary.backToPlayer')}</Link>
           </div>
 
           <div className="bg-gray-800 p-4 rounded-lg mb-6 flex flex-wrap gap-4 items-center justify-between">
             <div className="flex items-center gap-2">
-              <DisplayModeButton mode="all" current={displayMode} set={setDisplayMode} />
-              <DisplayModeButton mode="bySong" current={displayMode} set={setDisplayMode} />
-              <DisplayModeButton mode="search" current={displayMode} set={setDisplayMode} />
+              <DisplayModeButton mode="all" current={displayMode} set={setDisplayMode} t={t} />
+              <DisplayModeButton mode="bySong" current={displayMode} set={setDisplayMode} t={t} />
+              <DisplayModeButton mode="search" current={displayMode} set={setDisplayMode} t={t} />
             </div>
             {displayMode === 'search' && (
               <input 
                 type="text"
-                placeholder="Search words..."
+                placeholder={t('vocabulary.searchPlaceholder')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500"
@@ -99,14 +127,14 @@ const VocabularyPage = () => {
             <div className="flex items-center gap-4">
               {isSelectionMode ? (
                 <>
-                  <button onClick={deleteSelected} className="px-4 py-2 bg-red-600 rounded-lg hover:bg-red-500 text-sm disabled:opacity-50" disabled={selectedIds.size === 0}>Delete ({selectedIds.size})</button>
-                  <button className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-500 text-sm disabled:opacity-50" disabled={selectedIds.size === 0}>Export ({selectedIds.size})</button>
-                  <button onClick={toggleSelectionMode} className="px-4 py-2 bg-gray-600 rounded-lg hover:bg-gray-500 text-sm">Cancel</button>
+                  <button onClick={deleteSelected} className="px-4 py-2 bg-red-600 rounded-lg hover:bg-red-500 text-sm disabled:opacity-50" disabled={selectedIds.size === 0}>{t('vocabulary.deleteSelectedButton', { count: selectedIds.size })}</button>
+                  <button onClick={handleExportSelected} className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-500 text-sm disabled:opacity-50" disabled={selectedIds.size === 0}>{t('vocabulary.exportButton', { count: selectedIds.size })}</button>
+                  <button onClick={toggleSelectionMode} className="px-4 py-2 bg-gray-600 rounded-lg hover:bg-gray-500 text-sm">{t('vocabulary.cancelButton')}</button>
                 </>
               ) : (
                 <>
-                  <button onClick={() => setIsReviewSetupOpen(true)} className="px-4 py-2 bg-purple-600 rounded-lg hover:bg-purple-500 text-sm">Review Words</button>
-                  <button onClick={toggleSelectionMode} className="px-4 py-2 bg-gray-600 rounded-lg hover:bg-gray-500 text-sm">Select</button>
+                  <button onClick={() => setIsReviewSetupOpen(true)} className="px-4 py-2 bg-purple-600 rounded-lg hover:bg-purple-500 text-sm">{t('vocabulary.reviewWordsButton')}</button>
+                  <button onClick={toggleSelectionMode} className="px-4 py-2 bg-gray-600 rounded-lg hover:bg-gray-500 text-sm">{t('vocabulary.selectButton')}</button>
                 </>
               )}
             </div>
@@ -116,16 +144,16 @@ const VocabularyPage = () => {
             {isSelectionMode && displayMode !== 'bySong' && (
               <div className="flex items-center p-2">
                 <input type="checkbox" checked={isAllSelected} onChange={handleSelectAll} className="h-5 w-5 rounded bg-gray-700 border-gray-600 text-green-500 focus:ring-green-500" />
-                <label className="ml-3 text-sm">Select All</label>
+                <label className="ml-3 text-sm">{t('vocabulary.selectAllLabel')}</label>
               </div>
             )}
             
             {displayMode === 'all' || displayMode === 'search' ? (
-              filteredWords.map(word => <WordCard key={word.id} word={word} song={songMap.get(word.sourceSongId)} />)
+              filteredWords.map(word => <WordCard key={word.id} word={word} song={songMap.get(word.sourceSongId)} t={t} />)
             ) : null}
 
             {displayMode === 'bySong' && wordsBySong?.map(({ song, words }) => (
-              <SongGroup key={song?.id} song={song} words={words} />
+              <SongGroup key={song?.id} song={song} words={words} t={t} />
             ))}
           </div>
         </div>
@@ -135,13 +163,13 @@ const VocabularyPage = () => {
   );
 };
 
-const DisplayModeButton = ({ mode, current, set }: { mode: VocabDisplayMode, current: VocabDisplayMode, set: (mode: VocabDisplayMode) => void }) => (
+const DisplayModeButton = ({ mode, current, set, t }: { mode: VocabDisplayMode, current: VocabDisplayMode, set: (mode: VocabDisplayMode) => void, t: (key: string) => string }) => (
   <button onClick={() => set(mode)} className={cn("px-3 py-1 rounded-md text-sm capitalize", { 'bg-green-600 text-white': current === mode, 'bg-gray-700': current !== mode })}>
-    {mode === 'bySong' ? 'By Song' : mode}
+    {mode === 'bySong' ? t('vocabulary.bySongMode') : (mode === 'all' ? t('vocabulary.allMode') : t('vocabulary.searchMode'))}
   </button>
 );
 
-const WordCard = ({ word, song }: { word: WordRecord, song?: SongRecord }) => {
+const WordCard = ({ word, song, t }: { word: WordRecord, song?: SongRecord, t: (key: string) => string }) => {
   const { isSelectionMode, selectedIds, toggleIdSelection, openViewer, words } = useVocabularyStore();
   
   const handleClick = () => {
@@ -165,7 +193,7 @@ const WordCard = ({ word, song }: { word: WordRecord, song?: SongRecord }) => {
   );
 };
 
-const SongGroup = ({ song, words }: { song?: SongRecord, words: WordRecord[] }) => {
+const SongGroup = ({ song, words, t }: { song?: SongRecord, words: WordRecord[], t: (key: string) => string }) => {
   const [isOpen, setIsOpen] = useState(true);
   const { isSelectionMode, selectedIds, selectBySongId } = useVocabularyStore();
   
@@ -182,7 +210,7 @@ const SongGroup = ({ song, words }: { song?: SongRecord, words: WordRecord[] }) 
         <div className="flex items-center gap-4">
           {isSelectionMode && <input type="checkbox" checked={areAllWordsInSongSelected} onChange={handleGroupSelect} onClick={e => e.stopPropagation()} className="h-5 w-5 rounded bg-gray-700 border-gray-600 text-green-500 focus:ring-green-500" />}
           <div>
-            <h3 className="font-bold text-xl">{song?.title || 'Unknown Song'}</h3>
+            <h3 className="font-bold text-xl">{song?.title || t('vocabulary.unknownSong')}</h3>
             <p className="text-sm text-gray-400">{song?.artist}</p>
           </div>
         </div>
@@ -190,7 +218,7 @@ const SongGroup = ({ song, words }: { song?: SongRecord, words: WordRecord[] }) 
       </header>
       {isOpen && (
         <div className="p-4 border-t border-gray-700 space-y-2">
-          {words.map(word => <WordCard key={word.id} word={word} />)}
+          {words.map(word => <WordCard key={word.id} word={word} t={t} />)}
         </div>
       )}
     </div>

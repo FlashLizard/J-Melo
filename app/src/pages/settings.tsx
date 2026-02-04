@@ -1,165 +1,110 @@
 // src/pages/settings.tsx
 import React, { useEffect } from 'react';
-import Head from 'next/head';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 import useSettingsStore from '@/stores/useSettingsStore';
+import useTranslation from '@/hooks/useTranslation'; // Import useTranslation hook
 
-const SettingsPage = () => {
-  const { settings, loadSettings, updateSetting } = useSettingsStore();
+const SettingsPage: React.FC = () => {
+  const { settings, updateSetting, loadSettings } = useSettingsStore();
+  const { t } = useTranslation(); // Use the translation hook
+  const router = useRouter();
 
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
 
-  const handleSave = async () => {
-    // The store now handles saving automatically on change, but we can have an explicit save button if desired.
-    // For now, we can just show an alert. In a real app, this might trigger a backend sync.
-    alert('Settings are saved automatically as you change them!');
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    updateSetting(name as keyof typeof settings, value);
   };
-
-  const handleInputChange = (key: keyof typeof settings, value: string) => {
-    updateSetting(key, value);
-  };
-
-  const handleSelectChange = (key: keyof typeof settings, value: 'en' | 'zh') => {
-    updateSetting(key, value);
-  };
-
 
   return (
-    <>
-      <Head>
-        <title>Settings - J-Melo</title>
-      </Head>
-      <main className="bg-gray-900 min-h-screen text-white p-4 lg:p-8">
-        <div className="max-w-2xl mx-auto">
-          <div className="flex justify-between items-center mb-6">
-            <h1 className="text-3xl font-bold">Settings</h1>
-            <Link href="/" className="px-4 py-2 bg-green-600 rounded-lg hover:bg-green-500">
-              Back to Player
+    <div className="bg-gray-900 min-h-screen text-white">
+      <div className="max-w-4xl mx-auto p-4 sm:p-6 lg:p-8">
+        <header className="flex justify-between items-center mb-6">
+            <h1 className="text-3xl font-bold text-white">{t('settings.title')}</h1>
+            <Link href="/" className="px-4 py-2 bg-gray-600 rounded-lg hover:bg-gray-500 text-white">
+                {t('settings.backToPlayer')}
             </Link>
-          </div>
+        </header>
 
-          <div className="space-y-6 bg-gray-800 p-6 rounded-lg">
-            <div>
-              <label htmlFor="aiLanguage" className="block text-lg font-medium mb-2">
-                AI Response Language
-              </label>
-              <select
-                id="aiLanguage"
-                value={settings.aiResponseLanguage || 'en'}
-                onChange={(e) => handleSelectChange('aiResponseLanguage', e.target.value as 'en' | 'zh')}
-                className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500"
-              >
-                <option value="en">English</option>
-                <option value="zh">中文</option>
-              </select>
+        <div className="space-y-8">
+            {/* Interface Language Section */}
+            <div className="bg-gray-800 rounded-lg shadow p-6">
+                <h2 className="text-xl font-semibold border-b border-gray-700 pb-3 mb-4">{t('settings.interfaceLanguage')}</h2>
+                <div>
+                  <label htmlFor="uiLanguage" className="block text-sm font-medium text-gray-300">{t('settings.interfaceLanguage')}</label>
+                  <select name="uiLanguage" id="uiLanguage" value={settings.uiLanguage || 'en'} onChange={handleInputChange} className="mt-1 block w-full p-2 rounded bg-gray-700 border border-gray-600">
+                    <option value="en">{t('language.english')}</option>
+                    <option value="zh">{t('language.chinese')}</option>
+                  </select>
+                </div>
             </div>
 
-            <h2 className="text-2xl font-bold mt-8 mb-4 border-b border-gray-700 pb-2">General LLM Settings</h2>
-
-            <div>
-              <label htmlFor="apiUrl" className="block text-lg font-medium mb-2">
-                LLM API URL
-              </label>
-              <input
-                type="text"
-                id="apiUrl"
-                value={settings.llmApiUrl || 'https://api.openai.com/v1/chat/completions'}
-                onChange={(e) => handleInputChange('llmApiUrl', e.target.value)}
-                className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500"
-                placeholder="e.g., https://api.openai.com/v1/chat/completions"
-              />
+            {/* Cache Management Section */}
+            <div className="bg-gray-800 rounded-lg shadow p-6">
+                <h2 className="text-xl font-semibold border-b border-gray-700 pb-3 mb-4">{t('settings.cacheSectionTitle')}</h2>
+                <div className="flex justify-between items-center">
+                    <p className="text-gray-300">{t('settings.cacheDescription')}</p>
+                    <button
+                        onClick={() => router.push('/settings/cache')}
+                        className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-500 text-white"
+                    >
+                        {t('settings.manageCacheButton')}
+                    </button>
+                </div>
             </div>
 
-            <div>
-              <label htmlFor="modelType" className="block text-lg font-medium mb-2">
-                Model Type
-              </label>
-              <input
-                type="text"
-                id="modelType"
-                value={settings.llmModelType || 'gpt-3.5-turbo'}
-                onChange={(e) => handleInputChange('llmModelType', e.target.value)}
-                className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500"
-                placeholder="e.g., gpt-3.5-turbo, claude-3-opus-20240229"
-              />
-            </div>
-            
-            <div>
-              <label htmlFor="apiKey" className="block text-lg font-medium mb-2">
-                API Key
-              </label>
-              <input
-                type="password"
-                id="apiKey"
-                value={settings.openaiApiKey || ''}
-                onChange={(e) => handleInputChange('openaiApiKey', e.target.value)}
-                className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500"
-                placeholder="Your API key (e.g., sk-...)"
-              />
-              <p className="text-xs text-gray-400 mt-2">
-                Your API key is stored locally in your browser's IndexedDB.
-              </p>
-            </div>
-
-            <h2 className="text-2xl font-bold mt-8 mb-4 border-b border-gray-700 pb-2">Lyric Correction LLM Settings</h2>
-
-            <div>
-              <label htmlFor="lyricFixApiUrl" className="block text-lg font-medium mb-2">
-                Lyric Fix LLM API URL
-              </label>
-              <input
-                type="text"
-                id="lyricFixApiUrl"
-                value={settings.lyricFixLLMApiUrl || ''}
-                onChange={(e) => handleInputChange('lyricFixLLMApiUrl', e.target.value)}
-                className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500"
-                placeholder="e.g., https://api.openai.com/v1/chat/completions"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="lyricFixModelType" className="block text-lg font-medium mb-2">
-                Lyric Fix LLM Model Type
-              </label>
-              <input
-                type="text"
-                id="lyricFixModelType"
-                value={settings.lyricFixLLMModelType || ''}
-                onChange={(e) => handleInputChange('lyricFixLLMModelType', e.target.value)}
-                className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500"
-                placeholder="e.g., gpt-3.5-turbo, claude-3-opus-20240229"
-              />
+            {/* LLM API Section */}
+            <div className="bg-gray-800 rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold border-b border-gray-700 pb-3 mb-4">{t('settings.llmApiSectionTitle')}</h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300">{t('settings.llmReplyLanguage')}</label>
+                  <select name="aiResponseLanguage" value={settings.aiResponseLanguage || 'en'} onChange={handleInputChange} className="mt-1 block w-full p-2 rounded bg-gray-700 border border-gray-600">
+                    <option value="en">{t('language.english')}</option>
+                    <option value="zh">{t('language.chinese')}</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300">{t('settings.apiKey')}</label>
+                  <input type="password" name="openaiApiKey" value={settings.openaiApiKey || ''} onChange={handleInputChange} className="mt-1 block w-full p-2 rounded bg-gray-700 border border-gray-600" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300">{t('settings.llmApiUrl')}</label>
+                  <input type="text" name="llmApiUrl" value={settings.llmApiUrl || ''} onChange={handleInputChange} placeholder="e.g., https://api.openai.com/v1/chat/completions" className="mt-1 block w-full p-2 rounded bg-gray-700 border border-gray-600" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300">{t('settings.llmModelType')}</label>
+                  <input type="text" name="llmModelType" value={settings.llmModelType || ''} onChange={handleInputChange} placeholder="e.g., gpt-3.5-turbo" className="mt-1 block w-full p-2 rounded bg-gray-700 border border-gray-600" />
+                </div>
+              </div>
             </div>
             
-            <div>
-              <label htmlFor="lyricFixApiKey" className="block text-lg font-medium mb-2">
-                Lyric Fix API Key
-              </label>
-              <input
-                type="password"
-                id="lyricFixApiKey"
-                value={settings.lyricFixLLMApiKey || ''}
-                onChange={(e) => handleInputChange('lyricFixLLMApiKey', e.target.value)}
-                className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500"
-                placeholder="Your API key (e.g., sk-...)"
-              />
-              <p className="text-xs text-gray-400 mt-2">
-                If left empty, the general API Key will be used.
-              </p>
+            {/* Lyric Fixer LLM API Section */}
+            <div className="bg-gray-800 rounded-lg shadow p-6">
+                <h2 className="text-xl font-semibold border-b border-gray-700 pb-3 mb-4">{t('settings.lyricFixLlmSectionTitle')}</h2>
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300">{t('settings.apiKey')}</label>
+                        <input type="password" name="lyricFixLLMApiKey" value={settings.lyricFixLLMApiKey || ''} onChange={handleInputChange} className="mt-1 block w-full p-2 rounded bg-gray-700 border border-gray-600" />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300">{t('settings.llmApiUrl')}</label>
+                        <input type="text" name="lyricFixLLMApiUrl" value={settings.lyricFixLLMApiUrl || ''} onChange={handleInputChange} className="mt-1 block w-full p-2 rounded bg-gray-700 border border-gray-600" />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300">{t('settings.llmModelType')}</label>
+                        <input type="text" name="lyricFixLLMModelType" value={settings.lyricFixLLMModelType || ''} onChange={handleInputChange} className="mt-1 block w-full p-2 rounded bg-gray-700 border border-gray-600" />
+                    </div>
+                    <p className="text-xs text-gray-400 mt-2">{t('settings.lyricFixApiKeyHint')}</p>
+                </div>
             </div>
 
-            <button
-              onClick={handleSave}
-              className="px-6 py-2 bg-blue-600 rounded-lg hover:bg-blue-500 w-full"
-            >
-              Save Settings (Auto-saves on change)
-            </button>
-          </div>
         </div>
-      </main>
-    </>
+      </div>
+    </div>
   );
 };
 

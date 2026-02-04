@@ -2,11 +2,13 @@
 import React, { useState, useEffect } from 'react';
 import useUIPanelStore from '@/stores/useUIPanelStore';
 import useSongStore from '@/stores/useSongStore';
+import useTranslation from '@/hooks/useTranslation'; // Import useTranslation
 import { LyricLine } from '@/interfaces/lyrics';
 
 const FullLyricsEditor: React.FC = () => {
   const { lyrics, setPreviewLyrics, clearPreviewLyrics, commitPreviewLyrics } = useSongStore();
   const { setActivePanel } = useUIPanelStore();
+  const { t } = useTranslation(); // Initialize useTranslation
   
   const [jsonString, setJsonString] = useState('');
   const [jsonError, setJsonError] = useState<string | null>(null);
@@ -31,11 +33,11 @@ const FullLyricsEditor: React.FC = () => {
 
   const handleSave = () => {
     if (jsonError) {
-      alert(`Cannot save due to invalid JSON: ${jsonError}`);
+      alert(t('fullLyricsEditor.jsonSaveError', { error: jsonError }));
       return;
     }
     commitPreviewLyrics();
-    alert('Lyrics saved successfully!');
+    alert(t('fullLyricsEditor.lyricsSavedSuccess'));
     setActivePanel('TOOL_PANEL');
   };
 
@@ -46,7 +48,7 @@ const FullLyricsEditor: React.FC = () => {
 
   return (
     <div className="bg-gray-800 p-4 rounded-lg h-full flex flex-col text-white">
-      <h2 className="text-white text-xl font-bold mb-4">Edit Full Lyrics (JSON)</h2>
+      <h2 className="text-white text-xl font-bold mb-4">{t('fullLyricsEditor.title')}</h2>
       
       <div className="flex-grow flex flex-col min-h-0">
         <textarea
@@ -56,17 +58,17 @@ const FullLyricsEditor: React.FC = () => {
         />
         {jsonError && (
           <div className="mt-2 p-2 bg-red-800 border border-red-600 rounded text-red-200 text-sm whitespace-pre-wrap">
-            <strong>JSON Error:</strong> {jsonError}
+            <strong>{t('fullLyricsEditor.jsonErrorHeader')}:</strong> {jsonError}
           </div>
         )}
       </div>
 
       <div className="mt-4 flex justify-end space-x-2">
         <button onClick={handleCancel} className="px-4 py-2 bg-gray-600 rounded-lg hover:bg-gray-500 text-white">
-          Cancel
+          {t('fullLyricsEditor.cancelButton')}
         </button>
         <button onClick={handleSave} className="px-4 py-2 bg-green-600 rounded-lg hover:bg-green-500 text-white disabled:opacity-50" disabled={jsonError !== null}>
-          Save
+          {t('fullLyricsEditor.saveButton')}
         </button>
       </div>
     </div>

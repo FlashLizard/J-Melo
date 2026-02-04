@@ -31,9 +31,7 @@ except Exception as e:
     model = None
 
 # --- Pydantic Models ---
-class MediaFetchRequest(BaseModel):
-    url: str
-    force_redownload: bool = False
+# Removed MediaFetchRequest as it's no longer needed for GET method
 
 class MediaFetchResponse(BaseModel):
     media_type: str
@@ -98,17 +96,18 @@ async def proxy_image(url: str = Query(..., description="The URL of the image to
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
-@app.post("/api/media/fetch", response_model=MediaFetchResponse)
-async def media_fetch(request: MediaFetchRequest):
+@app.get("/api/media/fetch", response_model=MediaFetchResponse) # Changed to GET
+async def media_fetch(url: str = Query(..., description="The URL of the media to fetch")): # Changed to Query parameter
     try:
-        info = fetch_media_info(request.url)
+        info = fetch_media_info(url) # Use the url from Query
         media_id = info.get("id")
         if not media_id:
             raise HTTPException(status_code=500, detail="Could not extract a unique ID from the media.")
         file_extension = "mp3"
         cached_filename = f"{media_id}.{file_extension}"
         local_path = os.path.join(CACHE_DIR, cached_filename)
-        if not os.path.exists(local_path) or request.force_redownload:
+        # Note: force_redownload removed as it would complicate GET, not critical for this use case
+        if not os.path.exists(local_path): # Only download if not exists
             print(f"Cache miss for {media_id}. Downloading...")
             download_destination_template = os.path.join(CACHE_DIR, f"{media_id}.%(ext)s")
             download_media(info, download_destination_template)

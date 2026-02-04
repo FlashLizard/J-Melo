@@ -2,12 +2,13 @@
 import React, { useState, useEffect } from 'react';
 import useVocabularyStore from '@/stores/useVocabularyStore';
 import ReactMarkdown from 'react-markdown';
+import useTranslation from '@/hooks/useTranslation'; // Import useTranslation
 
 const Reviewer: React.FC = () => {
   const { currentReviewCard, endReview, updateProficiency, drawNextCard } = useVocabularyStore();
   const [isFlipped, setIsFlipped] = useState(false);
+  const { t } = useTranslation(); // Initialize useTranslation
 
-  // When a new card is drawn, ensure we are viewing the front.
   useEffect(() => {
     setIsFlipped(false);
   }, [currentReviewCard]);
@@ -15,9 +16,9 @@ const Reviewer: React.FC = () => {
   if (!currentReviewCard) {
     return (
       <div className="text-center p-8">
-        <h2 className="text-2xl font-bold mb-4">Review Complete!</h2>
+        <h2 className="text-2xl font-bold mb-4">{t('reviewer.reviewCompleteTitle')}</h2>
         <button onClick={endReview} className="px-6 py-2 bg-green-600 rounded-lg hover:bg-green-500">
-          Return to Vocabulary
+          {t('reviewer.returnToVocabularyButton')}
         </button>
       </div>
     );
@@ -25,13 +26,13 @@ const Reviewer: React.FC = () => {
 
   const handleProficiencyUpdate = async (change: number) => {
     await updateProficiency(currentReviewCard.id!, change);
-    drawNextCard(); // Draw the next card *after* the update is complete.
+    drawNextCard();
   };
 
   return (
     <div className="p-4 h-full flex flex-col">
       <div className="flex justify-end mb-4">
-        <button onClick={endReview} className="text-sm text-gray-400 hover:text-white">End Session</button>
+        <button onClick={endReview} className="text-sm text-gray-400 hover:text-white">{t('reviewer.endSessionButton')}</button>
       </div>
       
       <div className="flex-grow flex items-center justify-center">
@@ -49,14 +50,14 @@ const Reviewer: React.FC = () => {
       <div className="mt-8 flex justify-center">
         {!isFlipped ? (
           <button onClick={() => setIsFlipped(true)} className="w-full max-w-xs px-6 py-3 bg-blue-600 rounded-lg hover:bg-blue-500 text-lg font-bold">
-            Show Back
+            {t('reviewer.showBackButton')}
           </button>
         ) : (
           <div className="grid grid-cols-4 gap-2 w-full max-w-2xl">
-            <button onClick={() => handleProficiencyUpdate(-10)} className="p-3 bg-red-600 rounded-lg hover:bg-red-500">Lowest</button>
+            <button onClick={() => handleProficiencyUpdate(-10)} className="p-3 bg-red-600 rounded-lg hover:bg-red-500">{t('reviewer.lowestButton')}</button>
             <button onClick={() => handleProficiencyUpdate(-1)} className="p-3 bg-orange-600 rounded-lg hover:bg-orange-500">-1</button>
             <button onClick={() => handleProficiencyUpdate(1)} className="p-3 bg-green-600 rounded-lg hover:bg-green-500">+1</button>
-            <button onClick={() => handleProficiencyUpdate(10)} className="p-3 bg-sky-600 rounded-lg hover:bg-sky-500">Highest</button>
+            <button onClick={() => handleProficiencyUpdate(10)} className="p-3 bg-sky-600 rounded-lg hover:bg-sky-500">{t('reviewer.highestButton')}</button>
           </div>
         )}
       </div>

@@ -8,6 +8,9 @@ export interface SongRecord extends SongData {
   sourceUrl: string;
   lyrics: LyricLine[];
   createdAt: Date;
+  audioData?: Blob; // Field to store the cached audio file
+  coverImageData?: Blob; // Field to store the cached cover image
+  is_cached: boolean; // Explicitly track caching status
 }
 
 export interface WordRecord {
@@ -19,7 +22,7 @@ export interface WordRecord {
   cardBack: string;
   sourceSongId: number;
   createdAt: Date;
-  proficiency: number; // New field for SRS
+  proficiency: number;
 }
 
 export interface Settings {
@@ -34,6 +37,8 @@ export interface Settings {
   lyricFixLLMModelType?: string | null;
   defaultPromptTemplateId?: number;
   defaultCardTemplateId?: number;
+  showReadings: boolean; // New setting for hiragana display
+  showTranslations: boolean; // New setting for translation display
 }
 
 export interface PromptTemplate {
@@ -104,6 +109,29 @@ class JeloDB extends Dexie {
         if (word.proficiency === undefined) {
           word.proficiency = 0;
         }
+      });
+    });
+    this.version(8).stores({
+        songs: '++id, sourceUrl, audioData'
+    });
+    this.version(9).stores({
+        songs: '++id, sourceUrl, audioData, coverImageData'
+    });
+    this.version(10).stores({
+        songs: '++id, sourceUrl, audioData, coverImageData, is_cached'
+    }).upgrade(async (tx) => {
+      await tx.table('songs').toCollection().modify(song => {
+        if (song.is_cached === undefined) {
+          song.is_cached = !!song.audioData;
+        }
+      });
+    });
+    this.version(11).stores({
+      settings: 'id, openaiApiKey, llmApiUrl, llmModelType, aiResponseLanguage, uiLanguage, lyricFixLLMApiKey, lyricFixLLMModelType, lyricFixLLMApiUrl, defaultPromptTemplateId, defaultCardTemplateId, showReadings, showTranslations',
+    }).upgrade(async (tx) => {
+      await tx.table('settings').toCollection().modify(setting => {
+        if (setting.showReadings === undefined) setting.showReadings = true;
+        if (setting.showTranslations === undefined) setting.showTranslations = true;
       });
     });
   }

@@ -3,6 +3,7 @@ import EditableWordRow from './EditableWordRow';
 import { LyricLine, LyricToken } from '@/interfaces/lyrics';
 import Draggable from 'react-draggable';
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import useTranslation from '@/hooks/useTranslation'; // Import useTranslation
 
 const MemoizedResizableWordBlock = React.memo(ResizableWordBlock);
 const MemoizedEditableWordRow = React.memo(EditableWordRow);
@@ -15,8 +16,8 @@ interface SentenceEditorProps {
 }
 
 const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, onSave, onCancel, relativeAudioUrl }) => {
-  const BACKEND_URL = 'http://localhost:8000';
-  const songAudioUrl = `${BACKEND_URL}${relativeAudioUrl}`;
+  const { t } = useTranslation(); // Initialize useTranslation
+  const songAudioUrl = relativeAudioUrl;
   const [currentLine, setCurrentLine] = useState<LyricLine>(line);
   const [addMode, setAddMode] = useState(false);
   const [deleteMode, setDeleteMode] = useState(false);
@@ -210,7 +211,7 @@ const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, onSave, onCancel,
 
   const handleSaveClick = () => {
     if (jsonError) {
-      alert(`Cannot save due to invalid JSON: ${jsonError}`);
+      alert(t('sentenceEditor.jsonSaveError', { error: jsonError }));
       return;
     }
     onSave(currentLine);
@@ -219,10 +220,10 @@ const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, onSave, onCancel,
   return (
     <div className="bg-gray-800 p-4 rounded-lg h-full flex flex-col">
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-bold text-white">Sentence Editor</h2>
+        <h2 className="text-xl font-bold text-white">{t('sentenceEditor.title')}</h2>
         <div className="flex space-x-1 bg-gray-700 rounded-lg p-1">
-          <button onClick={() => setEditorMode('visual')} className={`px-3 py-1 rounded-md text-sm ${editorMode === 'visual' ? 'bg-green-600 text-white' : 'text-gray-300'}`}>Visual</button>
-          <button onClick={() => setEditorMode('json')} className={`px-3 py-1 rounded-md text-sm ${editorMode === 'json' ? 'bg-green-600 text-white' : 'text-gray-300'}`}>JSON</button>
+          <button onClick={() => setEditorMode('visual')} className={`px-3 py-1 rounded-md text-sm ${editorMode === 'visual' ? 'bg-green-600 text-white' : 'text-gray-300'}`}>{t('sentenceEditor.visualMode')}</button>
+          <button onClick={() => setEditorMode('json')} className={`px-3 py-1 rounded-md text-sm ${editorMode === 'json' ? 'bg-green-600 text-white' : 'text-gray-300'}`}>{t('sentenceEditor.jsonMode')}</button>
         </div>
       </div>
       
@@ -234,19 +235,25 @@ const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, onSave, onCancel,
               currentLine, lineDuration, handleTimelineClick, activeTokenIndex, selectedTokenIndex, 
               setSelectedTokenIndex, handleTimeUpdate, handleDeleteToken, handleTokenChange,
               currentAudioTime, handleScrubberChange, setIsScrubbing, handlePlay,
-              THUMB_WIDTH_PX, THUMB_HALF_WIDTH_PX
+              THUMB_WIDTH_PX, THUMB_HALF_WIDTH_PX, t // Pass t to VisualEditor
             }}
           /> : 
-          <JsonEditor jsonString={jsonString} handleJsonChange={handleJsonChange} jsonError={jsonError} />}
+          <JsonEditor jsonString={jsonString} handleJsonChange={handleJsonChange} jsonError={jsonError} t={t} />}
       </div>
       
       <div className="flex items-center justify-center space-x-4 mt-auto pt-4">
-        <button onClick={isAudioPlaying ? handleStop : handlePlay} className="p-3 rounded-full bg-blue-600 hover:bg-blue-500 text-white" title={isAudioPlaying ? 'Stop' : 'Play'}>{isAudioPlaying ? 'Stop' : 'Play'}</button>
-        <select value={playbackRate} onChange={handlePlaybackRateChange} className="p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"><option value={0.5}>0.5x</option><option value={0.75}>0.75x</option><option value={1}>1x</option><option value={1.25}>1.25x</option><option value={1.5}>1.5x</option></select>
+        <button onClick={isAudioPlaying ? handleStop : handlePlay} className="p-3 rounded-full bg-blue-600 hover:bg-blue-500 text-white" title={isAudioPlaying ? t('sentenceEditor.stopPlayback') : t('sentenceEditor.playPlayback')}>{isAudioPlaying ? t('sentenceEditor.stop') : t('sentenceEditor.play')}</button>
+        <select value={playbackRate} onChange={handlePlaybackRateChange} className="p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value={0.5}>0.5x</option>
+          <option value={0.75}>0.75x</option>
+          <option value={1}>1x</option>
+          <option value={1.25}>1.25x</option>
+          <option value={1.5}>1.5x</option>
+        </select>
       </div>
       <div className="mt-4 flex justify-end space-x-2">
-        <button onClick={handleSaveClick} className="px-4 py-2 bg-green-600 rounded-lg hover:bg-green-500 text-white disabled:opacity-50" disabled={jsonError !== null}>Save</button>
-        <button onClick={onCancel} className="px-4 py-2 bg-gray-600 rounded-lg hover:bg-gray-500 text-white">Cancel</button>
+        <button onClick={handleSaveClick} className="px-4 py-2 bg-green-600 rounded-lg hover:bg-green-500 text-white disabled:opacity-50" disabled={jsonError !== null}>{t('sentenceEditor.saveButton')}</button>
+        <button onClick={onCancel} className="px-4 py-2 bg-gray-600 rounded-lg hover:bg-gray-500 text-white">{t('sentenceEditor.cancelButton')}</button>
       </div>
       <audio ref={audioRef} src={songAudioUrl} preload="auto" />
     </div>
@@ -258,15 +265,15 @@ const VisualEditor = ({
   currentLine, lineDuration, handleTimelineClick, activeTokenIndex, selectedTokenIndex, 
   setSelectedTokenIndex, handleTimeUpdate, handleDeleteToken, handleTokenChange,
   currentAudioTime, handleScrubberChange, setIsScrubbing, handlePlay,
-  THUMB_WIDTH_PX, THUMB_HALF_WIDTH_PX
-}: any) => {
+  THUMB_WIDTH_PX, THUMB_HALF_WIDTH_PX, t // Receive t as prop
+}: any) => { // Type as any for simplicity in props spreading, ideally define specific props
   const effectiveTimelineWidth = timelineWidth - THUMB_WIDTH_PX;
   const progressPercent = lineDuration > 0 ? ((currentAudioTime - currentLine.startTime) / lineDuration) * 100 : 0;
   return (
     <>
       <div className="flex justify-end space-x-2 mb-4">
-        <button onClick={() => { setAddMode(!addMode); setDeleteMode(false); }} className={`p-2 rounded-full ${addMode ? 'bg-green-500' : 'bg-gray-600'} hover:bg-green-500 text-white`} title="Add Word"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg></button>
-        <button onClick={() => { setDeleteMode(!deleteMode); setAddMode(false); }} className={`p-2 rounded-full ${deleteMode ? 'bg-red-500' : 'bg-gray-600'} hover:bg-red-500 text-white`} title="Delete Word"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" /></svg></button>
+        <button onClick={() => { setAddMode(!addMode); setDeleteMode(false); }} className={`p-2 rounded-full ${addMode ? 'bg-green-500' : 'bg-gray-600'} hover:bg-green-500 text-white`} title={t('sentenceEditor.addWordButtonTitle')}><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg></button>
+        <button onClick={() => { setDeleteMode(!deleteMode); setAddMode(false); }} className={`p-2 rounded-full ${deleteMode ? 'bg-red-500' : 'bg-gray-600'} hover:bg-red-500 text-white`} title={t('sentenceEditor.deleteWordButtonTitle')}><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" /></svg></button>
       </div>
       
       <div className="px-1 sm:px-4">
@@ -317,10 +324,10 @@ const VisualEditor = ({
       <div className="flex-grow overflow-y-auto overflow-x-auto space-y-2 pr-2 mt-4">
         <div className="grid grid-cols-5 gap-x-2 items-center p-2 text-white text-xs sm:text-sm font-bold min-w-[500px]">
           <div className="col-span-1">#</div>
-          <div className="col-span-1">Surface</div>
-          <div className="col-span-1">Reading</div>
-          <div className="col-span-1">Start (s)</div>
-          <div className="col-span-1">End (s)</div>
+          <div className="col-span-1">{t('sentenceEditor.surfaceHeader')}</div>
+          <div className="col-span-1">{t('sentenceEditor.readingHeader')}</div>
+          <div className="col-span-1">{t('sentenceEditor.startHeader')}</div>
+          <div className="col-span-1">{t('sentenceEditor.endHeader')}</div>
         </div>
         {currentLine.tokens.map((token: LyricToken, index: number) => (<MemoizedEditableWordRow key={`${token.startTime}-${token.surface}`} index={index} token={token} onTokenChange={handleTokenChange}/>))}
       </div>
@@ -328,7 +335,7 @@ const VisualEditor = ({
   )
 };
 
-const JsonEditor = ({ jsonString, handleJsonChange, jsonError }: any) => (
+const JsonEditor = ({ jsonString, handleJsonChange, jsonError, t }: any) => ( // Receive t as prop
   <div className="flex flex-col h-full flex-grow">
     <textarea
       className="w-full h-full flex-grow bg-gray-900 text-white p-2 rounded border border-gray-700 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
@@ -337,7 +344,7 @@ const JsonEditor = ({ jsonString, handleJsonChange, jsonError }: any) => (
     />
     {jsonError && (
       <div className="mt-2 p-2 bg-red-800 border border-red-600 rounded text-red-200 text-sm">
-        <strong>JSON Error:</strong> {jsonError}
+        <strong>{t('sentenceEditor.jsonErrorHeader')}:</strong> {jsonError}
       </div>
     )}
   </div>

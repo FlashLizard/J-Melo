@@ -1,9 +1,16 @@
 // src/components/tutor/AIPanel.tsx
 import React from 'react';
 import useTutorStore, { tutorStoreActions } from '@/stores/useTutorStore';
+import useUIPanelStore from '@/stores/useUIPanelStore';
 
 const AIPanel: React.FC = () => {
   const { selectedText, explanation, isLoading, error } = useTutorStore();
+  const { setActivePanel } = useUIPanelStore();
+
+  const handleBack = () => {
+    tutorStoreActions.clearTutor();
+    setActivePanel('TOOL_PANEL');
+  };
 
   const renderContent = () => {
     if (isLoading) {
@@ -18,16 +25,25 @@ const AIPanel: React.FC = () => {
     if (selectedText) {
       return <p className="text-gray-400">Fetching explanation for "{selectedText}"...</p>;
     }
+    // This state should ideally not be reached if the panel logic is correct
     return (
       <p className="text-gray-400">
-        Right-click on a word in the lyrics to get an AI-powered explanation.
+        An unexpected error occurred. Please close this panel.
       </p>
     );
   };
 
   return (
     <div className="h-full bg-gray-800 text-white p-4 flex flex-col">
-      <h2 className="text-xl font-bold mb-4">AI Tutor</h2>
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xl font-bold">AI Tutor</h2>
+        <button
+          onClick={handleBack}
+          className="px-3 py-1 bg-gray-600 rounded-lg hover:bg-gray-500 text-sm"
+        >
+          Back
+        </button>
+      </div>
       <div className="bg-gray-700 p-4 rounded-lg flex-grow overflow-y-auto">
         {renderContent()}
       </div>

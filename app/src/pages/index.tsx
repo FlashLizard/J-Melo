@@ -5,14 +5,17 @@ import Link from 'next/link';
 import Player from '@/components/player/Player';
 import LyricsDisplay from '@/components/lyrics/LyricsDisplay';
 import AIPanel from '@/components/tutor/AIPanel';
-import SentenceEditor from '@/components/editor/SentenceEditor'; // Changed import
+import SentenceEditor from '@/components/editor/SentenceEditor';
+import FullLyricsEditor from '@/components/editor/FullLyricsEditor';
+import ToolPanel from '@/components/tutor/ToolPanel';
 import useSongStore, { songStoreActions } from '@/stores/useSongStore';
 import usePlayerStore from '@/stores/usePlayerStore';
 import useLyricsProcessor from '@/hooks/useLyricsProcessor';
 import useTutorStore from '@/stores/useTutorStore';
 import useEditorStore, { editorStoreActions } from '@/stores/useEditorStore';
+import useUIPanelStore from '@/stores/useUIPanelStore';
 import { mockLyrics } from '@/lib/mock-data';
-import { LyricLine } from '@/interfaces/lyrics'; // Added LyricLine import
+import { LyricLine } from '@/interfaces/lyrics';
 
 const SongInput: React.FC = () => {
   const [url, setUrl] = useState('');
@@ -61,45 +64,23 @@ const SongInput: React.FC = () => {
   );
 };
 
-import useUIPanelStore from '@/stores/useUIPanelStore';
-import ToolPanel from '@/components/tutor/ToolPanel';
-import AILyricCorrector from '@/components/tutor/AILyricCorrector';
-import FullLyricsEditor from '@/components/editor/FullLyricsEditor';
-
-// ... (existing imports)
-
-// ... (SongInput component remains the same)
-
 const RightHandPanel = () => {
   const { song } = useSongStore();
-  const { selectedText, explanation } = useTutorStore();
   const editingLine = useEditorStore((state) => state.editingLine);
-  const { activePanel, setActivePanel } = useUIPanelStore();
+  const { activePanel } = useUIPanelStore();
 
-  const handleSaveSentenceEdit = (updatedLine: LyricLine) => {
-    if (editingLine) {
-      songStoreActions.updateLyricLine(updatedLine);
-    }
-    editorStoreActions.clearEditingLine();
-    setActivePanel('TOOL_PANEL');
-  };
-
-  const handleCancelSentenceEdit = () => {
-    editorStoreActions.clearEditingLine();
-    setActivePanel('TOOL_PANEL');
-  }
-
-  useEffect(() => {
-    if (editingLine) {
-      setActivePanel('SENTENCE_EDITOR');
-    } else if (selectedText || explanation) {
-      setActivePanel('AI_TUTOR');
-    } else if (activePanel !== 'AI_CORRECTOR' && activePanel !== 'FULL_LYRICS_EDITOR') {
-      setActivePanel('TOOL_PANEL');
-    }
-  }, [editingLine, selectedText, explanation, setActivePanel, activePanel]);
-
+  // The logic is now simpler and based on a clear priority
+  // which is managed by the actions themselves.
   if (activePanel === 'SENTENCE_EDITOR' && editingLine && song?.media_url) {
+    const handleSaveSentenceEdit = (updatedLine: LyricLine) => {
+      songStoreActions.updateLyricLine(updatedLine);
+      editorStoreActions.clearEditingLine();
+      useUIPanelStore.getState().setActivePanel('TOOL_PANEL');
+    };
+    const handleCancelSentenceEdit = () => {
+      editorStoreActions.clearEditingLine();
+      useUIPanelStore.getState().setActivePanel('TOOL_PANEL');
+    };
     return (
       <SentenceEditor
         line={editingLine}
@@ -110,18 +91,11 @@ const RightHandPanel = () => {
     );
   }
 
-  if (activePanel === 'AI_TUTOR') {
-    return <AIPanel />;
-  }
-  
-  if (activePanel === 'AI_CORRECTOR') {
-    return <AILyricCorrector />;
-  }
+  if (activePanel === 'AI_TUTOR') return <AIPanel />;
+  if (activePanel === 'AI_CORRECTOR') return <AILyricCorrector />;
+  if (activePanel === 'FULL_LYRICS_EDITOR') return <FullLyricsEditor />;
 
-  if (activePanel === 'FULL_LYRICS_EDITOR') {
-    return <FullLyricsEditor />;
-  }
-
+  // Default fallback
   return <ToolPanel />;
 };
 
@@ -163,14 +137,17 @@ const IndexPage = () => {
           </div>
         </div>
         <div className="flex-grow lg:grid lg:grid-cols-3 lg:gap-2 overflow-hidden">
-          <div className="lg:col-span-1 h-full flex flex-col">
+          <div className="lg:col-span-1 h-full flex flex-col overflow-y-auto">
             <SongInput />
             <Player song={song} />
           </div>
           <div className="lg:col-span-1 h-full overflow-y-auto">
-            {isLoading ? <div>Loading lyrics...</div> : <LyricsDisplay lyrics={displayLyrics} currentTime={currentTime} />}
+            {isLoading ? 
+              <div className="text-white p-4">Loading lyrics...</div> : 
+              <LyricsDisplay lyrics={displayLyrics} currentTime={currentTime} />
+            }
           </div>
-          <div className="lg:col-span-1 h-full">
+          <div className="lg:col-span-1 h-full overflow-hidden">
             <RightHandPanel />
           </div>
         </div>
@@ -180,4 +157,3 @@ const IndexPage = () => {
 };
 
 export default IndexPage;
-

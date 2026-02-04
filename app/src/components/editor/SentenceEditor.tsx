@@ -38,6 +38,9 @@ const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, onSave, onCancel,
 
   const lineDuration = useMemo(() => currentLine.endTime - currentLine.startTime, [currentLine]);
 
+  const THUMB_WIDTH_PX = 16; 
+  const THUMB_HALF_WIDTH_PX = THUMB_WIDTH_PX / 2;
+
   useEffect(() => {
     setCurrentLine(line);
     setCurrentAudioTime(line.startTime);
@@ -173,7 +176,9 @@ const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, onSave, onCancel,
       if (!timelineRef.current || (e.target as HTMLElement).closest('.word-block')) return;
       const rect = timelineRef.current.getBoundingClientRect();
       const clickX = e.clientX - rect.left;
-      const clickTime = currentLine.startTime + (clickX / timelineWidth) * lineDuration;
+      const adjustedClickX = clickX - THUMB_HALF_WIDTH_PX;
+      const clickTime = currentLine.startTime + (adjustedClickX / (timelineWidth - THUMB_WIDTH_PX)) * lineDuration;
+      
       const newToken: LyricToken = { surface: 'new', reading: 'new', romaji: 'new', startTime: clickTime, endTime: Math.min(clickTime + 0.5, currentLine.endTime), partOfSpeech: 'noun' };
       setCurrentLine(prevLine => {
         const updatedLine = { ...prevLine, tokens: [...prevLine.tokens, newToken].sort((a, b) => a.startTime - b.startTime) };
@@ -235,7 +240,8 @@ const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, onSave, onCancel,
               addMode, setAddMode, deleteMode, setDeleteMode, timelineRef, timelineWidth, 
               currentLine, lineDuration, handleTimelineClick, activeTokenIndex, selectedTokenIndex, 
               setSelectedTokenIndex, handleTimeUpdate, handleDeleteToken, handleTokenChange,
-              currentAudioTime, handleScrubberChange, setIsScrubbing, handlePlay
+              currentAudioTime, handleScrubberChange, setIsScrubbing, handlePlay,
+              THUMB_WIDTH_PX, THUMB_HALF_WIDTH_PX
             }}
           /> : 
           <JsonEditor jsonString={jsonString} handleJsonChange={handleJsonChange} jsonError={jsonError} />}
@@ -258,8 +264,10 @@ const VisualEditor = ({
   addMode, setAddMode, deleteMode, setDeleteMode, timelineRef, timelineWidth, 
   currentLine, lineDuration, handleTimelineClick, activeTokenIndex, selectedTokenIndex, 
   setSelectedTokenIndex, handleTimeUpdate, handleDeleteToken, handleTokenChange,
-  currentAudioTime, handleScrubberChange, setIsScrubbing, handlePlay
+  currentAudioTime, handleScrubberChange, setIsScrubbing, handlePlay,
+  THUMB_WIDTH_PX, THUMB_HALF_WIDTH_PX
 }: any) => {
+  const effectiveTimelineWidth = timelineWidth - THUMB_WIDTH_PX;
   const progressPercent = lineDuration > 0 ? ((currentAudioTime - currentLine.startTime) / lineDuration) * 100 : 0;
   return (
     <>
@@ -268,11 +276,28 @@ const VisualEditor = ({
         <button onClick={() => { setDeleteMode(!deleteMode); setAddMode(false); }} className={`p-2 rounded-full ${deleteMode ? 'bg-red-500' : 'bg-gray-600'} hover:bg-red-500 text-white`} title="Delete Word"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" /></svg></button>
       </div>
       
-      {/* Aligned Container for Timeline and Scrubber */}
       <div className="px-4">
-        <div ref={timelineRef} className="border border-gray-700 rounded-lg p-2 relative h-24 overflow-hidden" onClick={handleTimelineClick}>
+        <div 
+          ref={timelineRef} 
+          className="border border-gray-700 rounded-lg relative h-24 overflow-hidden" 
+          onClick={handleTimelineClick}
+          style={{ paddingLeft: `${THUMB_HALF_WIDTH_PX}px`, paddingRight: `${THUMB_HALF_WIDTH_PX}px` }}
+        >
           {timelineWidth > 0 && currentLine.tokens.map((token: LyricToken, index: number) => (
-              <MemoizedResizableWordBlock key={`${token.startTime}-${token.surface}`} index={index} token={token} lineStartTime={currentLine.startTime} lineDuration={lineDuration} timelineWidth={timelineWidth} onTimeUpdate={handleTimeUpdate} onDelete={() => handleDeleteToken(index)} isPlaying={activeTokenIndex === index} deleteMode={deleteMode} isSelected={selectedTokenIndex === index} onSelect={() => setSelectedTokenIndex(index)} />
+              <MemoizedResizableWordBlock 
+                key={`${token.startTime}-${token.surface}`} 
+                index={index} 
+                token={token} 
+                lineStartTime={currentLine.startTime} 
+                lineDuration={lineDuration} 
+                timelineWidth={effectiveTimelineWidth}
+                onTimeUpdate={handleTimeUpdate} 
+                onDelete={() => handleDeleteToken(index)} 
+                isPlaying={activeTokenIndex === index} 
+                deleteMode={deleteMode} 
+                isSelected={selectedTokenIndex === index} 
+                onSelect={() => setSelectedTokenIndex(index)} 
+              />
           ))}
           <div 
             className="absolute top-0 w-px h-full bg-yellow-400 opacity-50 pointer-events-none z-30"
@@ -290,7 +315,7 @@ const VisualEditor = ({
             onChange={(e) => handleScrubberChange(parseFloat(e.target.value))}
             className="w-full mt-2"
         />
-        <div className="flex justify-between text-xs text-gray-400 font-mono mt-1">
+        <div className="flex justify-between text-xs text-gray-400 font-mono mt-1" style={{ paddingLeft: `${THUMB_HALF_WIDTH_PX}px`, paddingRight: `${THUMB_HALF_WIDTH_PX}px` }}>
           <span>{currentLine.startTime.toFixed(2)}s</span>
           <span>{currentLine.endTime.toFixed(2)}s</span>
         </div>
@@ -347,7 +372,7 @@ function ResizableWordBlock({ index, token, lineStartTime, lineDuration, timelin
     const pxToTime = (px: number) => (px / timelineWidth) * lineDuration;
 
     useEffect(() => {
-      if (lineDuration > 0) {
+      if (lineDuration > 0 && timelineWidth > 0) {
         setDragState({
             x: timeToPx(token.startTime),
             width: timeToPx(token.endTime) - timeToPx(token.startTime)

@@ -1,9 +1,10 @@
 // src/components/lyrics/LyricsDisplay.tsx
 import React, { useRef, useEffect, useState } from 'react';
-import { LyricLine, LyricToken } from '@/lib/mock-data';
+import { LyricLine, LyricToken } from '@/interfaces/lyrics';
 import { editorStoreActions } from '@/stores/useEditorStore';
 import { tutorStoreActions } from '@/stores/useTutorStore';
-import { playerStoreActions } from '@/stores/usePlayerStore'; // Import playerStoreActions
+import { playerStoreActions } from '@/stores/usePlayerStore';
+import useUIPanelStore from '@/stores/useUIPanelStore'; // Import UI Panel Store
 import ContextMenu, { MenuItem } from '@/components/common/ContextMenu';
 import cn from 'classnames';
 import ProgressHighlighter from './ProgressHighlighter';
@@ -17,12 +18,13 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
   const activeLineRef = useRef<HTMLDivElement>(null);
   const [hoveredToken, setHoveredToken] = useState<LyricToken | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; token: LyricToken; line: LyricLine } | null>(null);
+  const { setActivePanel } = useUIPanelStore();
 
   useEffect(() => {
     if (activeLineRef.current) {
       activeLineRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-  }, [lyrics, currentTime]);
+  }, [activeLineRef.current]); // Dependency on ref current value
 
   const handleWordClick = (startTime: number) => {
     playerStoreActions.seek(startTime);
@@ -36,8 +38,20 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
   const closeContextMenu = () => setContextMenu(null);
 
   const getMenuItems = (token: LyricToken, line: LyricLine): MenuItem[] => [
-    { label: `解释 "${token.surface}"`, action: () => tutorStoreActions.setSelectedText(token.surface) },
-    { label: '编辑句子', action: () => editorStoreActions.setEditingLine(line) },
+    { 
+      label: `解释 "${token.surface}"`, 
+      action: () => {
+        tutorStoreActions.setSelectedText(token.surface); // This action now handles setting the panel
+      } 
+    },
+    { 
+      label: '编辑句子', 
+      action: () => {
+        tutorStoreActions.clearTutor(); // Clear AI tutor state
+        editorStoreActions.setEditingLine(line);
+        setActivePanel('SENTENCE_EDITOR'); // Explicitly set the panel
+      } 
+    },
     { label: '自定义动作 1', action: () => alert('Custom action 1'), disabled: true },
     { label: '自定义动作 2', action: () => alert('Custom action 2'), disabled: true },
   ];
@@ -59,14 +73,15 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
                 const isHovered = hoveredToken === token;
 
                 return (
-                                      <span
-                                      key={`${token.surface}-${token.startTime}-${index}`}
-                                      className="inline-block align-bottom mr-1 cursor-pointer"
-                                      onClick={() => handleWordClick(token.startTime)}
-                                      onMouseEnter={() => setHoveredToken(token)}
-                                      onMouseLeave={() => setHoveredToken(null)}
-                                      onContextMenu={(e) => handleContextMenu(e, token, line)}
-                                    >                    <span className="text-xs text-gray-400">{token.reading}</span>
+                  <span
+                    key={`${token.surface}-${token.startTime}-${index}`}
+                    className="inline-block align-bottom mr-1 cursor-pointer"
+                    onClick={() => handleWordClick(token.startTime)}
+                    onMouseEnter={() => setHoveredToken(token)}
+                    onMouseLeave={() => setHoveredToken(null)}
+                    onContextMenu={(e) => handleContextMenu(e, token, line)}
+                  >
+                    <span className="text-xs text-gray-400">{token.reading}</span>
                     
                     {isTokenActive ? (
                       <ProgressHighlighter 

@@ -1,29 +1,32 @@
 // src/pages/index.tsx
 import Head from 'next/head';
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useSwipeable } from 'react-swipeable';
+import cn from 'classnames';
+
 import Player from '@/components/player/Player';
 import LyricsDisplay from '@/components/lyrics/LyricsDisplay';
 import AIPanel from '@/components/tutor/AIPanel';
 import SentenceEditor from '@/components/editor/SentenceEditor';
 import FullLyricsEditor from '@/components/editor/FullLyricsEditor';
-import AILyricCorrector from '@/components/tutor/AILyricCorrector';
 import ToolPanel from '@/components/tutor/ToolPanel';
-import useSongStore, { songStoreActions } from '@/stores/useSongStore';
+import SongInfoEditor from '@/components/editor/SongInfoEditor';
+import useSongStore from '@/stores/useSongStore';
 import usePlayerStore from '@/stores/usePlayerStore';
 import useLyricsProcessor from '@/hooks/useLyricsProcessor';
-import useTutorStore from '@/stores/useTutorStore';
 import useEditorStore, { editorStoreActions } from '@/stores/useEditorStore';
 import useUIPanelStore from '@/stores/useUIPanelStore';
-import { mockLyrics } from '@/lib/mock-data';
+import useMobileViewStore from '@/stores/useMobileViewStore';
 import { LyricLine } from '@/interfaces/lyrics';
+import { mockLyrics } from '@/lib/mock-data';
 
 const SongInput: React.FC = () => {
   const [url, setUrl] = useState('');
-  const { song, isLoading, error } = useSongStore();
+  const { song, isLoading, error, fetchSong } = useSongStore();
 
   const handleFetch = () => {
-    if (url) songStoreActions.fetchSong(url);
+    if (url) fetchSong(url);
   };
 
   const handleShare = () => {
@@ -66,21 +69,21 @@ const SongInput: React.FC = () => {
 };
 
 const RightHandPanel = () => {
-  const { song } = useSongStore();
+  const { song, updateLyricLine } = useSongStore();
   const editingLine = useEditorStore((state) => state.editingLine);
-  const { activePanel } = useUIPanelStore();
+  const { activePanel, setActivePanel } = useUIPanelStore();
 
-  // The logic is now simpler and based on a clear priority
-  // which is managed by the actions themselves.
+  if (activePanel === 'AI_TUTOR') return <AIPanel />;
+  
   if (activePanel === 'SENTENCE_EDITOR' && editingLine && song?.media_url) {
     const handleSaveSentenceEdit = (updatedLine: LyricLine) => {
-      songStoreActions.updateLyricLine(updatedLine);
+      updateLyricLine(updatedLine);
       editorStoreActions.clearEditingLine();
-      useUIPanelStore.getState().setActivePanel('TOOL_PANEL');
+      setActivePanel('TOOL_PANEL');
     };
     const handleCancelSentenceEdit = () => {
       editorStoreActions.clearEditingLine();
-      useUIPanelStore.getState().setActivePanel('TOOL_PANEL');
+      setActivePanel('TOOL_PANEL');
     };
     return (
       <SentenceEditor
@@ -92,31 +95,56 @@ const RightHandPanel = () => {
     );
   }
 
-  if (activePanel === 'AI_TUTOR') return <AIPanel />;
   if (activePanel === 'AI_CORRECTOR') return <AILyricCorrector />;
   if (activePanel === 'FULL_LYRICS_EDITOR') return <FullLyricsEditor />;
+  if (activePanel === 'SONG_INFO_EDITOR') return <SongInfoEditor />;
 
-  // Default fallback
   return <ToolPanel />;
 };
 
+const MobileNavDots = () => {
+    const { activeView, setActiveView } = useMobileViewStore();
+    const views = ['player', 'lyrics', 'tools'];
+    return (
+      <div className="lg:hidden flex justify-center items-center p-2 space-x-2">
+        {views.map(view => (
+          <button
+            key={view}
+            onClick={() => setActiveView(view as any)}
+            className={cn("w-2 h-2 rounded-full transition-colors", {
+              "bg-green-500": activeView === view,
+              "bg-gray-600": activeView !== view,
+            })}
+          />
+        ))}
+      </div>
+    );
+};
 
 const IndexPage = () => {
-  const { song, lyrics, previewLyrics, whisperData, isLoading } = useSongStore();
+  const { song, lyrics, previewLyrics, whisperData, isLoading, fetchSong, setProcessedLyrics } = useSongStore();
   const currentTime = usePlayerStore((state) => state.currentTime);
+  const { activeView, goToNextView, goToPrevView } = useMobileViewStore();
+
+  const swipeHandlers = useSwipeable({
+    onSwipedLeft: () => goToNextView(),
+    onSwipedRight: () => goToPrevView(),
+    preventScrollOnSwipe: true,
+    trackMouse: true,
+  });
   
   useLyricsProcessor({
     whisperData,
-    onProcessed: songStoreActions.setProcessedLyrics,
+    onProcessed: setProcessedLyrics,
   });
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const url = urlParams.get('url');
     if (url) {
-      songStoreActions.fetchSong(url);
+      fetchSong(url);
     }
-  }, []);
+  }, [fetchSong]);
 
   const displayLyrics = previewLyrics || lyrics || (isLoading ? [] : mockLyrics);
 
@@ -128,30 +156,37 @@ const IndexPage = () => {
       <main className="bg-gray-900 h-screen flex flex-col">
         <div className="p-2 bg-gray-800 flex justify-between items-center">
           <h1 className="text-white text-lg font-bold">J-Melo</h1>
-          <div className="space-x-4">
-            <Link href="/vocabulary" className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-500 text-white">
+          <div className="flex gap-2">
+            <Link href="/vocabulary" className="px-3 py-1 text-sm bg-blue-600 rounded-lg hover:bg-blue-500 text-white">
               Vocab
             </Link>
-            <Link href="/settings" className="px-4 py-2 bg-gray-600 rounded-lg hover:bg-gray-500 text-white">
+            <Link href="/settings" className="px-3 py-1 text-sm bg-gray-600 rounded-lg hover:bg-gray-500 text-white">
               Settings
             </Link>
           </div>
         </div>
-        <div className="flex-grow lg:grid lg:grid-cols-3 lg:gap-2 overflow-hidden">
-          <div className="lg:col-span-1 h-full flex flex-col overflow-y-auto">
+
+        <div {...swipeHandlers} className="flex-grow flex flex-col lg:grid lg:grid-cols-3 lg:gap-2 overflow-hidden">
+          
+          <div className={cn("h-full flex-col overflow-y-auto", { 'flex': activeView === 'player', 'hidden lg:flex': activeView !== 'player' })}>
             <SongInput />
             <Player song={song} />
           </div>
-          <div className="lg:col-span-1 h-full overflow-y-auto">
+
+          <div className={cn("h-full overflow-y-auto", { 'block': activeView === 'lyrics', 'hidden lg:block': activeView !== 'lyrics' })}>
             {isLoading ? 
               <div className="text-white p-4">Loading lyrics...</div> : 
               <LyricsDisplay lyrics={displayLyrics} currentTime={currentTime} />
             }
           </div>
-          <div className="lg:col-span-1 h-full overflow-hidden">
+
+          <div className={cn("h-full overflow-y-auto", { 'block': activeView === 'tools', 'hidden lg:block': activeView !== 'tools' })}>
             <RightHandPanel />
           </div>
+
         </div>
+
+        <MobileNavDots />
       </main>
     </>
   );

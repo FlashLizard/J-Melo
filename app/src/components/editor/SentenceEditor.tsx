@@ -4,7 +4,6 @@ import { LyricLine, LyricToken } from '@/interfaces/lyrics';
 import Draggable from 'react-draggable';
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
-// Memoize child components to prevent re-renders when only the parent's time state changes.
 const MemoizedResizableWordBlock = React.memo(ResizableWordBlock);
 const MemoizedEditableWordRow = React.memo(EditableWordRow);
 
@@ -37,7 +36,6 @@ const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, onSave, onCancel,
   const [jsonError, setJsonError] = useState<string | null>(null);
 
   const lineDuration = useMemo(() => currentLine.endTime - currentLine.startTime, [currentLine]);
-
   const THUMB_WIDTH_PX = 16; 
   const THUMB_HALF_WIDTH_PX = THUMB_WIDTH_PX / 2;
 
@@ -76,10 +74,7 @@ const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, onSave, onCancel,
         }
       }
     };
-
-    if (isAudioPlaying) {
-      animationFrameRef.current = requestAnimationFrame(animate);
-    }
+    if (isAudioPlaying) animationFrameRef.current = requestAnimationFrame(animate);
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
@@ -125,7 +120,6 @@ const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, onSave, onCancel,
     setCurrentLine(prevLine => {
         const newTokens = [...prevLine.tokens];
         const minDuration = 0.05;
-
         if (type === 'move') {
             const prevBoundary = index > 0 ? newTokens[index - 1].endTime : prevLine.startTime;
             const nextBoundary = index < newTokens.length - 1 ? newTokens[index + 1].startTime : prevLine.endTime;
@@ -153,7 +147,6 @@ const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, onSave, onCancel,
                 }
             }
         }
-
         newTokens[index] = { ...newTokens[index], startTime: newStart, endTime: newEnd };
         const updatedLine = { ...prevLine, tokens: newTokens.sort((a,b) => a.startTime - b.startTime) };
         setJsonString(JSON.stringify(updatedLine, null, 2));
@@ -276,7 +269,7 @@ const VisualEditor = ({
         <button onClick={() => { setDeleteMode(!deleteMode); setAddMode(false); }} className={`p-2 rounded-full ${deleteMode ? 'bg-red-500' : 'bg-gray-600'} hover:bg-red-500 text-white`} title="Delete Word"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" /></svg></button>
       </div>
       
-      <div className="px-4">
+      <div className="px-1 sm:px-4">
         <div 
           ref={timelineRef} 
           className="border border-gray-700 rounded-lg relative h-24 overflow-hidden" 
@@ -321,8 +314,14 @@ const VisualEditor = ({
         </div>
       </div>
 
-      <div className="flex-grow overflow-y-auto space-y-2 pr-2 mt-4">
-        <div className="grid grid-cols-5 gap-2 items-center p-2 text-white text-sm font-bold"><div>#</div><div>Surface</div><div>Reading</div><div>Start (s)</div><div>End (s)</div></div>
+      <div className="flex-grow overflow-y-auto overflow-x-auto space-y-2 pr-2 mt-4">
+        <div className="grid grid-cols-5 gap-x-2 items-center p-2 text-white text-xs sm:text-sm font-bold min-w-[500px]">
+          <div className="col-span-1">#</div>
+          <div className="col-span-1">Surface</div>
+          <div className="col-span-1">Reading</div>
+          <div className="col-span-1">Start (s)</div>
+          <div className="col-span-1">End (s)</div>
+        </div>
         {currentLine.tokens.map((token: LyricToken, index: number) => (<MemoizedEditableWordRow key={`${token.startTime}-${token.surface}`} index={index} token={token} onTokenChange={handleTokenChange}/>))}
       </div>
     </>
@@ -362,9 +361,7 @@ function ResizableWordBlock({ index, token, lineStartTime, lineDuration, timelin
     const moveRef = useRef(null);
     const leftRef = useRef(null);
     const rightRef = useRef(null);
-
     const [dragState, setDragState] = useState({ x: 0, width: 0 });
-
     const timeToPx = (time: number) => {
       if (lineDuration <= 0) return 0;
       return ((time - lineStartTime) / lineDuration) * timelineWidth;
@@ -386,15 +383,9 @@ function ResizableWordBlock({ index, token, lineStartTime, lineDuration, timelin
     
     const handleResize = (e: any, data: any, edge: 'left' | 'right') => {
         if (edge === 'left') {
-            setDragState(prev => ({
-                x: prev.x + data.deltaX,
-                width: prev.width - data.deltaX
-            }));
+            setDragState(prev => ({ x: prev.x + data.deltaX, width: prev.width - data.deltaX }));
         } else {
-            setDragState(prev => ({
-                ...prev,
-                width: prev.width + data.deltaX
-            }));
+            setDragState(prev => ({ ...prev, width: prev.width + data.deltaX }));
         }
     };
 
@@ -412,10 +403,7 @@ function ResizableWordBlock({ index, token, lineStartTime, lineDuration, timelin
 
     return (
         <div style={{ left: dragState.x, width: dragState.width, zIndex: isSelected ? 20 : 10 }} onClick={handleClick}
-            className={`word-block absolute top-1/2 -translate-y-1/2 h-10 rounded-md border-2 flex justify-center items-center text-sm font-bold text-white select-none
-                ${isPlaying ? 'bg-yellow-400 border-yellow-600' : 'bg-green-500 border-green-700'} 
-                ${isSelected ? 'border-blue-400' : ''}
-                ${deleteMode ? 'cursor-not-allowed bg-red-500' : 'cursor-pointer'}`}
+            className={`word-block absolute top-1/2 -translate-y-1/2 h-10 rounded-md border-2 flex justify-center items-center text-sm font-bold text-white select-none ${isPlaying ? 'bg-yellow-400 border-yellow-600' : 'bg-green-500 border-green-700'} ${isSelected ? 'border-blue-400' : ''} ${deleteMode ? 'cursor-not-allowed bg-red-500' : 'cursor-pointer'}`}
             title={token.surface}
         >
             <div className="relative w-full h-full flex items-center justify-center">
@@ -423,15 +411,9 @@ function ResizableWordBlock({ index, token, lineStartTime, lineDuration, timelin
             </div>
             {isSelected && !deleteMode && (
               <>
-                <Draggable nodeRef={leftRef} axis="x" onDrag={(e, data) => handleResize(e, data, 'left')} onStop={() => handleStop('resize-left')} position={{x:0,y:0}}>
-                  <div ref={leftRef} className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize z-30" />
-                </Draggable>
-                <Draggable nodeRef={moveRef} axis="x" onDrag={handleDrag} onStop={() => handleStop('move')}>
-                  <div ref={moveRef} className="absolute inset-0 cursor-move z-20" />
-                </Draggable>
-                <Draggable nodeRef={rightRef} axis="x" onDrag={(e, data) => handleResize(e, data, 'right')} onStop={() => handleStop('resize-right')}>
-                  <div ref={rightRef} className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize z-30" />
-                </Draggable>
+                <Draggable nodeRef={leftRef} axis="x" onDrag={(e, data) => handleResize(e, data, 'left')} onStop={() => handleStop('resize-left')} position={{x:0,y:0}}><div ref={leftRef} className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize z-30" /></Draggable>
+                <Draggable nodeRef={moveRef} axis="x" onDrag={handleDrag} onStop={() => handleStop('move')}><div ref={moveRef} className="absolute inset-0 cursor-move z-20" /></Draggable>
+                <Draggable nodeRef={rightRef} axis="x" onDrag={(e, data) => handleResize(e, data, 'right')} onStop={() => handleStop('resize-right')}><div ref={rightRef} className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize z-30" /></Draggable>
               </>
             )}
         </div>

@@ -4,7 +4,9 @@ import { LyricLine, LyricToken } from '@/interfaces/lyrics';
 import { editorStoreActions } from '@/stores/useEditorStore';
 import useTutorStore from '@/stores/useTutorStore';
 import { playerStoreActions } from '@/stores/usePlayerStore';
+import usePlayerStore from '@/stores/usePlayerStore';
 import useUIPanelStore from '@/stores/useUIPanelStore';
+import useMobileViewStore from '@/stores/useMobileViewStore';
 import ContextMenu, { MenuItem } from '@/components/common/ContextMenu';
 import cn from 'classnames';
 import ProgressHighlighter from './ProgressHighlighter';
@@ -19,8 +21,9 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
   const [hoveredToken, setHoveredToken] = useState<LyricToken | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; token: LyricToken; line: LyricLine } | null>(null);
   const { setActivePanel } = useUIPanelStore();
-  const startExplanation = useTutorStore((state) => state.startExplanation);
-  const clearTutor = useTutorStore((state) => state.clearTutor);
+  const { startExplanation, clearTutor } = useTutorStore();
+  const { isPlaying } = usePlayerStore();
+  const { setActiveView } = useMobileViewStore();
 
   useEffect(() => {
     if (activeLineRef.current) {
@@ -28,8 +31,27 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
     }
   }, [activeLineRef, currentTime]);
 
-  const handleWordClick = (startTime: number) => {
-    playerStoreActions.seek(startTime);
+  // This is the new, more robust handler for both seeking and play/pause.
+  const handleContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // If a context menu is open, a click should just close it.
+    if (contextMenu) {
+      closeContextMenu();
+      return;
+    }
+
+    // Check if the click target or its parent is a word span.
+    const target = e.target as HTMLElement;
+    const wordSpan = target.closest('.word-span');
+
+    if (!wordSpan) {
+      // If the click was on the background, toggle play/pause.
+      if (isPlaying) {
+        playerStoreActions.pause();
+      } else {
+        playerStoreActions.play();
+      }
+    }
+    // If it *was* on a word span, the word's own onClick will handle the seek.
   };
 
   const handleContextMenu = (event: React.MouseEvent, token: LyricToken, line: LyricLine) => {
@@ -44,6 +66,7 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
       label: '解释词语', 
       action: () => {
         startExplanation(line, token);
+        setActiveView('tools');
       } 
     },
     { 
@@ -52,19 +75,20 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
         clearTutor();
         editorStoreActions.setEditingLine(line);
         setActivePanel('SENTENCE_EDITOR');
+        setActiveView('tools');
       } 
     },
   ];
 
   return (
-    <div className="h-full overflow-y-auto p-4 bg-gray-800 text-white" onClick={closeContextMenu}>
+    <div className="h-full overflow-y-auto p-4 bg-gray-800 text-white" onClick={handleContainerClick}>
       {lyrics.map((line) => {
         const isLineActive = currentTime >= line.startTime && currentTime < line.endTime;
         return (
           <div
             key={line.id}
             ref={isLineActive ? activeLineRef : null}
-            className={cn('mb-6 transition-all duration-300', { 'opacity-50': !isLineActive, 'scale-105': isLineActive })}
+            className={cn('mb-6 transition-all duration-300 text-center', { 'opacity-50': !isLineActive, 'scale-105': isLineActive })}
           >
             <p className="text-2xl font-semibold tracking-wider mb-2">
               {line.tokens.map((token, index) => {
@@ -75,8 +99,11 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
                 return (
                   <span
                     key={`${token.surface}-${token.startTime}-${index}`}
-                    className="inline-block align-bottom mr-1 cursor-pointer"
-                    onClick={() => handleWordClick(token.startTime)}
+                    className="word-span inline-block align-bottom mr-1 cursor-pointer" // Added 'word-span' class
+                    onClick={(e) => {
+                      e.stopPropagation(); // Prevent the container's click handler from firing.
+                      playerStoreActions.seek(token.startTime);
+                    }}
                     onMouseEnter={() => setHoveredToken(token)}
                     onMouseLeave={() => setHoveredToken(null)}
                     onContextMenu={(e) => handleContextMenu(e, token, line)}

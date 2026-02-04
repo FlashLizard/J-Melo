@@ -46,3 +46,60 @@ input[type=range]::-moz-range-thumb::before {
   pointer-events: none;
   z-index: -1;
 }
+/* Vinyl Record Animation */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spinning {
+  animation: spin 10s linear infinite;
+}
+/* Vinyl Spinning Animation */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+.animate-spin-slow {
+  animation: spin 30s linear infinite;
+}
+.paused {
+  animation-play-state: paused;
+}
+/* Vinyl spinning animation */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinning {
+  animation: spin 10s linear infinite;
+}
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.rotate-animation {
+  animation: rotate 10s linear infinite;
+  animation-play-state: paused; /* Paused by default */
+}
+
+.rotate-animation.playing {
+  animation-play-state: running;
+}

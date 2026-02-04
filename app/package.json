@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.18",
+    "@tailwindcss/typography": "^0.5.19",
     "classnames": "^2.5.1",
     "dexie": "^4.3.0",
     "dexie-react-hooks": "^4.2.0",
@@ -22,6 +23,7 @@
     "react-dom": "^18.2.0",
     "react-draggable": "^4.5.0",
     "react-markdown": "^10.1.0",
+    "react-swipeable": "^7.0.2",
     "zustand": "^5.0.10"
   },
   "devDependencies": {

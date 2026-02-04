@@ -1,7 +1,7 @@
 // src/components/editor/FullLyricsEditor.tsx
 import React, { useState, useEffect } from 'react';
 import useUIPanelStore from '@/stores/useUIPanelStore';
-import useSongStore, { songStoreActions } from '@/stores/useSongStore';
+import useSongStore from '@/stores/useSongStore';
 import { LyricLine } from '@/interfaces/lyrics';
 
 const FullLyricsEditor: React.FC = () => {
@@ -11,10 +11,8 @@ const FullLyricsEditor: React.FC = () => {
   const [jsonString, setJsonString] = useState('');
   const [jsonError, setJsonError] = useState<string | null>(null);
 
-  // Initialize the editor with the current lyrics
   useEffect(() => {
     setJsonString(JSON.stringify(lyrics, null, 2));
-    // Clear any lingering previews when the component mounts
     clearPreviewLyrics();
   }, [lyrics, clearPreviewLyrics]);
 
@@ -23,12 +21,11 @@ const FullLyricsEditor: React.FC = () => {
     setJsonString(newJsonString);
     try {
       const parsed = JSON.parse(newJsonString) as LyricLine[];
-      // TODO: Add more specific validation here if needed
-      setPreviewLyrics(parsed); // Update the live preview
+      setPreviewLyrics(parsed);
       setJsonError(null);
     } catch (error) {
       setJsonError((error as Error).message);
-      clearPreviewLyrics(); // Revert preview if JSON is invalid
+      clearPreviewLyrics();
     }
   };
 

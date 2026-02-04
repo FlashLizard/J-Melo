@@ -7,6 +7,7 @@ import useSongStore from './useSongStore';
 import useUIPanelStore from './useUIPanelStore';
 import useTemplateStore from './useTemplateStore';
 import useSettingsStore from './useSettingsStore';
+import useMobileViewStore from './useMobileViewStore'; // Import mobile view store
 import { LyricLine, LyricToken } from '@/interfaces/lyrics';
 
 interface TutorState {
@@ -20,8 +21,8 @@ interface TutorState {
   // Actions
   startExplanation: (line: LyricLine, token: LyricToken) => void;
   setSelectedTokens: (tokens: LyricToken[]) => void;
-  getExplanation: () => Promise<void>;
-  setExplanation: (explanation: string) => void; // New action
+  getExplanation: (prompt: string) => Promise<void>;
+  setExplanation: (explanation: string) => void;
   addWordToVocabulary: (front: string, back: string) => Promise<void>;
   clearTutor: () => void;
 }
@@ -46,41 +47,25 @@ const useTutorStore = create<TutorState>()(
           error: null,
         });
         useUIPanelStore.getState().setActivePanel('AI_TUTOR');
+        useMobileViewStore.getState().setActiveView('tools'); // Switch to tools view on mobile
       },
 
       setSelectedTokens: (tokens) => {
         set({ selectedTokens: tokens, explanation: null });
       },
 
-      getExplanation: async () => {
-        const { selectedTokens, sentence } = get();
-        if (selectedTokens.length === 0) return;
+      getExplanation: async (finalPrompt) => {
+        if (get().selectedTokens.length === 0) return;
 
         set({ isLoading: true, error: null, explanation: null });
         
         try {
           const { settings } = useSettingsStore.getState();
-          const { promptTemplates } = useTemplateStore.getState();
-          const song = useSongStore.getState().song;
-
           const apiKey = settings.openaiApiKey;
           const apiUrl = settings.llmApiUrl || 'https://api.openai.com/v1/chat/completions';
           const modelType = settings.llmModelType || 'gpt-3.5-turbo';
           
           if (!apiKey) throw new Error('API key is not set in settings.');
-
-          const selectedTemplate = promptTemplates.find(t => t.id === settings.defaultPromptTemplateId) || promptTemplates[0];
-          if (!selectedTemplate) throw new Error('No prompt templates found.');
-          
-          const word = selectedTokens.map(t => t.surface).join('');
-          const reading = selectedTokens.map(t => t.reading).join('');
-
-          const finalPrompt = selectedTemplate.content
-            .replace('{word}', word)
-            .replace('{reading}', reading)
-            .replace('{sentence}', sentence)
-            .replace('{song_title}', song?.title || 'N/A')
-            .replace('{song_artist}', song?.artist || 'N/A');
 
           const response = await fetch(apiUrl, {
             method: 'POST',
@@ -103,9 +88,9 @@ const useTutorStore = create<TutorState>()(
           }
         }
       },
-      setExplanation: (explanation) => set({ explanation }), // Implementation for new action
 
-
+      setExplanation: (explanation) => set({ explanation }),
+      
       addWordToVocabulary: async (front, back) => {
         const { selectedTokens } = get();
         const song = useSongStore.getState().song;
@@ -123,7 +108,7 @@ const useTutorStore = create<TutorState>()(
           cardBack: back,
           sourceSongId: song.id,
           createdAt: new Date(),
-          proficiency: 0, // Initialize proficiency
+          proficiency: 0,
         });
         alert(`"${surface}" added to vocabulary!`);
       },
@@ -142,14 +127,5 @@ const useTutorStore = create<TutorState>()(
     { name: 'TutorStore' }
   )
 );
-
-// Manually export actions since they are outside the useTutorStore hook scope for direct calls
-export const tutorStoreActions = {
-  startExplanation: useTutorStore.getState().startExplanation,
-  setSelectedTokens: useTutorStore.getState().setSelectedTokens,
-  getExplanation: useTutorStore.getState().getExplanation,
-  addWordToVocabulary: useTutorStore.getState().addWordToVocabulary,
-  clearTutor: useTutorStore.getState().clearTutor,
-};
 
 export default useTutorStore;

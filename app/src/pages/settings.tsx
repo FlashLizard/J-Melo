@@ -1,54 +1,30 @@
 // src/pages/settings.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/lib/db';
+import useSettingsStore from '@/stores/useSettingsStore';
 
 const SettingsPage = () => {
-  const settings = useLiveQuery(() => db.settings.get(0));
-  const [apiKey, setApiKey] = useState('');
-  const [apiUrl, setApiUrl] = useState('');
-  const [modelType, setModelType] = useState('');
-  const [aiLanguage, setAiLanguage] = useState<'en' | 'zh'>('en');
-
-  // New states for Lyric Fix LLM
-  const [lyricFixApiKey, setLyricFixApiKey] = useState('');
-  const [lyricFixApiUrl, setLyricFixApiUrl] = useState('');
-  const [lyricFixModelType, setLyricFixModelType] = useState('');
+  const { settings, loadSettings, updateSetting } = useSettingsStore();
 
   useEffect(() => {
-    console.log("SettingsPage useEffect running.");
-    db.settings.get(0).then(settings => {
-      console.log("Settings from DB:", settings);
-      if (settings) {
-        setApiKey(settings.openaiApiKey || '');
-        setApiUrl(settings.llmApiUrl || 'https://api.openai.com/v1/chat/completions');
-        setModelType(settings.llmModelType || 'gpt-3.5-turbo');
-        setAiLanguage(settings.aiResponseLanguage || 'en');
-        // Load new Lyric Fix LLM settings
-        setLyricFixApiKey(settings.lyricFixLLMApiKey || settings.openaiApiKey || '');
-        setLyricFixApiUrl(settings.lyricFixLLMApiUrl || settings.llmApiUrl || 'https://api.openai.com/v1/chat/completions');
-        setLyricFixModelType(settings.lyricFixLLMModelType || settings.llmModelType || 'gpt-3.5-turbo');
-      }
-    });
-  }, []);
+    loadSettings();
+  }, [loadSettings]);
 
   const handleSave = async () => {
-    await db.settings.put({
-      id: 0,
-      openaiApiKey: apiKey,
-      llmApiUrl: apiUrl,
-      llmModelType: modelType,
-      aiResponseLanguage: aiLanguage,
-      uiLanguage: settings?.uiLanguage || 'en',
-      // Save new Lyric Fix LLM settings
-      lyricFixLLMApiKey: lyricFixApiKey,
-      lyricFixLLMApiUrl: lyricFixApiUrl,
-      lyricFixLLMModelType: lyricFixModelType,
-    });
-    alert('Settings saved!');
+    // The store now handles saving automatically on change, but we can have an explicit save button if desired.
+    // For now, we can just show an alert. In a real app, this might trigger a backend sync.
+    alert('Settings are saved automatically as you change them!');
   };
+
+  const handleInputChange = (key: keyof typeof settings, value: string) => {
+    updateSetting(key, value);
+  };
+
+  const handleSelectChange = (key: keyof typeof settings, value: 'en' | 'zh') => {
+    updateSetting(key, value);
+  };
+
 
   return (
     <>
@@ -71,8 +47,8 @@ const SettingsPage = () => {
               </label>
               <select
                 id="aiLanguage"
-                value={aiLanguage}
-                onChange={(e) => setAiLanguage(e.target.value as 'en' | 'zh')}
+                value={settings.aiResponseLanguage || 'en'}
+                onChange={(e) => handleSelectChange('aiResponseLanguage', e.target.value as 'en' | 'zh')}
                 className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500"
               >
                 <option value="en">English</option>
@@ -89,8 +65,8 @@ const SettingsPage = () => {
               <input
                 type="text"
                 id="apiUrl"
-                value={apiUrl}
-                onChange={(e) => setApiUrl(e.target.value)}
+                value={settings.llmApiUrl || 'https://api.openai.com/v1/chat/completions'}
+                onChange={(e) => handleInputChange('llmApiUrl', e.target.value)}
                 className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500"
                 placeholder="e.g., https://api.openai.com/v1/chat/completions"
               />
@@ -103,8 +79,8 @@ const SettingsPage = () => {
               <input
                 type="text"
                 id="modelType"
-                value={modelType}
-                onChange={(e) => setModelType(e.target.value)}
+                value={settings.llmModelType || 'gpt-3.5-turbo'}
+                onChange={(e) => handleInputChange('llmModelType', e.target.value)}
                 className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500"
                 placeholder="e.g., gpt-3.5-turbo, claude-3-opus-20240229"
               />
@@ -117,8 +93,8 @@ const SettingsPage = () => {
               <input
                 type="password"
                 id="apiKey"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
+                value={settings.openaiApiKey || ''}
+                onChange={(e) => handleInputChange('openaiApiKey', e.target.value)}
                 className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500"
                 placeholder="Your API key (e.g., sk-...)"
               />
@@ -136,8 +112,8 @@ const SettingsPage = () => {
               <input
                 type="text"
                 id="lyricFixApiUrl"
-                value={lyricFixApiUrl}
-                onChange={(e) => setLyricFixApiUrl(e.target.value)}
+                value={settings.lyricFixLLMApiUrl || ''}
+                onChange={(e) => handleInputChange('lyricFixLLMApiUrl', e.target.value)}
                 className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500"
                 placeholder="e.g., https://api.openai.com/v1/chat/completions"
               />
@@ -150,8 +126,8 @@ const SettingsPage = () => {
               <input
                 type="text"
                 id="lyricFixModelType"
-                value={lyricFixModelType}
-                onChange={(e) => setLyricFixModelType(e.target.value)}
+                value={settings.lyricFixLLMModelType || ''}
+                onChange={(e) => handleInputChange('lyricFixLLMModelType', e.target.value)}
                 className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500"
                 placeholder="e.g., gpt-3.5-turbo, claude-3-opus-20240229"
               />
@@ -164,8 +140,8 @@ const SettingsPage = () => {
               <input
                 type="password"
                 id="lyricFixApiKey"
-                value={lyricFixApiKey}
-                onChange={(e) => setLyricFixApiKey(e.target.value)}
+                value={settings.lyricFixLLMApiKey || ''}
+                onChange={(e) => handleInputChange('lyricFixLLMApiKey', e.target.value)}
                 className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500"
                 placeholder="Your API key (e.g., sk-...)"
               />
@@ -178,7 +154,7 @@ const SettingsPage = () => {
               onClick={handleSave}
               className="px-6 py-2 bg-blue-600 rounded-lg hover:bg-blue-500 w-full"
             >
-              Save Settings
+              Save Settings (Auto-saves on change)
             </button>
           </div>
         </div>

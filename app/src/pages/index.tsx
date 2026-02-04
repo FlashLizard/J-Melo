@@ -7,6 +7,7 @@ import LyricsDisplay from '@/components/lyrics/LyricsDisplay';
 import AIPanel from '@/components/tutor/AIPanel';
 import SentenceEditor from '@/components/editor/SentenceEditor';
 import FullLyricsEditor from '@/components/editor/FullLyricsEditor';
+import AILyricCorrector from '@/components/tutor/AILyricCorrector';
 import ToolPanel from '@/components/tutor/ToolPanel';
 import useSongStore, { songStoreActions } from '@/stores/useSongStore';
 import usePlayerStore from '@/stores/usePlayerStore';

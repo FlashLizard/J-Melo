@@ -2,9 +2,9 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { LyricLine, LyricToken } from '@/interfaces/lyrics';
 import { editorStoreActions } from '@/stores/useEditorStore';
-import { tutorStoreActions } from '@/stores/useTutorStore';
+import useTutorStore from '@/stores/useTutorStore';
 import { playerStoreActions } from '@/stores/usePlayerStore';
-import useUIPanelStore from '@/stores/useUIPanelStore'; // Import UI Panel Store
+import useUIPanelStore from '@/stores/useUIPanelStore';
 import ContextMenu, { MenuItem } from '@/components/common/ContextMenu';
 import cn from 'classnames';
 import ProgressHighlighter from './ProgressHighlighter';
@@ -19,12 +19,14 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
   const [hoveredToken, setHoveredToken] = useState<LyricToken | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; token: LyricToken; line: LyricLine } | null>(null);
   const { setActivePanel } = useUIPanelStore();
+  const startExplanation = useTutorStore((state) => state.startExplanation);
+  const clearTutor = useTutorStore((state) => state.clearTutor);
 
   useEffect(() => {
     if (activeLineRef.current) {
       activeLineRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-  }, [activeLineRef.current]); // Dependency on ref current value
+  }, [activeLineRef, currentTime]);
 
   const handleWordClick = (startTime: number) => {
     playerStoreActions.seek(startTime);
@@ -39,21 +41,19 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
 
   const getMenuItems = (token: LyricToken, line: LyricLine): MenuItem[] => [
     { 
-      label: `解释 "${token.surface}"`, 
+      label: '解释词语', 
       action: () => {
-        tutorStoreActions.setSelectedText(token.surface); // This action now handles setting the panel
+        startExplanation(line, token);
       } 
     },
     { 
       label: '编辑句子', 
       action: () => {
-        tutorStoreActions.clearTutor(); // Clear AI tutor state
+        clearTutor();
         editorStoreActions.setEditingLine(line);
-        setActivePanel('SENTENCE_EDITOR'); // Explicitly set the panel
+        setActivePanel('SENTENCE_EDITOR');
       } 
     },
-    { label: '自定义动作 1', action: () => alert('Custom action 1'), disabled: true },
-    { label: '自定义动作 2', action: () => alert('Custom action 2'), disabled: true },
   ];
 
   return (

@@ -1,99 +1,154 @@
 // src/stores/useTutorStore.ts
 import { create } from 'zustand';
+import { devtools } from 'zustand/middleware';
+import { immer } from 'zustand/middleware/immer';
 import { db } from '@/lib/db';
 import useSongStore from './useSongStore';
-import useUIPanelStore from './useUIPanelStore'; // Import the UI panel store
+import useUIPanelStore from './useUIPanelStore';
+import useTemplateStore from './useTemplateStore';
+import useSettingsStore from './useSettingsStore';
+import { LyricLine, LyricToken } from '@/interfaces/lyrics';
 
 interface TutorState {
-  selectedText: string | null;
+  sentence: string;
+  tokens: LyricToken[];
+  selectedTokens: LyricToken[];
   explanation: string | null;
   isLoading: boolean;
   error: string | null;
+
+  // Actions
+  startExplanation: (line: LyricLine, token: LyricToken) => void;
+  setSelectedTokens: (tokens: LyricToken[]) => void;
+  getExplanation: () => Promise<void>;
+  setExplanation: (explanation: string) => void; // New action
+  addWordToVocabulary: (front: string, back: string) => Promise<void>;
+  clearTutor: () => void;
 }
 
-const useTutorStore = create<TutorState>(() => ({
-  selectedText: null,
-  explanation: null,
-  isLoading: false,
-  error: null,
-}));
-
-export const tutorStoreActions = {
-  setSelectedText: async (text: string) => {
-    // Set loading state and immediately switch panel
-    useTutorStore.setState({ selectedText: text, explanation: null, isLoading: true, error: null });
-    useUIPanelStore.getState().setActivePanel('AI_TUTOR');
-    
-    try {
-      const settings = await db.settings.get(0);
-      const apiKey = settings?.openaiApiKey;
-      const apiUrl = settings?.llmApiUrl || 'https://api.openai.com/v1/chat/completions';
-      const modelType = settings?.llmModelType || 'gpt-3.5-turbo';
-      const responseLang = settings?.aiResponseLanguage === 'zh' ? 'Chinese' : 'English';
-      if (!apiKey) {
-        useTutorStore.setState({ error: 'API key is not set. Please configure it in the settings.', isLoading: false });
-        return;
-      }
-      const prompt = `Explain the following Japanese text for a language learner in ${responseLang}. Provide a breakdown of grammar, vocabulary, and context. Keep the explanation concise and clear.
-
-Text: "${text}"`;
-      const response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-          body: JSON.stringify({ model: modelType, messages: [{ role: 'user', content: prompt }], temperature: 0.5 }),
-      });
-
-      // After fetch, check if we are still in the AI_TUTOR panel. If not, abort.
-      if (useUIPanelStore.getState().activePanel !== 'AI_TUTOR') {
-        useTutorStore.setState({ isLoading: false, selectedText: null }); // Quietly reset state
-        return;
-      }
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error?.message || 'Failed to fetch explanation');
-      }
-      const result = await response.json();
-      const explanation = result.choices[0]?.message?.content;
-      useTutorStore.setState({ explanation, isLoading: false });
-    } catch (err) {
-       // Also check if we are still in the AI_TUTOR panel before showing an error.
-       if (useUIPanelStore.getState().activePanel === 'AI_TUTOR') {
-        useTutorStore.setState({ error: (err as Error).message, isLoading: false });
-      }
-    }
-  },
-  addWordToVocabulary: async () => {
-    const { selectedText, explanation } = useTutorStore.getState();
-    const { song, lyrics } = useSongStore.getState();
-    if (!selectedText || !explanation || !song?.id || !lyrics) return;
-    let reading = '', romaji = '';
-    for (const line of lyrics) {
-      const foundToken = line.tokens.find(token => token.surface === selectedText);
-      if (foundToken) {
-        reading = foundToken.reading;
-        romaji = (foundToken as any).romaji || ''; // Assuming romaji might exist
-        break;
-      }
-    }
-    await db.words.add({
-      surface: selectedText,
-      reading,
-      romaji,
-      definition: explanation,
-      sourceSongId: song.id,
-      createdAt: new Date(),
-    });
-    alert(`"${selectedText}" added to vocabulary!`);
-  },
-  clearTutor: () => {
-    useTutorStore.setState({
-      selectedText: null,
+const useTutorStore = create<TutorState>()(
+  devtools(
+    immer((set, get) => ({
+      sentence: '',
+      tokens: [],
+      selectedTokens: [],
       explanation: null,
       isLoading: false,
       error: null,
-    });
-  },
+
+      startExplanation: (line, token) => {
+        set({
+          sentence: line.text,
+          tokens: line.tokens,
+          selectedTokens: [token],
+          explanation: null,
+          isLoading: false,
+          error: null,
+        });
+        useUIPanelStore.getState().setActivePanel('AI_TUTOR');
+      },
+
+      setSelectedTokens: (tokens) => {
+        set({ selectedTokens: tokens, explanation: null });
+      },
+
+      getExplanation: async () => {
+        const { selectedTokens, sentence } = get();
+        if (selectedTokens.length === 0) return;
+
+        set({ isLoading: true, error: null, explanation: null });
+        
+        try {
+          const { settings } = useSettingsStore.getState();
+          const { promptTemplates } = useTemplateStore.getState();
+          const song = useSongStore.getState().song;
+
+          const apiKey = settings.openaiApiKey;
+          const apiUrl = settings.llmApiUrl || 'https://api.openai.com/v1/chat/completions';
+          const modelType = settings.llmModelType || 'gpt-3.5-turbo';
+          
+          if (!apiKey) throw new Error('API key is not set in settings.');
+
+          const selectedTemplate = promptTemplates.find(t => t.id === settings.defaultPromptTemplateId) || promptTemplates[0];
+          if (!selectedTemplate) throw new Error('No prompt templates found.');
+          
+          const word = selectedTokens.map(t => t.surface).join('');
+          const reading = selectedTokens.map(t => t.reading).join('');
+
+          const finalPrompt = selectedTemplate.content
+            .replace('{word}', word)
+            .replace('{reading}', reading)
+            .replace('{sentence}', sentence)
+            .replace('{song_title}', song?.title || 'N/A')
+            .replace('{song_artist}', song?.artist || 'N/A');
+
+          const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+            body: JSON.stringify({ model: modelType, messages: [{ role: 'user', content: finalPrompt }], temperature: 0.5, max_tokens: 150 }),
+          });
+
+          if (useUIPanelStore.getState().activePanel !== 'AI_TUTOR') return;
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error?.message || 'Failed to fetch explanation');
+          }
+
+          const result = await response.json();
+          const explanation = result.choices[0]?.message?.content;
+          set({ explanation, isLoading: false });
+        } catch (err) {
+          if (useUIPanelStore.getState().activePanel === 'AI_TUTOR') {
+            set({ error: (err as Error).message, isLoading: false });
+          }
+        }
+      },
+      setExplanation: (explanation) => set({ explanation }), // Implementation for new action
+
+
+      addWordToVocabulary: async (front, back) => {
+        const { selectedTokens } = get();
+        const song = useSongStore.getState().song;
+        if (!song?.id || selectedTokens.length === 0) return;
+
+        const surface = selectedTokens.map(t => t.surface).join('');
+        const reading = selectedTokens.map(t => t.reading).join('');
+        const romaji = selectedTokens.map(t => (t as any).romaji || '').join('');
+
+        await db.words.add({
+          surface,
+          reading,
+          romaji,
+          cardFront: front,
+          cardBack: back,
+          sourceSongId: song.id,
+          createdAt: new Date(),
+        });
+        alert(`"${surface}" added to vocabulary!`);
+      },
+
+      clearTutor: () => {
+        set({
+          sentence: '',
+          tokens: [],
+          selectedTokens: [],
+          explanation: null,
+          isLoading: false,
+          error: null,
+        });
+      },
+    })),
+    { name: 'TutorStore' }
+  )
+);
+
+// Manually export actions since they are outside the useTutorStore hook scope for direct calls
+export const tutorStoreActions = {
+  startExplanation: useTutorStore.getState().startExplanation,
+  setSelectedTokens: useTutorStore.getState().setSelectedTokens,
+  getExplanation: useTutorStore.getState().getExplanation,
+  addWordToVocabulary: useTutorStore.getState().addWordToVocabulary,
+  clearTutor: useTutorStore.getState().clearTutor,
 };
 
 export default useTutorStore;

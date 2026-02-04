@@ -15,7 +15,8 @@ export interface WordRecord {
   surface: string;
   reading: string;
   romaji: string;
-  definition: string;
+  cardFront: string; // Replaces 'definition'
+  cardBack: string;  // Replaces 'definition'
   sourceSongId: number;
   createdAt: Date;
 }
@@ -25,18 +26,36 @@ export interface Settings {
   openaiApiKey: string | null;
   llmApiUrl: string | null;
   llmModelType: string | null;
-  aiResponseLanguage: 'en' | 'zh'; // 'en' for English, 'zh' for Chinese
+  aiResponseLanguage: 'en' | 'zh';
   uiLanguage: 'en' | 'zh';
-  // New fields for lyric fix LLM
   lyricFixLLMApiKey?: string | null;
   lyricFixLLMApiUrl?: string | null;
   lyricFixLLMModelType?: string | null;
+  defaultPromptTemplateId?: number;
+  defaultCardTemplateId?: number;
+}
+
+export interface PromptTemplate {
+  id?: number;
+  name: string;
+  content: string;
+  createdAt: Date;
+}
+
+export interface CardTemplate {
+  id?: number;
+  name: string;
+  front: string;
+  back: string;
+  createdAt: Date;
 }
 
 class JeloDB extends Dexie {
   public songs!: Table<SongRecord, number>;
   public words!: Table<WordRecord, number>;
   public settings!: Table<Settings, number>;
+  public promptTemplates!: Table<PromptTemplate, number>;
+  public cardTemplates!: Table<CardTemplate, number>;
 
   public constructor() {
     super('JeloDB');
@@ -48,29 +67,32 @@ class JeloDB extends Dexie {
     this.version(2).stores({
       settings: 'id, openaiApiKey, llmApiUrl, llmModelType, uiLanguage',
     }).upgrade(tx => {});
-    // Add a new version for the aiResponseLanguage field
     this.version(3).stores({
       settings: 'id, openaiApiKey, llmApiUrl, llmModelType, aiResponseLanguage, uiLanguage',
     }).upgrade(tx => {});
-    // Add a new version for the words table change (adding createdAt index)
     this.version(4).stores({
       words: '++id, surface, sourceSongId, createdAt',
     }).upgrade(tx => {});
-    // New version for lyric fix LLM settings
     this.version(5).stores({
       settings: 'id, openaiApiKey, llmApiUrl, llmModelType, aiResponseLanguage, uiLanguage, lyricFixLLMApiKey, lyricFixLLMModelType, lyricFixLLMApiUrl',
     }).upgrade(async (tx) => {
-      // For existing settings, initialize new fields to null or existing general settings if appropriate
       await tx.table('settings').toCollection().modify(setting => {
-        if (setting.lyricFixLLMApiKey === undefined) {
-          setting.lyricFixLLMApiKey = setting.openaiApiKey; // Default to general API key
-        }
-        if (setting.lyricFixLLMModelType === undefined) {
-          setting.lyricFixLLMModelType = setting.llmModelType; // Default to general model type
-        }
-        if (setting.lyricFixLLMApiUrl === undefined) {
-          setting.lyricFixLLMApiUrl = setting.llmApiUrl; // Default to general API URL
-        }
+        if (setting.lyricFixLLMApiKey === undefined) setting.lyricFixLLMApiKey = setting.openaiApiKey;
+        if (setting.lyricFixLLMModelType === undefined) setting.lyricFixLLMModelType = setting.llmModelType;
+        if (setting.lyricFixLLMApiUrl === undefined) setting.lyricFixLLMApiUrl = setting.llmApiUrl;
+      });
+    });
+    this.version(6).stores({
+      words: '++id, surface, sourceSongId, createdAt', // `definition` is removed
+      promptTemplates: '++id, name',
+      cardTemplates: '++id, name',
+      settings: 'id, openaiApiKey, llmApiUrl, llmModelType, aiResponseLanguage, uiLanguage, lyricFixLLMApiKey, lyricFixLLMModelType, lyricFixLLMApiUrl, defaultPromptTemplateId, defaultCardTemplateId',
+    }).upgrade(async (tx) => {
+      // Migrate existing words to the new card format
+      await tx.table('words').toCollection().modify(word => {
+        word.cardFront = word.surface; // Default front
+        word.cardBack = `${word.reading}\n\n${word.definition}` // Default back
+        delete word.definition; // Remove old field
       });
     });
   }

@@ -15,14 +15,15 @@ export interface WordRecord {
   surface: string;
   reading: string;
   romaji: string;
-  cardFront: string; // Replaces 'definition'
-  cardBack: string;  // Replaces 'definition'
+  cardFront: string;
+  cardBack: string;
   sourceSongId: number;
   createdAt: Date;
+  proficiency: number; // New field for SRS
 }
 
 export interface Settings {
-  id?: number; // Should always be 0 for singleton
+  id?: number;
   openaiApiKey: string | null;
   llmApiUrl: string | null;
   llmModelType: string | null;
@@ -83,16 +84,26 @@ class JeloDB extends Dexie {
       });
     });
     this.version(6).stores({
-      words: '++id, surface, sourceSongId, createdAt', // `definition` is removed
+      words: '++id, surface, sourceSongId, createdAt, cardFront, cardBack',
       promptTemplates: '++id, name',
       cardTemplates: '++id, name',
       settings: 'id, openaiApiKey, llmApiUrl, llmModelType, aiResponseLanguage, uiLanguage, lyricFixLLMApiKey, lyricFixLLMModelType, lyricFixLLMApiUrl, defaultPromptTemplateId, defaultCardTemplateId',
     }).upgrade(async (tx) => {
-      // Migrate existing words to the new card format
       await tx.table('words').toCollection().modify(word => {
-        word.cardFront = word.surface; // Default front
-        word.cardBack = `${word.reading}\n\n${word.definition}` // Default back
-        delete word.definition; // Remove old field
+        if (word.definition) {
+          word.cardFront = word.surface;
+          word.cardBack = `${word.reading}\n\n${word.definition}`;
+          delete word.definition;
+        }
+      });
+    });
+    this.version(7).stores({
+      words: '++id, surface, sourceSongId, createdAt, proficiency, cardFront, cardBack'
+    }).upgrade(async (tx) => {
+      await tx.table('words').toCollection().modify(word => {
+        if (word.proficiency === undefined) {
+          word.proficiency = 0;
+        }
       });
     });
   }

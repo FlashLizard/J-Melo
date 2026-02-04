@@ -123,6 +123,7 @@ const useTutorStore = create<TutorState>()(
           cardBack: back,
           sourceSongId: song.id,
           createdAt: new Date(),
+          proficiency: 0, // Initialize proficiency
         });
         alert(`"${surface}" added to vocabulary!`);
       },

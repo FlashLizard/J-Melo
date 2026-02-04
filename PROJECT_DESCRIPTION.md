@@ -1,11 +1,6 @@
-
-## 7. Advanced Vocabulary Management
-The vocabulary page is a full-featured tool for reviewing, organizing, and exporting saved words.
-- **Multiple Display Modes**: Users can view their vocabulary as a flat list ("All"), grouped by the song they originated from ("By Song"), or filtered by a search term ("Search").
-- **Card Viewer with Carousel**: Clicking a card opens a dedicated viewer. This viewer includes "Previous" and "Next" buttons, allowing users to easily navigate through the currently displayed set of cards without returning to the main list.
-- **Inline Card Editing**: Within the card viewer, users can switch to an edit mode to directly modify the front and back content of a flashcard.
-- **Bulk Actions**: A selection mode enables users to perform actions on multiple cards at once. This includes:
-  - Checkboxes for individual card selection.
-  - A "Select All" option.
-  - In the "By Song" view, selecting a song automatically selects all cards from that song.
-  - Actions for deleting or exporting all selected cards.
+## 8. Spaced Repetition System (SRS) Review Mode
+The vocabulary page includes a built-in review mode to help users study their saved words.
+- **Review Setup**: Users can initiate a review session for either all saved words or a selection of specific songs.
+- **Weighted Randomization**: The system uses a weighted random selection algorithm to draw cards. Words with a lower `proficiency` score are more likely to be shown, ensuring that users focus on the material they know least.
+- **Interactive Card Review**: During a review, the user is first shown the front of a card. After flipping the card to see the back, they are presented with four options to rate their recall.
+- **Proficiency Rating**: The user can rate their proficiency for each card as "Lowest," "-1," "+1," or "Highest." This rating updates the card's `proficiency` score in the database, directly influencing how often it will appear in future review sessions.

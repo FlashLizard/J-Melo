@@ -6,13 +6,18 @@ import useVocabularyStore, { VocabDisplayMode } from '@/stores/useVocabularyStor
 import { WordRecord, SongRecord } from '@/lib/db';
 import cn from 'classnames';
 import CardViewer from '@/components/vocabulary/CardViewer';
+import ReviewSetup from '@/components/vocabulary/ReviewSetup';
+import Reviewer from '@/components/vocabulary/Reviewer';
 
 const VocabularyPage = () => {
   const { 
     words, songs, displayMode, searchQuery, selectedIds, isSelectionMode,
+    isReviewing,
     loadWordsAndSongs, setDisplayMode, setSearchQuery, toggleSelectionMode, 
     toggleIdSelection, selectBySongId, selectAll, deselectAll, deleteSelected 
   } = useVocabularyStore();
+
+  const [isReviewSetupOpen, setIsReviewSetupOpen] = useState(false);
 
   useEffect(() => {
     loadWordsAndSongs();
@@ -55,38 +60,20 @@ const VocabularyPage = () => {
     }
   };
 
-  const handleExport = () => {
-    const wordsToExport = words.filter(word => selectedIds.has(word.id!));
-    if (wordsToExport.length === 0) {
-      alert("No cards selected for export.");
-      return;
-    }
-
-    const formatForAnki = (text: string) => `"${text.replace(/"/g, '""')}"`;
-
-    const csvContent = wordsToExport.map(word => {
-      const song = songMap.get(word.sourceSongId);
-      const tag = song ? song.title.replace(/\s+/g, '_') : 'Untagged';
-      const front = formatForAnki(word.cardFront);
-      const back = formatForAnki(word.cardBack);
-      return [front, back, tag].join(',');
-    }).join('\n');
-
-    const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8-sig;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', 'j-melo-anki-export.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
+  if (isReviewing) {
+    return (
+      <main className="bg-gray-900 min-h-screen text-white">
+        <Reviewer />
+      </main>
+    );
+  }
 
   return (
     <>
       <Head>
         <title>Vocabulary - J-Melo</title>
       </Head>
+      {isReviewSetupOpen && <ReviewSetup onClose={() => setIsReviewSetupOpen(false)} />}
       <main className="bg-gray-900 min-h-screen text-white p-4 lg:p-8">
         <div className="max-w-4xl mx-auto">
           <div className="flex justify-between items-center mb-6">
@@ -110,15 +97,18 @@ const VocabularyPage = () => {
               />
             )}
             <div className="flex items-center gap-4">
-              {isSelectionMode && (
+              {isSelectionMode ? (
                 <>
                   <button onClick={deleteSelected} className="px-4 py-2 bg-red-600 rounded-lg hover:bg-red-500 text-sm disabled:opacity-50" disabled={selectedIds.size === 0}>Delete ({selectedIds.size})</button>
-                  <button onClick={handleExport} className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-500 text-sm disabled:opacity-50" disabled={selectedIds.size === 0}>Export ({selectedIds.size})</button>
+                  <button className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-500 text-sm disabled:opacity-50" disabled={selectedIds.size === 0}>Export ({selectedIds.size})</button>
+                  <button onClick={toggleSelectionMode} className="px-4 py-2 bg-gray-600 rounded-lg hover:bg-gray-500 text-sm">Cancel</button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => setIsReviewSetupOpen(true)} className="px-4 py-2 bg-purple-600 rounded-lg hover:bg-purple-500 text-sm">Review Words</button>
+                  <button onClick={toggleSelectionMode} className="px-4 py-2 bg-gray-600 rounded-lg hover:bg-gray-500 text-sm">Select</button>
                 </>
               )}
-              <button onClick={toggleSelectionMode} className="px-4 py-2 bg-gray-600 rounded-lg hover:bg-gray-500 text-sm">
-                {isSelectionMode ? 'Cancel' : 'Select'}
-              </button>
             </div>
           </div>
           
@@ -164,7 +154,7 @@ const WordCard = ({ word, song }: { word: WordRecord, song?: SongRecord }) => {
   };
 
   return (
-    <div onClick={handleClick} className={cn("bg-gray-800 p-4 rounded-lg flex items-center gap-4 transition-colors", { 'hover:bg-gray-700 cursor-pointer': !isSelectionMode, 'ring-2 ring-green-500': isSelectionMode && selectedIds.has(word.id!) }) }>
+    <div onClick={handleClick} className={cn("bg-gray-800 p-4 rounded-lg flex items-center gap-4 transition-colors", { 'hover:bg-gray-700 cursor-pointer': !isSelectionMode, 'ring-2 ring-green-500': isSelectionMode && selectedIds.has(word.id!) })}>
       {isSelectionMode && <input type="checkbox" checked={selectedIds.has(word.id!)} onChange={() => {}} className="h-5 w-5 rounded bg-gray-700 border-gray-600 text-green-500 focus:ring-green-500" />}
       <div className="flex-grow">
         <p className="font-bold text-lg">{word.surface}</p>

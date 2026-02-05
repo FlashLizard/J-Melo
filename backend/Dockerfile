@@ -3,17 +3,6 @@
 # Use an official Python runtime as a parent image
 FROM python:3.11-slim
 
-ARG http_proxy
-ARG https_proxy
-ARG HTTP_PROXY
-ARG HTTPS_PROXY
-
-# 设置环境变量（对 RUN 指令生效）
-ENV http_proxy=$http_proxy \
-    https_proxy=$https_proxy \
-    HTTP_PROXY=$HTTP_PROXY \
-    HTTPS_PROXY=$HTTPS_PROXY
-
 # Set the working directory in the container
 WORKDIR /code
 

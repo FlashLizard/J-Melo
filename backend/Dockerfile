@@ -16,9 +16,9 @@ COPY ./requirements.txt /code/requirements.txt
 
 # Install any needed packages specified in requirements.txt
 # We install torch separately to ensure compatibility
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu \
-    && pip install --no-cache-dir -r /code/requirements.txt
+RUN pip install --no-cache-dir --upgrade pip 
+RUN pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu 
+RUN pip install --no-cache-dir -r /code/requirements.txt
 
 # Copy the rest of the backend application code
 COPY . /code

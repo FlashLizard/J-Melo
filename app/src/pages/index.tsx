@@ -13,6 +13,7 @@ import FullLyricsEditor from '@/components/editor/FullLyricsEditor';
 import ToolPanel from '@/components/tutor/ToolPanel';
 import SongInfoEditor from '@/components/editor/SongInfoEditor';
 import AILyricCorrector from '@/components/tutor/AILyricCorrector'; // Add this import
+import LyricTranslationPanel from '@/components/tutor/LyricTranslationPanel'; // Import LyricTranslationPanel
 import useSongStore from '@/stores/useSongStore';
 import usePlayerStore from '@/stores/usePlayerStore';
 import useLyricsProcessor from '@/hooks/useLyricsProcessor';
@@ -101,6 +102,7 @@ const RightHandPanel = () => {
   if (activePanel === 'AI_CORRECTOR') return <AILyricCorrector />;
   if (activePanel === 'FULL_LYRICS_EDITOR') return <FullLyricsEditor />;
   if (activePanel === 'SONG_INFO_EDITOR') return <SongInfoEditor />;
+  if (activePanel === 'LYRIC_TRANSLATION_PANEL') return <LyricTranslationPanel />; // Add this line
 
   return <ToolPanel />;
 };

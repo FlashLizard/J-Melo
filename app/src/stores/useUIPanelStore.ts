@@ -1,7 +1,7 @@
 // src/stores/useUIPanelStore.ts
 import { create } from 'zustand';
 
-export type PanelType = 'AI_TUTOR' | 'SENTENCE_EDITOR' | 'AI_CORRECTOR' | 'TOOL_PANEL' | 'FULL_LYRICS_EDITOR' | 'SONG_INFO_EDITOR';
+export type PanelType = 'AI_TUTOR' | 'SENTENCE_EDITOR' | 'AI_CORRECTOR' | 'TOOL_PANEL' | 'FULL_LYRICS_EDITOR' | 'SONG_INFO_EDITOR' | 'LYRIC_TRANSLATION_PANEL';
 
 interface UIPanelState {
   activePanel: PanelType;

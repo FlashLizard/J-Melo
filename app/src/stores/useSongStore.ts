@@ -4,6 +4,7 @@ import { immer } from 'zustand/middleware/immer';
 import { LyricLine } from '@/interfaces/lyrics';
 import { WhisperXOutput } from '@/hooks/useLyricsProcessor';
 import { db, SongRecord } from '@/lib/db';
+import useSettingsStore from './useSettingsStore'; // Import useSettingsStore
 
 export interface SongData {
   id?: number;
@@ -34,6 +35,7 @@ interface SongState {
   clearPreviewLyrics: () => void;
   commitPreviewLyrics: () => void;
   cacheCurrentSongAudio: () => Promise<void>;
+  updateLyricTranslations: (newTranslatedLyrics: LyricLine[]) => Promise<void>;
 }
 
 const useSongStore = create<SongState>()(
@@ -47,7 +49,8 @@ const useSongStore = create<SongState>()(
 
     fetchSong: async (url) => {
       set({ isLoading: true, error: null, song: null, lyrics: null, whisperData: null });
-      const BACKEND_URL = 'http://localhost:8000';
+      const { settings } = useSettingsStore.getState(); // Get current settings
+      const BACKEND_URL = settings.backendUrl;
       try {
         const existingSong = await db.songs.where('sourceUrl').equals(url).first();
         
@@ -121,7 +124,9 @@ const useSongStore = create<SongState>()(
           const songRecord = await db.songs.get(song.id);
           if (!songRecord) throw new Error("Song record not found in DB for caching.");
           
-          const audioUrlToFetch = `http://localhost:8000${songRecord.media_url}`;
+          const { settings } = useSettingsStore.getState(); // Get current settings
+          const BACKEND_URL = settings.backendUrl;
+          const audioUrlToFetch = `${BACKEND_URL}${songRecord.media_url}`;
           const audioResponse = await fetch(audioUrlToFetch);
           if (!audioResponse.ok) throw new Error('Failed to download audio blob for caching.');
           const audioBlob = await audioResponse.blob();
@@ -182,6 +187,24 @@ const useSongStore = create<SongState>()(
         } else if (previewLyrics) {
           set({ lyrics: previewLyrics, previewLyrics: null });
         }
+    },
+
+    updateLyricTranslations: async (newTranslatedLyrics: LyricLine[]) => {
+      const { song, lyrics } = get();
+      if (!song?.id || !lyrics) return;
+
+      const updatedLyrics = lyrics.map(existingLine => {
+        const matchingTranslation = newTranslatedLyrics.find(
+          translatedLine => existingLine.id === translatedLine.id
+        );
+        if (matchingTranslation && matchingTranslation.translation !== undefined) {
+          return { ...existingLine, translation: matchingTranslation.translation };
+        }
+        return existingLine;
+      });
+
+      await db.songs.update(song.id, { lyrics: updatedLyrics });
+      set({ lyrics: updatedLyrics });
     },
   }))
 );

@@ -66,6 +66,12 @@ const ToolPanel: React.FC = () => {
             >
               {t('toolPanel.editFullLyricsButton')}
             </button>
+            <button
+              className="w-full text-left p-2 rounded-md bg-gray-700 hover:bg-gray-600 transition-colors"
+              onClick={() => setActivePanel('LYRIC_TRANSLATION_PANEL')}
+            >
+              {t('toolPanel.lyricTranslationButton')}
+            </button>
           </div>
         </div>
       </div>

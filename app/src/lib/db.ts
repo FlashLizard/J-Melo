@@ -39,6 +39,11 @@ export interface Settings {
   defaultCardTemplateId?: number;
   showReadings: boolean; // New setting for hiragana display
   showTranslations: boolean; // New setting for translation display
+  translationLLMApiKey?: string | null; // New: API Key for translation
+  translationLLMApiUrl?: string | null; // New: API URL for translation
+  translationLLMModelType?: string | null; // New: Model Type for translation
+  targetTranslationLanguage: string; // New: Target language for translation, e.g., 'en', 'zh', 'ja'
+  backendUrl: string; // New: Backend URL
 }
 
 export interface PromptTemplate {
@@ -132,6 +137,36 @@ class JeloDB extends Dexie {
       await tx.table('settings').toCollection().modify(setting => {
         if (setting.showReadings === undefined) setting.showReadings = true;
         if (setting.showTranslations === undefined) setting.showTranslations = true;
+      });
+    });
+    this.version(12).stores({
+      settings: 'id, openaiApiKey, llmApiUrl, llmModelType, aiResponseLanguage, uiLanguage, lyricFixLLMApiKey, lyricFixLLMModelType, lyricFixLLMApiUrl, defaultPromptTemplateId, defaultCardTemplateId, showReadings, showTranslations, translationLLMApiKey, translationLLMApiUrl, translationLLMModelType, targetTranslationLanguage',
+    }).upgrade(async (tx) => {
+      await tx.table('settings').toCollection().modify(setting => {
+        if (setting.translationLLMApiKey === undefined) setting.translationLLMApiKey = null;
+        if (setting.translationLLMApiUrl === undefined) setting.translationLLMApiUrl = null;
+        if (setting.translationLLMModelType === undefined) setting.translationLLMModelType = null;
+        if (setting.targetTranslationLanguage === undefined) setting.targetTranslationLanguage = 'en'; // Default to English
+      });
+    });
+    this.version(13).stores({}).upgrade(async (tx) => { // New version for lyrics translation field
+      // Ensure 'lyrics' has 'translation' field for existing entries
+      await tx.table('songs').toCollection().modify(song => {
+        if (song.lyrics && Array.isArray(song.lyrics)) {
+          song.lyrics = song.lyrics.map(line => {
+            if (line.translation === undefined) {
+              return { ...line, translation: undefined };
+            }
+            return line;
+          });
+        }
+      });
+    });
+    this.version(14).stores({
+      settings: 'id, openaiApiKey, llmApiUrl, llmModelType, aiResponseLanguage, uiLanguage, lyricFixLLMApiKey, lyricFixLLMModelType, lyricFixLLMApiUrl, defaultPromptTemplateId, defaultCardTemplateId, showReadings, showTranslations, translationLLMApiKey, translationLLMApiUrl, translationLLMModelType, targetTranslationLanguage, backendUrl',
+    }).upgrade(async (tx) => {
+      await tx.table('settings').toCollection().modify(setting => {
+        if (setting.backendUrl === undefined) setting.backendUrl = 'http://localhost:8000'; // Default value
       });
     });
   }

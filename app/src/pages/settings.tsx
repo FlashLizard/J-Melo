@@ -42,6 +42,23 @@ const SettingsPage: React.FC = () => {
                 </div>
             </div>
 
+            {/* Backend Settings Section */}
+            <div className="bg-gray-800 rounded-lg shadow p-6">
+                <h2 className="text-xl font-semibold border-b border-gray-700 pb-3 mb-4">{t('settings.backendSettingsTitle')}</h2>
+                <div>
+                    <label htmlFor="backendUrl" className="block text-sm font-medium text-gray-300">{t('settings.backendUrlLabel')}</label>
+                    <input
+                        type="text"
+                        id="backendUrl"
+                        name="backendUrl"
+                        value={settings.backendUrl || ''}
+                        onChange={handleInputChange}
+                        placeholder="e.g., http://localhost:8000"
+                        className="mt-1 block w-full p-2 rounded bg-gray-700 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                </div>
+            </div>
+
             {/* Cache Management Section */}
             <div className="bg-gray-800 rounded-lg shadow p-6">
                 <h2 className="text-xl font-semibold border-b border-gray-700 pb-3 mb-4">{t('settings.cacheSectionTitle')}</h2>
@@ -102,6 +119,37 @@ const SettingsPage: React.FC = () => {
                 </div>
             </div>
 
+            {/* Translation LLM API Section */}
+            <div className="bg-gray-800 rounded-lg shadow p-6">
+                <h2 className="text-xl font-semibold border-b border-gray-700 pb-3 mb-4">{t('settings.translationLlmSectionTitle')}</h2>
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300">{t('settings.targetTranslationLanguage')}</label>
+                        <select name="targetTranslationLanguage" value={settings.targetTranslationLanguage || 'en'} onChange={handleInputChange} className="mt-1 block w-full p-2 rounded bg-gray-700 border border-gray-600">
+                            <option value="en">{t('language.english')}</option>
+                            <option value="zh">{t('language.chinese')}</option>
+                            <option value="ja">{t('language.japanese')}</option>
+                            <option value="ko">{t('language.korean')}</option>
+                            <option value="fr">{t('language.french')}</option>
+                            <option value="de">{t('language.german')}</option>
+                            <option value="es">{t('language.spanish')}</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300">{t('settings.apiKey')}</label>
+                        <input type="password" name="translationLLMApiKey" value={settings.translationLLMApiKey || ''} onChange={handleInputChange} className="mt-1 block w-full p-2 rounded bg-gray-700 border border-gray-600" />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300">{t('settings.llmApiUrl')}</label>
+                        <input type="text" name="translationLLMApiUrl" value={settings.translationLLMApiUrl || ''} onChange={handleInputChange} className="mt-1 block w-full p-2 rounded bg-gray-700 border border-gray-600" />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300">{t('settings.llmModelType')}</label>
+                        <input type="text" name="translationLLMModelType" value={settings.translationLLMModelType || ''} onChange={handleInputChange} className="mt-1 block w-full p-2 rounded bg-gray-700 border border-gray-600" />
+                    </div>
+                    <p className="text-xs text-gray-400 mt-2">{t('settings.lyricTranslationApiKeyHint')}</p>
+                </div>
+            </div>
         </div>
       </div>
     </div>

@@ -3,6 +3,17 @@
 # Use an official Python runtime as a parent image
 FROM python:3.11-slim
 
+ARG http_proxy
+ARG https_proxy
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+
+# 设置环境变量（对 RUN 指令生效）
+ENV http_proxy=$http_proxy \
+    https_proxy=$https_proxy \
+    HTTP_PROXY=$HTTP_PROXY \
+    HTTPS_PROXY=$HTTPS_PROXY
+
 # Set the working directory in the container
 WORKDIR /code
 
@@ -16,9 +27,9 @@ COPY ./requirements.txt /code/requirements.txt
 
 # Install any needed packages specified in requirements.txt
 # We install torch separately to ensure compatibility
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu \
-    && pip install --no-cache-dir -r /code/requirements.txt
+RUN pip install --no-cache-dir --upgrade pip 
+RUN pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu 
+RUN pip install --no-cache-dir -r /code/requirements.txt
 
 # Copy the rest of the backend application code
 COPY . /code

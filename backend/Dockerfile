@@ -8,7 +8,7 @@ WORKDIR /code
 
 # Install system dependencies required by whisperx and ffmpeg
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg git \
+    ffmpeg git\
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the requirements file into the container

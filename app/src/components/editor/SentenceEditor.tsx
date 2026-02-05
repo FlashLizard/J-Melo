@@ -32,7 +32,7 @@ const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, onSave, onCancel,
   const timelineRef = useRef<HTMLDivElement>(null);
   const [timelineWidth, setTimelineWidth] = useState(0);
   const [isScrubbing, setIsScrubbing] = useState(false);
-  const animationFrameRef = useRef<number>();
+  const animationFrameRef = useRef<number>(0);
 
   const [editorMode, setEditorMode] = useState<'visual' | 'json'>('visual');
   const [jsonString, setJsonString] = useState('');
@@ -170,7 +170,7 @@ const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, onSave, onCancel,
   const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (addMode) {
       if (!timelineRef.current || (e.target as HTMLElement).closest('.word-block')) return;
-      const rect = timeline.current.getBoundingClientRect();
+      const rect = timelineRef.current.getBoundingClientRect();
       const clickX = e.clientX - rect.left;
       const adjustedClickX = clickX - THUMB_HALF_WIDTH_PX;
       const clickTime = currentLine.startTime + (adjustedClickX / (timelineWidth - THUMB_WIDTH_PX)) * lineDuration;

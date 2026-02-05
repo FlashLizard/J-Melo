@@ -12,8 +12,8 @@ interface Props {
 
 const ProgressHighlighter: React.FC<Props> = ({ surface, startTime, endTime, isActive, isHovered }) => {
   const [width, setWidth] = useState(0);
-  const animationFrameId = useRef<number>();
-  const animationStartTimestamp = useRef<number>();
+  const animationFrameId = useRef<number>(0);
+  const animationStartTimestamp = useRef<number>(0);
 
   useEffect(() => {
     const wordDuration = (endTime - startTime) * 1000; // in milliseconds

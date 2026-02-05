@@ -103,7 +103,6 @@ const useSongStore = create<SongState>()(
           sourceUrl: url,
           lyrics: [],
           createdAt: new Date(),
-          proficiency: 0,
           coverImageData: coverImageBlob,
           is_cached: false, // Initial state in DB
         };

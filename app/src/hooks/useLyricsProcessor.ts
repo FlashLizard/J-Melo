@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import Kuroshiro from 'kuroshiro';
 import KuroshiroManager from '@/lib/kuroshiro';
-import { LyricLine, LyricToken } from '@/lib/mock-data';
+import { LyricLine, LyricToken } from '@/interfaces/lyrics';
 
 export interface WhisperXWord {
   word: string;

@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, RefObject } from 'react';
 import usePlayerStore from '@/stores/usePlayerStore'; // Ensure usePlayerStore is imported
 import { playerStoreActions } from '@/stores/usePlayerStore';
 import cn from 'classnames';
@@ -48,7 +48,7 @@ const MediaDisplay: React.FC<Props> = ({ mediaType, mediaUrl, coverUrl }) => {
 
       {/* --- 视频模式 --- */}
       {mediaType === 'video' && mediaUrl ? (
-        <video {...commonProps} className="w-full h-full object-contain !block" /> // Ensure video is block when visible
+        <video {...commonProps} ref={mediaRef as RefObject<HTMLVideoElement>} className="w-full h-full object-contain !block" /> // Ensure video is block when visible
       ) : (
         /* --- 音频模式：旋转唱片效果 --- */
         <div className="relative flex items-center justify-center w-full h-full bg-gray-900">
@@ -72,7 +72,7 @@ const MediaDisplay: React.FC<Props> = ({ mediaType, mediaUrl, coverUrl }) => {
           
           {/* Audio 标签 (隐形，但负责发声) */}
           {mediaUrl && (
-            <audio {...commonProps} />
+            <audio {...commonProps} ref={mediaRef as RefObject<HTMLAudioElement>} />
           )}
         </div>
       )}

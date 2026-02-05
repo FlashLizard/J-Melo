@@ -159,7 +159,7 @@ const LyricTranslationPanel: React.FC = () => {
 
     try {
       const storedSettings = await db.settings.get(0);
-      const apiKey = storedSettings?.translationLLMApiKey || storedSettings?.llmApiKey;
+      const apiKey = storedSettings?.translationLLMApiKey || storedSettings?.openaiApiKey;
       const apiUrl = storedSettings?.translationLLMApiUrl || storedSettings?.llmApiUrl || 'https://api.openai.com/v1/chat/completions';
       const modelType = storedSettings?.translationLLMModelType || storedSettings?.llmModelType || 'gpt-3.5-turbo';
       const targetLanguage = storedSettings?.targetTranslationLanguage || 'English'; // Use targetTranslationLanguage from settings

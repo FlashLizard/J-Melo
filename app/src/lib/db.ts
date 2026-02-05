@@ -1,7 +1,7 @@
 // src/lib/db.ts
 import Dexie, { Table } from 'dexie';
 import { SongData } from '@/stores/useSongStore';
-import { LyricLine } from './mock-data';
+import { LyricLine } from '../interfaces/lyrics';
 
 export interface SongRecord extends SongData {
   id?: number;

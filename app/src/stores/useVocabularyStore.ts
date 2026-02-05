@@ -56,6 +56,7 @@ interface VocabularyState {
   selectAll: () => void;
   deselectAll: () => void;
   deleteSelected: () => Promise<void>;
+  exportSelectedToAnki: (t: (key: string, options?: { [key: string]: any }) => string) => Promise<void>; // New export action, accepts t
 
   // Viewer Actions
   openViewer: (items: WordRecord[], startIndex: number) => void;
@@ -125,6 +126,47 @@ const useVocabularyStore = create<VocabularyState>()(
           state.selectedIds.clear();
           state.isSelectionMode = false;
         });
+      },
+      exportSelectedToAnki: async (t) => { // Accept t here
+        const { selectedIds, words, songs } = get();
+        if (selectedIds.size === 0) {
+          alert(t("vocabularyPage.noWordsSelectedAlert"));
+          return;
+        }
+
+        const selectedWords = words.filter(word => selectedIds.has(word.id!));
+        const songMap = new Map<number, SongRecord>();
+        songs.forEach(song => songMap.set(song.id!, song));
+
+        const csvRows: string[] = [];
+        csvRows.push(`"Front","Back","Tags"`); // Anki CSV header
+
+        selectedWords.forEach(word => {
+          const song = songMap.get(word.sourceSongId);
+          const songTitleTag = song?.title ? `song:${song.title.replace(/,/g, '')}` : ''; // Remove commas from title for tag
+          
+          // Basic CSV escaping: wrap fields in double quotes, double internal double quotes
+          const escapeCsvField = (field: string) => `"${field.replace(/"/g, '""')}"`;
+
+          const front = escapeCsvField(word.cardFront);
+          const back = escapeCsvField(word.cardBack);
+          const tags = escapeCsvField(songTitleTag);
+          
+          csvRows.push(`${front},${back},${tags}`);
+        });
+
+        const csvContent = csvRows.join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', 'anki_vocabulary.csv');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        alert(t('vocabularyPage.exportSuccessAlert', { count: selectedIds.size }));
       },
       openViewer: (items, startIndex) => set({ isViewerOpen: true, viewerItems: items, currentViewerIndex: startIndex }),
       closeViewer: () => set({ isViewerOpen: false, viewerItems: [], currentViewerIndex: 0 }),

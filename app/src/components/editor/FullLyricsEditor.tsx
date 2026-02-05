@@ -2,12 +2,14 @@
 import React, { useState, useEffect } from 'react';
 import useUIPanelStore from '@/stores/useUIPanelStore';
 import useSongStore from '@/stores/useSongStore';
+import useMobileViewStore from '@/stores/useMobileViewStore'; // Import useMobileViewStore
 import useTranslation from '@/hooks/useTranslation'; // Import useTranslation
 import { LyricLine } from '@/interfaces/lyrics';
 
 const FullLyricsEditor: React.FC = () => {
   const { lyrics, setPreviewLyrics, clearPreviewLyrics, commitPreviewLyrics } = useSongStore();
   const { setActivePanel } = useUIPanelStore();
+  const { setActiveView } = useMobileViewStore(); // Get setActiveView
   const { t } = useTranslation(); // Initialize useTranslation
   
   const [jsonString, setJsonString] = useState('');
@@ -39,11 +41,13 @@ const FullLyricsEditor: React.FC = () => {
     commitPreviewLyrics();
     alert(t('fullLyricsEditor.lyricsSavedSuccess'));
     setActivePanel('TOOL_PANEL');
+    setActiveView('lyrics'); // Navigate to lyrics view on mobile after save
   };
 
   const handleCancel = () => {
     clearPreviewLyrics();
     setActivePanel('TOOL_PANEL');
+    setActiveView('lyrics'); // Navigate to lyrics view on mobile after cancel
   };
 
   return (

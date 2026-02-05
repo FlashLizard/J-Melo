@@ -19,6 +19,7 @@ interface Props {
 
 const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
   const activeLineRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null); // New ref for the scrollable lyrics container
   const [hoveredToken, setHoveredToken] = useState<LyricToken | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; token: LyricToken; line: LyricLine } | null>(null);
   const { setActivePanel } = useUIPanelStore();
@@ -28,10 +29,19 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
   const { settings, toggleShowReadings, toggleShowTranslations } = useSettingsStore();
 
   useEffect(() => {
-    if (activeLineRef.current) {
-      activeLineRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Scroll only if the lyrics container is mounted
+    if (activeLineRef.current && scrollContainerRef.current) {
+      // Calculate position relative to the scroll container
+      const activeLineTop = activeLineRef.current.offsetTop;
+      const activeLineHeight = activeLineRef.current.offsetHeight;
+      const containerScrollTop = scrollContainerRef.current.scrollTop;
+      const containerHeight = scrollContainerRef.current.offsetHeight;
+
+      // Center the active line in the view
+      const scrollTo = activeLineTop - containerHeight / 2 + activeLineHeight / 2;
+      scrollContainerRef.current.scrollTo({ top: scrollTo, behavior: 'smooth' });
     }
-  }, [activeLineRef, currentTime]);
+  }, [activeLineRef, currentTime, lyrics]); // Added lyrics to dependency array to re-evaluate on lyrics change
 
   const handleContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (contextMenu) {
@@ -40,6 +50,13 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
     }
 
     const target = e.target as HTMLElement;
+    // Check if the click occurred on one of the toggle buttons or its children
+    const isToggleButton = target.closest('.lyric-toggle-button');
+    if (isToggleButton) {
+      e.stopPropagation(); // Prevent toggling play/pause if a button was clicked
+      return;
+    }
+
     const wordSpan = target.closest('.word-span');
 
     if (!wordSpan) {
@@ -79,12 +96,13 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
   ];
 
   return (
-    <div className="h-full overflow-y-auto overflow-x-hidden p-4 bg-gray-800 text-white relative" onClick={handleContainerClick}>
-        <div className="absolute top-4 right-4 flex space-x-2 z-10">
+    <div className="h-full bg-gray-800 text-white relative flex flex-col" onClick={handleContainerClick}>
+      {/* Fixed button bar */}
+      <div className="absolute top-0 right-0 p-4 flex space-x-2 z-20 bg-gray-800 w-full justify-end"> {/* Added w-full and justify-end */}
             <button
                 onClick={(e) => { e.stopPropagation(); toggleShowReadings(); }}
                 className={cn(
-                    "p-2 rounded-full text-white", // Added text-white for clarity
+                    "lyric-toggle-button p-2 rounded-full text-white", // Added lyric-toggle-button class
                     settings.showReadings ? "bg-green-600 hover:bg-green-500" : "bg-gray-600 hover:bg-gray-500"
                 )}
                 title={settings.showReadings ? "Hide Readings" : "Show Readings"}
@@ -98,7 +116,7 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
             <button
                 onClick={(e) => { e.stopPropagation(); toggleShowTranslations(); }}
                 className={cn(
-                    "p-2 rounded-full text-white", // Added text-white for clarity
+                    "lyric-toggle-button p-2 rounded-full text-white", // Added lyric-toggle-button class
                     settings.showTranslations ? "bg-green-600 hover:bg-green-500" : "bg-gray-600 hover:bg-gray-500"
                 )}
                 title={settings.showTranslations ? "Hide Translations" : "Show Translations"}
@@ -110,59 +128,62 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
             </button>
         </div>
 
-      {lyrics.map((line) => {
-        const isLineActive = currentTime >= line.startTime && currentTime < line.endTime;
-        return (
-          <div
-            key={line.id}
-            ref={isLineActive ? activeLineRef : null}
-            className={cn('mb-6 transition-all duration-300 text-center', { 'opacity-50': !isLineActive, 'scale-105': isLineActive })}
-          >
-            <p className="text-2xl font-semibold tracking-wider mb-2">
-              {line.tokens.map((token, index) => {
-                const isTokenActive = isLineActive && currentTime >= token.startTime && currentTime < token.endTime;
-                const hasTokenPassed = isLineActive && currentTime >= token.endTime;
-                const isHovered = hoveredToken === token;
+      {/* Scrollable lyrics content */}
+      <div ref={scrollContainerRef} className="flex-grow overflow-y-auto overflow-x-hidden pt-16 pb-4"> {/* Added pt-16 to offset fixed buttons */}
+        {lyrics.map((line) => {
+          const isLineActive = currentTime >= line.startTime && currentTime < line.endTime;
+          return (
+            <div
+              key={line.id}
+              ref={isLineActive ? activeLineRef : null}
+              className={cn('mb-6 transition-all duration-300 text-center', { 'opacity-50': !isLineActive, 'scale-105': isLineActive })}
+            >
+              <p className="text-2xl font-semibold tracking-wider mb-2">
+                {line.tokens.map((token, index) => {
+                  const isTokenActive = isLineActive && currentTime >= token.startTime && currentTime < token.endTime;
+                  const hasTokenPassed = isLineActive && currentTime >= token.endTime;
+                  const isHovered = hoveredToken === token;
 
-                return (
-                  <span
-                    key={`${token.surface}-${token.startTime}-${index}`}
-                    className="word-span inline-block align-bottom mr-1 cursor-pointer"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      playerStoreActions.seek(token.startTime);
-                    }}
-                    onMouseEnter={() => setHoveredToken(token)}
-                    onMouseLeave={() => setHoveredToken(null)}
-                    onContextMenu={(e) => handleContextMenu(e, token, line)}
-                  >
-                    {settings.showReadings && <span className="text-xs text-gray-400">{token.reading}</span>}
-                    
-                    {isTokenActive ? (
-                      <ProgressHighlighter 
-                        surface={token.surface}
-                        startTime={token.startTime}
-                        endTime={token.endTime}
-                        isActive={isTokenActive}
-                        isHovered={isHovered}
-                      />
-                    ) : (
-                      <span className={cn('block text-lg', {
-                        'text-green-400': hasTokenPassed && !isHovered,
-                        'text-yellow-300': isHovered,
-                        'text-white': !hasTokenPassed && !isHovered,
-                      })}>
-                        {token.surface}
-                      </span>
-                    )}
-                  </span>
-                );
-              })}
-            </p>
-            {settings.showTranslations && <p className="text-sm text-gray-300">{line.translation}</p>}
-          </div>
-        );
-      })}
+                  return (
+                    <span
+                      key={`${token.surface}-${token.startTime}-${index}`}
+                      className="word-span inline-block align-bottom mr-1 cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        playerStoreActions.seek(token.startTime);
+                      }}
+                      onMouseEnter={() => setHoveredToken(token)}
+                      onMouseLeave={() => setHoveredToken(null)}
+                      onContextMenu={(e) => handleContextMenu(e, token, line)}
+                    >
+                      {settings.showReadings && <span className="text-xs text-gray-400">{token.reading}</span>}
+                      
+                      {isTokenActive ? (
+                        <ProgressHighlighter 
+                          surface={token.surface}
+                          startTime={token.startTime}
+                          endTime={token.endTime}
+                          isActive={isTokenActive}
+                          isHovered={isHovered}
+                        />
+                      ) : (
+                        <span className={cn('block text-lg', {
+                          'text-green-400': hasTokenPassed && !isHovered,
+                          'text-yellow-300': isHovered,
+                          'text-white': !hasTokenPassed && !isHovered,
+                        })}>
+                          {token.surface}
+                        </span>
+                      )}
+                    </span>
+                  );
+                })}
+              </p>
+              {settings.showTranslations && <p className="text-sm text-gray-300">{line.translation}</p>}
+            </div>
+          );
+        })}
+      </div>
       {contextMenu && (
         <ContextMenu
           x={contextMenu.x}

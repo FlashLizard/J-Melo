@@ -1,6 +1,7 @@
 // src/components/tutor/AILyricCorrector.tsx
 import React, { useState } from 'react';
 import useUIPanelStore from '@/stores/useUIPanelStore';
+import useMobileViewStore from '@/stores/useMobileViewStore'; // Import useMobileViewStore
 import { db } from '@/lib/db';
 import useSongStore from '@/stores/useSongStore'; // Changed from songStoreActions
 import { LyricLine } from '@/interfaces/lyrics';
@@ -66,6 +67,7 @@ const DEFAULT_PROMPT_TEMPLATE = `You are an expert in audio transcription and Ja
 const AILyricCorrector: React.FC = () => {
   const { lyrics, setProcessedLyrics } = useSongStore(); // Get setProcessedLyrics directly
   const { t } = useTranslation(); // Initialize useTranslation
+  const { setActiveView } = useMobileViewStore(); // Get setActiveView
 
   const [correctLyrics, setCorrectLyrics] = useState('');
   const [promptTemplate, setPromptTemplate] = useState(DEFAULT_PROMPT_TEMPLATE); // Initialize with hardcoded string
@@ -163,6 +165,7 @@ const AILyricCorrector: React.FC = () => {
     }
     setPreviewData(null);
     setActivePanel('TOOL_PANEL');
+    setActiveView('lyrics'); // Navigate to lyrics view on mobile after confirm
   };
   
   return (
@@ -240,7 +243,7 @@ const AILyricCorrector: React.FC = () => {
         <div className="mt-4 grid grid-cols-3 gap-2">
           <button
             className="px-4 py-2 bg-gray-600 rounded-lg hover:bg-gray-500 disabled:opacity-50"
-            onClick={() => setActivePanel('TOOL_PANEL')}
+            onClick={() => { setActivePanel('TOOL_PANEL'); setActiveView('lyrics'); }}
             disabled={isLoading}
           >
             {t('aiLyricCorrector.backButton')}

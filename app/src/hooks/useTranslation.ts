@@ -4,6 +4,7 @@ import useSettingsStore from '@/stores/useSettingsStore';
 
 // Define a type for your translation files
 type Translations = Record<string, string>;
+type InterpolationOptions = { [key: string]: any };
 
 const useTranslation = () => {
   const { settings, loadSettings } = useSettingsStore();
@@ -48,8 +49,19 @@ const useTranslation = () => {
     fetchTranslations();
   }, [settings.uiLanguage]); // Re-fetch when uiLanguage changes
 
-  const t = useCallback((key: string): string => {
-    return translations[key] || key; // Return key if translation not found
+  const t = useCallback((key: string, options?: InterpolationOptions): string => {
+    let translatedString = translations[key] || key; // Return key if translation not found
+
+    if (options) {
+      for (const optKey in options) {
+        if (Object.prototype.hasOwnProperty.call(options, optKey)) {
+          // Replace {{optKey}} with the corresponding value from options
+          translatedString = translatedString.replace(new RegExp(`{{${optKey}}}`, 'g'), options[optKey]);
+        }
+      }
+    }
+
+    return translatedString;
   }, [translations]);
 
   return { t, i18nLoading: loading, currentLanguage: settings.uiLanguage || 'en' };

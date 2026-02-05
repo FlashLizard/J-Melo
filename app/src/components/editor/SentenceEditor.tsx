@@ -4,6 +4,7 @@ import { LyricLine, LyricToken } from '@/interfaces/lyrics';
 import Draggable from 'react-draggable';
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import useTranslation from '@/hooks/useTranslation'; // Import useTranslation
+import useMobileViewStore from '@/stores/useMobileViewStore'; // Import useMobileViewStore
 
 const MemoizedResizableWordBlock = React.memo(ResizableWordBlock);
 const MemoizedEditableWordRow = React.memo(EditableWordRow);
@@ -17,6 +18,7 @@ interface SentenceEditorProps {
 
 const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, onSave, onCancel, relativeAudioUrl }) => {
   const { t } = useTranslation(); // Initialize useTranslation
+  const { setActiveView } = useMobileViewStore(); // Get setActiveView
   const songAudioUrl = relativeAudioUrl;
   const [currentLine, setCurrentLine] = useState<LyricLine>(line);
   const [addMode, setAddMode] = useState(false);
@@ -168,7 +170,7 @@ const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, onSave, onCancel,
   const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (addMode) {
       if (!timelineRef.current || (e.target as HTMLElement).closest('.word-block')) return;
-      const rect = timelineRef.current.getBoundingClientRect();
+      const rect = timeline.current.getBoundingClientRect();
       const clickX = e.clientX - rect.left;
       const adjustedClickX = clickX - THUMB_HALF_WIDTH_PX;
       const clickTime = currentLine.startTime + (adjustedClickX / (timelineWidth - THUMB_WIDTH_PX)) * lineDuration;
@@ -215,8 +217,14 @@ const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, onSave, onCancel,
       return;
     }
     onSave(currentLine);
+    setActiveView('lyrics'); // Navigate to lyrics view on mobile after save
   };
   
+  const handleCancelClick = () => {
+    onCancel();
+    setActiveView('lyrics'); // Navigate to lyrics view on mobile after cancel
+  };
+
   return (
     <div className="bg-gray-800 p-4 rounded-lg h-full flex flex-col">
       <div className="flex justify-between items-center mb-4">
@@ -253,7 +261,7 @@ const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, onSave, onCancel,
       </div>
       <div className="mt-4 flex justify-end space-x-2">
         <button onClick={handleSaveClick} className="px-4 py-2 bg-green-600 rounded-lg hover:bg-green-500 text-white disabled:opacity-50" disabled={jsonError !== null}>{t('sentenceEditor.saveButton')}</button>
-        <button onClick={onCancel} className="px-4 py-2 bg-gray-600 rounded-lg hover:bg-gray-500 text-white">{t('sentenceEditor.cancelButton')}</button>
+        <button onClick={handleCancelClick} className="px-4 py-2 bg-gray-600 rounded-lg hover:bg-gray-500 text-white">{t('sentenceEditor.cancelButton')}</button>
       </div>
       <audio ref={audioRef} src={songAudioUrl} preload="auto" />
     </div>

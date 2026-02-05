@@ -5,6 +5,7 @@ import useUIPanelStore from '@/stores/useUIPanelStore';
 import useTemplateStore from '@/stores/useTemplateStore';
 import useSettingsStore from '@/stores/useSettingsStore';
 import useSongStore from '@/stores/useSongStore';
+import useMobileViewStore from '@/stores/useMobileViewStore'; // Import useMobileViewStore
 import useTranslation from '@/hooks/useTranslation'; // Import useTranslation
 import { LyricToken } from '@/interfaces/lyrics';
 import cn from 'classnames';
@@ -28,6 +29,7 @@ const Modal: React.FC<{ title: string; content: string; onClose: () => void; t: 
 const AIPanel: React.FC = () => {
   const { sentence, tokens, selectedTokens, explanation, isLoading, getExplanation, setSelectedTokens, clearTutor, setExplanation } = useTutorStore();
   const { setActivePanel } = useUIPanelStore();
+  const { setActiveView } = useMobileViewStore(); // Get setActiveView
   const { promptTemplates, loadPromptTemplates, addPromptTemplate } = useTemplateStore();
   const { settings, updateSetting, loadSettings } = useSettingsStore();
   const song = useSongStore((state) => state.song);
@@ -75,6 +77,7 @@ const AIPanel: React.FC = () => {
   const handleBack = () => {
     clearTutor();
     setActivePanel('TOOL_PANEL');
+    setActiveView('lyrics'); // Navigate to lyrics view on mobile
   };
 
   const handleTemplateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -184,7 +187,7 @@ const AIPanel: React.FC = () => {
           <button 
             className="px-4 py-2 bg-purple-600 rounded-lg hover:bg-purple-500 w-full disabled:bg-gray-500" 
             onClick={() => setIsVocabEditorOpen(true)}
-            disabled={!selectedWord || !explanation}
+            disabled={!selectedWord /* Removed '|| !explanation' */}
           >
             {t('aiPanel.saveToVocabularyButton')}
           </button>

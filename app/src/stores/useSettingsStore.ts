@@ -36,13 +36,13 @@ const useSettingsStore = create<SettingsState>()(
         const storedSettings = await db.settings.get(0);
         let configBackendUrl = null;
         try {
-          const response = await fetch('/config.json');
+          const response = await fetch('/config.json.example');
           if (response.ok) {
             const config = await response.json();
             configBackendUrl = config.backendUrl;
           }
         } catch (error) {
-          console.warn("Failed to load config.json, using default backend URL.", error);
+          console.warn("Failed to load config.json.example, using default backend URL.", error);
         }
         set(state => {
           // Merge stored settings with defaults, then apply configBackendUrl if no stored value

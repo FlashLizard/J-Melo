@@ -8,3 +8,4 @@ torch
 torchaudio
 transformers
 ffmpeg-python
+httpx

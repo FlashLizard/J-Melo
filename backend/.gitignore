@@ -29,3 +29,4 @@ uvicorn.log
 
 # Media Cache (important for media files downloaded by yt-dlp)
 media_cache/
+temp_data/

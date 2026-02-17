@@ -3,6 +3,9 @@ import json
 import subprocess
 import torch
 import httpx
+import asyncio
+from datetime import datetime, timedelta
+import secrets
 from fastapi import FastAPI, HTTPException, Response, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -16,13 +19,18 @@ print(f"Using device: {DEVICE}")
 
 CACHE_DIR = "media_cache"
 os.makedirs(CACHE_DIR, exist_ok=True)
+TEMP_DATA_DIR = "temp_data"
+os.makedirs(TEMP_DATA_DIR, exist_ok=True)
 
 app = FastAPI()
+
+# In-memory storage for simplicity. For production, consider a more robust solution like Redis.
+token_storage = {}
 
 # --- Global Models ---
 print("Loading Whisper model...")
 try:
-    model_size = "medium"
+    model_size = "tiny"
     model = WhisperModel(model_size, device=DEVICE, compute_type="int8")
 except Exception as e:
     import traceback
@@ -31,7 +39,12 @@ except Exception as e:
     model = None
 
 # --- Pydantic Models ---
-# Removed MediaFetchRequest as it's no longer needed for GET method
+class UserData(BaseModel):
+    songs: list
+    words: list
+    settings: dict
+    promptTemplates: list
+    cardTemplates: list
 
 class MediaFetchResponse(BaseModel):
     media_type: str
@@ -173,6 +186,70 @@ def format_whisper_output(segments):
         }
         formatted_segments.append(formatted_segment)
     return {"segments": formatted_segments}
+
+# --- Data Backup & Restore Endpoints ---
+
+@app.post("/api/export")
+async def export_data(data: UserData, expire_hours: int = Query(24, ge=1, le=24)):
+    token = secrets.token_hex(16)
+    expiry_time = datetime.utcnow() + timedelta(hours=expire_hours)
+    file_path = os.path.join(TEMP_DATA_DIR, f"{token}.json")
+
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(data.dict(), f, ensure_ascii=False, indent=4)
+    
+    token_storage[token] = {
+        "expiry_time": expiry_time,
+        "file_path": file_path
+    }
+    
+    return {"token": token, "expires_at": expiry_time.isoformat()}
+
+@app.get("/api/import")
+async def import_data(token: str = Query(...)):
+    if token not in token_storage:
+        raise HTTPException(status_code=404, detail="Token not found.")
+
+    token_info = token_storage[token]
+
+    if datetime.utcnow() > token_info["expiry_time"]:
+        # Clean up expired token and file immediately
+        if os.path.exists(token_info["file_path"]):
+            os.remove(token_info["file_path"])
+        del token_storage[token]
+        raise HTTPException(status_code=410, detail="Token has expired.")
+
+    file_path = token_info["file_path"]
+    if not os.path.exists(file_path):
+        del token_storage[token] # Clean up inconsistent record
+        raise HTTPException(status_code=404, detail="Data file not found.")
+
+    with open(file_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    
+    # Clean up after successful retrieval
+    os.remove(file_path)
+    del token_storage[token]
+
+    return data
+
+async def cleanup_expired_tokens():
+    while True:
+        await asyncio.sleep(60 * 60) # Run every hour
+        now = datetime.utcnow()
+        expired_tokens = [
+            token for token, info in token_storage.items() 
+            if now > info["expiry_time"]
+        ]
+        for token in expired_tokens:
+            info = token_storage.pop(token, None)
+            if info and os.path.exists(info["file_path"]):
+                print(f"Cleaning up expired data for token: {token}")
+                os.remove(info["file_path"])
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(cleanup_expired_tokens())
 
 if __name__ == "__main__":
     import uvicorn

@@ -9,7 +9,8 @@ type InterpolationOptions = { [key: string]: any };
 const useTranslation = () => {
   const { settings, loadSettings } = useSettingsStore();
   const [translations, setTranslations] = useState<Translations>({});
-  const [loading, setLoading] = useState(true);
+  const [isFetching, setIsFetching] = useState(true); // Renamed from loading to isFetching
+  const [isInitialized, setIsInitialized] = useState(false); // New state for initial load
 
   // Load settings on mount if not already loaded
   useEffect(() => {
@@ -20,7 +21,7 @@ const useTranslation = () => {
 
   useEffect(() => {
     const fetchTranslations = async () => {
-      setLoading(true);
+      setIsFetching(true);
       const lang = settings.uiLanguage || 'en'; // Default to English if not set
       try {
         const response = await fetch(`/i18n/${lang}.json`);
@@ -42,7 +43,8 @@ const useTranslation = () => {
             setTranslations({}); // Empty translations if all else fails
         }
       } finally {
-        setLoading(false);
+        setIsFetching(false);
+        setIsInitialized(true); // Translations are now initialized
       }
     };
 
@@ -64,7 +66,7 @@ const useTranslation = () => {
     return translatedString;
   }, [translations]);
 
-  return { t, i18nLoading: loading, currentLanguage: settings.uiLanguage || 'en' };
+  return { t, i18nLoading: isFetching, i18nInitialized: isInitialized, currentLanguage: settings.uiLanguage || 'en' };
 };
 
 export default useTranslation;

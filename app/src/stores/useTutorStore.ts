@@ -19,7 +19,7 @@ interface TutorState {
   error: string | null;
 
   // Actions
-  startExplanation: (line: LyricLine, token: LyricToken) => void;
+  startExplanation: (line: LyricLine, token?: LyricToken) => void;
   setSelectedTokens: (tokens: LyricToken[]) => void;
   getExplanation: (prompt: string) => Promise<void>;
   setExplanation: (explanation: string) => void;
@@ -41,7 +41,7 @@ const useTutorStore = create<TutorState>()(
         set({
           sentence: line.text,
           tokens: line.tokens,
-          selectedTokens: [token],
+          selectedTokens: token ? [token] : [], // Default to empty array if no token
           explanation: null,
           isLoading: false,
           error: null,

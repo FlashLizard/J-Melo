@@ -52,16 +52,15 @@ const MediaDisplay: React.FC<Props> = ({ mediaType, mediaUrl, coverUrl }) => {
       ) : (
         /* --- 音频模式：旋转唱片效果 --- */
         <div className="relative flex items-center justify-center w-full h-full bg-gray-900">
-          <div className="relative w-48 h-48 sm:w-64 sm:h-64 md:w-80 md:h-80 lg:w-96 lg:h-96 rounded-full overflow-hidden shadow-lg flex items-center justify-center bg-gray-700">
+          <div className="relative w-[85vw] h-[85vw] max-w-[450px] max-h-[450px] sm:w-64 sm:h-64 md:w-80 md:h-80 lg:w-96 lg:h-96 rounded-full overflow-hidden shadow-lg flex items-center justify-center bg-gray-700">
             {coverUrl && (
               <img 
                 src={coverUrl} 
                 alt="Album Cover" 
-                className={cn(
-                  "w-full h-full object-cover rounded-full",
-                  { 'animate-spin-slow': isPlaying } // Apply rotation based on isPlaying
-                )}
-                style={{ animationDuration: '10s' }} // Adjust speed if needed
+                className="w-full h-full object-cover rounded-full"
+                style={{ 
+                    animation: isPlaying ? 'rotate 10s linear infinite' : 'none' 
+                }}
               />
             )}
             {/* Vinyl record center hole */}

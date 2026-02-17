@@ -53,10 +53,12 @@ const Reviewer: React.FC = () => {
             {t('reviewer.showBackButton')}
           </button>
         ) : (
-          <div className="grid grid-cols-4 gap-2 w-full max-w-2xl">
+          <div className="grid grid-cols-6 gap-2 w-full max-w-2xl">
             <button onClick={() => handleProficiencyUpdate(-10)} className="p-3 bg-red-600 rounded-lg hover:bg-red-500">{t('reviewer.lowestButton')}</button>
+            <button onClick={() => handleProficiencyUpdate(-5)} className="p-3 bg-red-500 rounded-lg hover:bg-red-400">-5</button>
             <button onClick={() => handleProficiencyUpdate(-1)} className="p-3 bg-orange-600 rounded-lg hover:bg-orange-500">-1</button>
             <button onClick={() => handleProficiencyUpdate(1)} className="p-3 bg-green-600 rounded-lg hover:bg-green-500">+1</button>
+            <button onClick={() => handleProficiencyUpdate(5)} className="p-3 bg-green-500 rounded-lg hover:bg-green-400">+5</button>
             <button onClick={() => handleProficiencyUpdate(10)} className="p-3 bg-sky-600 rounded-lg hover:bg-sky-500">{t('reviewer.highestButton')}</button>
           </div>
         )}

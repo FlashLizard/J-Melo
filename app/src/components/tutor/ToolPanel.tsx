@@ -2,12 +2,28 @@
 import React from 'react';
 import useSongStore from '@/stores/useSongStore';
 import useUIPanelStore from '@/stores/useUIPanelStore';
-import useTranslation from '@/hooks/useTranslation'; // Import useTranslation
+import useTranslation from '@/hooks/useTranslation';
+import { useRouter } from 'next/router';
+import useVocabularyStore from '@/stores/useVocabularyStore';
+import { db } from '@/lib/db';
 
 const ToolPanel: React.FC = () => {
   const { song, cacheCurrentSongAudio } = useSongStore();
   const { setActivePanel } = useUIPanelStore();
-  const { t } = useTranslation(); // Initialize useTranslation
+  const { t } = useTranslation();
+  const { startReview } = useVocabularyStore();
+  const router = useRouter();
+
+  const handleReview = async () => {
+    if (!song) return;
+    const words = await db.words.where('sourceSongId').equals(song.id).toArray();
+    if (words.length > 0) {
+        startReview(words);
+        router.push('/vocabulary');
+    } else {
+        alert(t('reviewSetup.noWordsToReviewAlert'));
+    }
+  };
 
   const InfoRow: React.FC<{ label: string; value?: string | null }> = ({ label, value }) => (
     <div className="flex justify-between text-sm mb-2">
@@ -48,11 +64,18 @@ const ToolPanel: React.FC = () => {
           <h3 className="text-lg font-semibold border-b border-gray-700 pb-2 mb-3">{t('toolPanel.toolsSectionTitle')}</h3>
           <div className="space-y-2">
             <button 
-              onClick={cacheCurrentSongAudio}
-              disabled={!song || song.is_cached}
-              className="w-full text-left p-2 rounded-md bg-gray-700 hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleReview}
+                disabled={!song}
+                className="w-full text-left p-2 rounded-md bg-gray-700 hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {song?.is_cached ? t('toolPanel.audioCached') : t('toolPanel.cacheAudioButton')}
+                {t('home.reviewButton')}
+            </button>
+            <button 
+                onClick={cacheCurrentSongAudio}
+                disabled={!song || song.is_cached}
+                className="w-full text-left p-2 rounded-md bg-gray-700 hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                {song?.is_cached ? t('toolPanel.audioCached') : t('toolPanel.cacheAudioButton')}
             </button>
             <button 
               className="w-full text-left p-2 rounded-md bg-gray-700 hover:bg-gray-600 transition-colors"

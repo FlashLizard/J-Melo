@@ -1,5 +1,6 @@
 // src/components/tutor/VocabCardEditor.tsx
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import useTutorStore from '@/stores/useTutorStore';
 import useTemplateStore from '@/stores/useTemplateStore';
 import useSettingsStore from '@/stores/useSettingsStore';
@@ -16,6 +17,7 @@ const VocabCardEditor: React.FC<VocabCardEditorProps> = ({ onClose, t }) => {
   const { cardTemplates, loadCardTemplates, addCardTemplate } = useTemplateStore();
   const { settings, updateSetting } = useSettingsStore();
 
+  const [mounted, setMounted] = useState(false);
   const [frontTemplate, setFrontTemplate] = useState('');
   const [backTemplate, setBackTemplate] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | undefined>();
@@ -26,7 +28,9 @@ const VocabCardEditor: React.FC<VocabCardEditorProps> = ({ onClose, t }) => {
   const boldedSentence = useMemo(() => sentence.replace(selectedWord, `**${selectedWord}**`), [sentence, selectedWord]);
   
   useEffect(() => {
+    setMounted(true);
     loadCardTemplates();
+    return () => setMounted(false);
   }, [loadCardTemplates]);
 
   useEffect(() => {
@@ -89,7 +93,9 @@ const VocabCardEditor: React.FC<VocabCardEditorProps> = ({ onClose, t }) => {
     </div>
   );
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
       <div className="bg-gray-800 text-white rounded-lg p-6 max-w-2xl w-full flex flex-col max-h-[95vh]">
         <h2 className="text-2xl font-bold mb-4">{t('vocabCardEditor.title')}</h2>
@@ -142,7 +148,8 @@ const VocabCardEditor: React.FC<VocabCardEditorProps> = ({ onClose, t }) => {
           <button onClick={handleSaveToVocab} className="px-4 py-2 bg-green-600 rounded-lg hover:bg-green-500">{t('vocabCardEditor.saveCardButton')}</button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

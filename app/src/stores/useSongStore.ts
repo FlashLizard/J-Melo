@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { LyricLine } from '@/interfaces/lyrics';
 import { WhisperXOutput } from '@/hooks/useLyricsProcessor';
-import { db, SongRecord } from '@/lib/db';
+import { db, SongRecord, base64ToBlob } from '@/lib/db';
 import useSettingsStore from './useSettingsStore'; // Import useSettingsStore
 
 export interface SongData {
@@ -27,7 +27,9 @@ interface SongState {
   isLoading: boolean;
   error: string | null;
   
-  fetchSong: (url: string) => Promise<void>;
+  fetchSong: (url: string) => Promise<SongData | undefined>;
+  loadSongById: (id: number) => Promise<void>; // New action to load song by ID
+  fetchAllSongs: () => Promise<SongData[]>; // New action to fetch all songs
   setProcessedLyrics: (lyrics: LyricLine[]) => void;
   updateLyricLine: (updatedLine: LyricLine) => void;
   updateSongInfo: (info: { title: string; artist: string }) => void;
@@ -36,6 +38,8 @@ interface SongState {
   commitPreviewLyrics: () => void;
   cacheCurrentSongAudio: () => Promise<void>;
   updateLyricTranslations: (newTranslatedLyrics: LyricLine[]) => Promise<void>;
+  deleteSongs: (songIds: number[]) => Promise<void>;
+  importSongs: (songsData: any[]) => Promise<void>;
 }
 
 const useSongStore = create<SongState>()(
@@ -66,7 +70,7 @@ const useSongStore = create<SongState>()(
 
             const songForState = { ...existingSong, media_url: mediaUrlForPlayback, cover_url: coverUrlForDisplay, is_cached: existingSong.is_cached };
             set({ song: songForState, lyrics: existingSong.lyrics, isLoading: false });
-            return;
+            return songForState;
         }
 
         const mediaResponse = await fetch(`${BACKEND_URL}/api/media/fetch?url=${encodeURIComponent(url)}`);
@@ -108,10 +112,68 @@ const useSongStore = create<SongState>()(
         };
         const id = await db.songs.add(recordToSave);
         
-        set({ song: { ...songDataWithSource, id }, whisperData: whisperData, isLoading: false });
+        const newlyAddedSong = { ...songDataWithSource, id };
+        set({ song: newlyAddedSong, whisperData: whisperData, isLoading: false });
+        return newlyAddedSong;
 
       } catch (err) {
         set({ error: (err as Error).message, isLoading: false, song: null, lyrics: null });
+        return undefined;
+      }
+    },
+
+    loadSongById: async (id: number) => {
+      const { song } = get();
+      if (song && song.id === id) { // If already loading/loaded the same song, do nothing
+        set({ isLoading: false, error: null }); // Ensure loading state is false if already loaded
+        return;
+      }
+      set({ isLoading: true, error: null, song: null, lyrics: null, whisperData: null });
+      const { settings } = useSettingsStore.getState();
+      const BACKEND_URL = settings.backendUrl;
+
+      try {
+        const existingSong = await db.songs.get(id);
+        if (!existingSong) throw new Error(`Song with ID ${id} not found.`);
+
+        let mediaUrlForPlayback = `${BACKEND_URL}${existingSong.media_url}`;
+        if (existingSong.audioData) {
+          mediaUrlForPlayback = URL.createObjectURL(existingSong.audioData);
+        }
+        let coverUrlForDisplay = existingSong.cover_url;
+        if (existingSong.coverImageData) {
+          coverUrlForDisplay = URL.createObjectURL(existingSong.coverImageData);
+        }
+
+        const songForState = { ...existingSong, media_url: mediaUrlForPlayback, cover_url: coverUrlForDisplay, is_cached: existingSong.is_cached };
+        set({ song: songForState, lyrics: existingSong.lyrics, isLoading: false });
+      } catch (err) {
+        set({ error: (err as Error).message, isLoading: false, song: null, lyrics: null });
+      }
+    },
+
+    fetchAllSongs: async () => {
+      set({ isLoading: true, error: null });
+      const { settings } = useSettingsStore.getState();
+      const BACKEND_URL = settings.backendUrl;
+      try {
+        const allSongs = await db.songs.toArray();
+        const processedSongs = allSongs.map(song => {
+          let mediaUrlForPlayback = `${BACKEND_URL}${song.media_url}`;
+          if (song.audioData) {
+              mediaUrlForPlayback = URL.createObjectURL(song.audioData);
+          }
+          let coverUrlForDisplay = song.cover_url;
+          if(song.coverImageData) {
+              coverUrlForDisplay = URL.createObjectURL(song.coverImageData);
+          }
+          return { ...song, media_url: mediaUrlForPlayback, cover_url: coverUrlForDisplay };
+        });
+        set({ isLoading: false });
+        return processedSongs;
+      } catch (err) {
+        set({ error: (err as Error).message, isLoading: false });
+        return [];
       }
     },
 
@@ -204,6 +266,23 @@ const useSongStore = create<SongState>()(
 
       await db.songs.update(song.id, { lyrics: updatedLyrics });
       set({ lyrics: updatedLyrics });
+    },
+
+    deleteSongs: async (songIds: number[]) => {
+        await db.words.where('sourceSongId').anyOf(songIds).delete();
+        await db.songs.bulkDelete(songIds);
+    },
+
+    importSongs: async (songsData: any[]) => {
+        for (const song of songsData) {
+          const existing = await db.songs.where('sourceUrl').equals(song.sourceUrl).first();
+          if (!existing) {
+            if (song.coverImageData) {
+              song.coverImageData = await base64ToBlob(song.coverImageData);
+            }
+            await db.songs.add(song);
+          }
+        }
     },
   }))
 );

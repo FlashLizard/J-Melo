@@ -3,27 +3,35 @@ import { create } from 'zustand';
 
 type MobileView = 'player' | 'lyrics' | 'tools';
 
+export const MOBILE_VIEWS: MobileView[] = ['player', 'lyrics', 'tools'];
+
 interface MobileViewState {
   activeView: MobileView;
+  dragOffset: number; // Current horizontal displacement in pixels
   setActiveView: (view: MobileView) => void;
+  setDragOffset: (offset: number) => void;
   goToNextView: () => void;
   goToPrevView: () => void;
 }
 
-const views: MobileView[] = ['player', 'lyrics', 'tools'];
-
 const useMobileViewStore = create<MobileViewState>((set) => ({
-  activeView: 'lyrics', // Default to the lyrics view on mobile
-  setActiveView: (view) => set({ activeView: view }),
+  activeView: 'player', // Changed from 'lyrics' to 'player' as default
+  dragOffset: 0,
+  setActiveView: (view) => set({ activeView: view, dragOffset: 0 }),
+  setDragOffset: (offset) => set({ dragOffset: offset }),
   goToNextView: () => set(state => {
-    const currentIndex = views.indexOf(state.activeView);
-    const nextIndex = (currentIndex + 1) % views.length;
-    return { activeView: views[nextIndex] };
+    const currentIndex = MOBILE_VIEWS.indexOf(state.activeView);
+    if (currentIndex < MOBILE_VIEWS.length - 1) {
+        return { activeView: MOBILE_VIEWS[currentIndex + 1], dragOffset: 0 };
+    }
+    return { dragOffset: 0 };
   }),
   goToPrevView: () => set(state => {
-    const currentIndex = views.indexOf(state.activeView);
-    const nextIndex = (currentIndex - 1 + views.length) % views.length;
-    return { activeView: views[nextIndex] };
+    const currentIndex = MOBILE_VIEWS.indexOf(state.activeView);
+    if (currentIndex > 0) {
+        return { activeView: MOBILE_VIEWS[currentIndex - 1], dragOffset: 0 };
+    }
+    return { dragOffset: 0 };
   }),
 }));
 

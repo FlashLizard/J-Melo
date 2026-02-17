@@ -1,5 +1,6 @@
 // src/components/tutor/LyricTranslationPanel.tsx
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import useUIPanelStore from '@/stores/useUIPanelStore';
 import useMobileViewStore from '@/stores/useMobileViewStore';
 import useTranslation from '@/hooks/useTranslation';
@@ -7,25 +8,54 @@ import useSongStore from '@/stores/useSongStore'; // Import useSongStore
 import useSettingsStore from '@/stores/useSettingsStore'; // Import useSettingsStore
 import { db } from '@/lib/db'; // Import db for settings
 import { LyricLine } from '@/interfaces/lyrics'; // Import LyricLine interface
+import { copyToClipboard } from '@/utils/copyToClipboard';
 import cn from 'classnames';
 
 type TranslationMode = 'mapProvided' | 'current';
 
 // Define the Modal component within this file for simplicity, passing t prop
-const Modal: React.FC<{ title: string; content: string; onClose: () => void; t: (key: string) => string; children?: React.ReactNode }> = ({ title, content, onClose, t, children }) => (
-  <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
-    <div className="bg-gray-800 text-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] flex flex-col">
-      <h2 className="text-2xl font-bold mb-4">{title}</h2>
-      <div className="flex-grow overflow-y-auto bg-gray-900 p-4 rounded-md border border-gray-700 mb-4">
-        <pre className="text-sm whitespace-pre-wrap">{content}</pre>
+const Modal: React.FC<{ title: string; content: string; onClose: () => void; t: (key: string) => string; children?: React.ReactNode }> = ({ title, content, onClose, t, children }) => {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
+
+  if (!mounted) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-800 text-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] flex flex-col">
+        <h2 className="text-2xl font-bold mb-4">{title}</h2>
+        <div className="flex-grow overflow-y-auto bg-gray-900 p-4 rounded-md border border-gray-700 mb-4">
+          <pre className="text-sm whitespace-pre-wrap">{content}</pre>
+        </div>
+        {children} {/* Render children here */}
+        <div className="flex justify-end mt-4 gap-2"> {/* Added mt-4 for spacing */}
+          <button 
+              onClick={() => {
+                  copyToClipboard(content).then(() => {
+                      alert(t('settings.tokenCopied'));
+                  }).catch(err => {
+                      console.error('Failed to copy content: ', err);
+                      alert('Failed to copy content.');
+                  });
+              }}
+              className="p-2 bg-gray-600 rounded-lg hover:bg-gray-500"
+              title={t('settings.copyButton')}
+          >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M7 3a1 1 0 011-1h3a1 1 0 011 1v1h1a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h1V3z" />
+                  <path d="M9 2a2 2 0 00-2 2v1h4V4a2 2 0 00-2-2z" />
+              </svg>
+          </button>
+          <button onClick={onClose} className="px-4 py-2 bg-gray-600 rounded-lg hover:bg-gray-500">{t('lyricTranslationPanel.closeButton')}</button>
+        </div>
       </div>
-      {children} {/* Render children here */}
-      <div className="flex justify-end mt-4"> {/* Added mt-4 for spacing */}
-        <button onClick={onClose} className="px-4 py-2 bg-gray-600 rounded-lg hover:bg-gray-500">{t('lyricTranslationPanel.closeButton')}</button>
-      </div>
-    </div>
-  </div>
-);
+    </div>,
+    document.body
+  );
+};
 
 const TranslationPreviewModal: React.FC<{
   translatedLyrics: LyricLine[];

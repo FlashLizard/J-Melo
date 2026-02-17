@@ -1,4 +1,3 @@
-// src/components/lyrics/LyricsDisplay.tsx
 import React, { useRef, useEffect, useState } from 'react';
 import { LyricLine, LyricToken } from '@/interfaces/lyrics';
 import { editorStoreActions } from '@/stores/useEditorStore';
@@ -7,7 +6,8 @@ import { playerStoreActions } from '@/stores/usePlayerStore';
 import usePlayerStore from '@/stores/usePlayerStore';
 import useUIPanelStore from '@/stores/useUIPanelStore';
 import useMobileViewStore from '@/stores/useMobileViewStore';
-import useSettingsStore from '@/stores/useSettingsStore'; // Import useSettingsStore
+import useSettingsStore from '@/stores/useSettingsStore';
+import useTranslation from '@/hooks/useTranslation';
 import ContextMenu, { MenuItem } from '@/components/common/ContextMenu';
 import cn from 'classnames';
 import ProgressHighlighter from './ProgressHighlighter';
@@ -19,62 +19,47 @@ interface Props {
 
 const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
   const activeLineRef = useRef<HTMLDivElement>(null);
-  const scrollContainerRef = useRef<HTMLDivElement>(null); // New ref for the scrollable lyrics container
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [hoveredToken, setHoveredToken] = useState<LyricToken | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; token: LyricToken; line: LyricLine } | null>(null);
+  const [selectedLineId, setSelectedLineId] = useState<string | null>(null); // New state for selected line
   const { setActivePanel } = useUIPanelStore();
   const { startExplanation, clearTutor } = useTutorStore();
   const { isPlaying } = usePlayerStore();
   const { setActiveView } = useMobileViewStore();
   const { settings, toggleShowReadings, toggleShowTranslations } = useSettingsStore();
+  const { t } = useTranslation();
 
   useEffect(() => {
-    // Scroll only if the lyrics container is mounted
     if (activeLineRef.current && scrollContainerRef.current) {
-      // Calculate position relative to the scroll container
       const activeLineTop = activeLineRef.current.offsetTop;
       const activeLineHeight = activeLineRef.current.offsetHeight;
       const containerScrollTop = scrollContainerRef.current.scrollTop;
       const containerHeight = scrollContainerRef.current.offsetHeight;
 
-      // Center the active line in the view
       const scrollTo = activeLineTop - containerHeight / 2 + activeLineHeight / 2;
       scrollContainerRef.current.scrollTo({ top: scrollTo, behavior: 'smooth' });
     }
-  }, [activeLineRef, currentTime, lyrics]); // Added lyrics to dependency array to re-evaluate on lyrics change
+  }, [activeLineRef, currentTime, lyrics]);
 
   const handleContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (contextMenu) {
       closeContextMenu();
       return;
     }
-
-    const target = e.target as HTMLElement;
-    // Check if the click occurred on one of the toggle buttons or its children
-    const isToggleButton = target.closest('.lyric-toggle-button');
-    if (isToggleButton) {
-      e.stopPropagation(); // Prevent toggling play/pause if a button was clicked
-      return;
-    }
-
-    const wordSpan = target.closest('.word-span');
-
-    if (!wordSpan) {
-      if (isPlaying) {
-        playerStoreActions.pause();
-      } else {
-        playerStoreActions.play();
-      }
-    }
   };
 
   const handleContextMenu = (event: React.MouseEvent, token: LyricToken, line: LyricLine) => {
-    event.preventDefault(); // Prevent browser's default context menu
-    event.stopPropagation(); // Stop propagation to container's onClick
+    event.preventDefault();
+    event.stopPropagation();
     setContextMenu({ x: event.clientX, y: event.clientY, token, line });
   };
 
   const closeContextMenu = () => setContextMenu(null);
+  
+  const handleLineSelect = (lineId: string) => {
+    setSelectedLineId(prevId => (prevId === lineId ? null : lineId)); // Toggle selection
+  };
 
   const getMenuItems = (token: LyricToken, line: LyricLine): MenuItem[] => [
     { 
@@ -97,46 +82,17 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
 
   return (
     <div className="h-full bg-gray-800 text-white relative flex flex-col" onClick={handleContainerClick}>
-      {/* Fixed button bar */}
-      <div className="absolute top-0 right-0 p-4 flex space-x-2 z-20 bg-gray-800 w-full justify-end"> {/* Added w-full and justify-end */}
-            <button
-                onClick={(e) => { e.stopPropagation(); toggleShowReadings(); }}
-                className={cn(
-                    "lyric-toggle-button p-2 rounded-full text-white", // Added lyric-toggle-button class
-                    settings.showReadings ? "bg-green-600 hover:bg-green-500" : "bg-gray-600 hover:bg-gray-500"
-                )}
-                title={settings.showReadings ? "Hide Readings" : "Show Readings"}
-            >
-                {/* Eye icon for readings */}
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                    <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
-                    <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
-                </svg>
-            </button>
-            <button
-                onClick={(e) => { e.stopPropagation(); toggleShowTranslations(); }}
-                className={cn(
-                    "lyric-toggle-button p-2 rounded-full text-white", // Added lyric-toggle-button class
-                    settings.showTranslations ? "bg-green-600 hover:bg-green-500" : "bg-gray-600 hover:bg-gray-500"
-                )}
-                title={settings.showTranslations ? "Hide Translations" : "Show Translations"}
-            >
-                {/* Text icon for translations */}
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0113 3.414L16.586 7A2 2 0 0118 8.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm0 3a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1z" clipRule="evenodd" />
-                </svg>
-            </button>
-        </div>
-
       {/* Scrollable lyrics content */}
-      <div ref={scrollContainerRef} className="flex-grow overflow-y-auto overflow-x-hidden pt-16 pb-4"> {/* Added pt-16 to offset fixed buttons */}
+      <div ref={scrollContainerRef} className="flex-grow overflow-y-auto overflow-x-hidden pt-4 pb-16 select-none">
         {lyrics.map((line) => {
           const isLineActive = currentTime >= line.startTime && currentTime < line.endTime;
+          const isLineSelected = selectedLineId === line.id;
           return (
             <div
               key={line.id}
               ref={isLineActive ? activeLineRef : null}
-              className={cn('mb-6 transition-all duration-300 text-center', { 'opacity-50': !isLineActive, 'scale-105': isLineActive })}
+              className={cn('mb-6 transition-all duration-300 text-center p-2 rounded-lg', { 'opacity-50': !isLineActive, 'scale-105': isLineActive, 'bg-gray-700/50': isLineSelected })}
+              onClick={() => handleLineSelect(line.id)}
             >
               <p className="text-2xl font-semibold tracking-wider mb-2">
                 {line.tokens.map((token, index) => {
@@ -180,10 +136,86 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
                 })}
               </p>
               {settings.showTranslations && <p className="text-sm text-gray-300">{line.translation}</p>}
+              
+              {isLineSelected && (
+                <div className="mt-2 flex justify-center gap-2">
+                    <button 
+                        className="line-action-button text-xs bg-blue-600 hover:bg-blue-500 text-white py-1 px-3 rounded-full"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            startExplanation(line, undefined);
+                            setActiveView('tools');
+                        }}
+                    >
+                        {t('lyricsDisplay.explainSentenceButton')}
+                    </button>
+                    <button 
+                        className="line-action-button text-xs bg-purple-600 hover:bg-purple-500 text-white py-1 px-3 rounded-full"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            clearTutor();
+                            editorStoreActions.setEditingLine(line);
+                            setActivePanel('SENTENCE_EDITOR');
+                            setActiveView('tools');
+                        }}
+                    >
+                        {t('lyricsDisplay.editSentenceButton')}
+                    </button>
+                </div>
+              )}
             </div>
           );
         })}
       </div>
+
+      {/* Fixed button bar at the bottom */}
+      <div className="absolute bottom-0 right-0 p-4 flex space-x-2 z-20 bg-gray-800/80 backdrop-blur-sm w-full justify-end">
+          <button
+              onClick={(e) => { 
+                e.stopPropagation(); 
+                if (isPlaying) playerStoreActions.pause();
+                else playerStoreActions.play();
+              }}
+              className="lyric-toggle-button p-2 rounded-full text-white bg-blue-600 hover:bg-blue-500"
+              title={isPlaying ? "Pause" : "Play"}
+          >
+              {isPlaying ? (
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 002 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                </svg>
+              )}
+          </button>
+          <button
+              onClick={(e) => { e.stopPropagation(); toggleShowReadings(); }}
+              className={cn(
+                  "lyric-toggle-button p-2 rounded-full text-white",
+                  settings.showReadings ? "bg-green-600 hover:bg-green-500" : "bg-gray-600 hover:bg-gray-500"
+              )}
+              title={settings.showReadings ? "Hide Readings" : "Show Readings"}
+          >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+                  <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
+              </svg>
+          </button>
+          <button
+              onClick={(e) => { e.stopPropagation(); toggleShowTranslations(); }}
+              className={cn(
+                  "lyric-toggle-button p-2 rounded-full text-white",
+                  settings.showTranslations ? "bg-green-600 hover:bg-green-500" : "bg-gray-600 hover:bg-gray-500"
+              )}
+              title={settings.showTranslations ? "Hide Translations" : "Show Translations"}
+          >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0113 3.414L16.586 7A2 2 0 0118 8.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm0 3a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1z" clipRule="evenodd" />
+              </svg>
+          </button>
+      </div>
+
       {contextMenu && (
         <ContextMenu
           x={contextMenu.x}

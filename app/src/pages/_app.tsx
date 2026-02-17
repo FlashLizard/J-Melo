@@ -1,17 +1,35 @@
 import '@/styles/globals.css';
 import '@/lib/immer'; // Import to enable Immer plugins
 import type { AppProps } from 'next/app';
-import { useEffect } from 'react'; // Import useEffect
-import useSettingsStore from '@/stores/useSettingsStore'; // Import useSettingsStore
+import { useEffect } from 'react';
+import useSettingsStore from '@/stores/useSettingsStore';
+import useTranslation from '@/hooks/useTranslation';
+import useSongStore from '@/stores/useSongStore'; // Import useSongStore
+import LoadingSpinner from '@/components/common/LoadingSpinner'; // Import LoadingSpinner
 
 function MyApp({ Component, pageProps }: AppProps) {
-  const loadSettings = useSettingsStore((state) => state.loadSettings); // Get loadSettings action
+  const loadSettings = useSettingsStore((state) => state.loadSettings);
+  const { i18nInitialized } = useTranslation();
+  const isLoading = useSongStore((state) => state.isLoading); // Get global loading state
 
   useEffect(() => {
-    loadSettings(); // Call loadSettings when the app mounts
-  }, [loadSettings]); // Depend on loadSettings to avoid re-running if it changes (though it shouldn't)
+    loadSettings();
+  }, [loadSettings]);
 
-  return <Component {...pageProps} />;
+  if (!i18nInitialized) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white">
+        Loading...
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {isLoading && <LoadingSpinner />}
+      <Component {...pageProps} />
+    </>
+  );
 }
 
 export default MyApp

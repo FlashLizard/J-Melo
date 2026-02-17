@@ -1,5 +1,6 @@
 // src/components/tutor/AIPanel.tsx
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import useTutorStore from '@/stores/useTutorStore';
 import useUIPanelStore from '@/stores/useUIPanelStore';
 import useTemplateStore from '@/stores/useTemplateStore';
@@ -8,23 +9,52 @@ import useSongStore from '@/stores/useSongStore';
 import useMobileViewStore from '@/stores/useMobileViewStore'; // Import useMobileViewStore
 import useTranslation from '@/hooks/useTranslation'; // Import useTranslation
 import { LyricToken } from '@/interfaces/lyrics';
+import { copyToClipboard } from '@/utils/copyToClipboard'; // Import the utility
 import cn from 'classnames';
 import VocabCardEditor from './VocabCardEditor';
 
 // Define the Modal component within this file for simplicity, passing t prop
-const Modal: React.FC<{ title: string; content: string; onClose: () => void; t: (key: string) => string }> = ({ title, content, onClose, t }) => (
-  <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
-    <div className="bg-gray-800 text-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] flex flex-col">
-      <h2 className="text-2xl font-bold mb-4">{title}</h2>
-      <div className="flex-grow overflow-y-auto bg-gray-900 p-4 rounded-md border border-gray-700 mb-4">
-        <pre className="text-sm whitespace-pre-wrap">{content}</pre>
+const Modal: React.FC<{ title: string; content: string; onClose: () => void; t: (key: string) => string }> = ({ title, content, onClose, t }) => {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
+
+  if (!mounted) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-800 text-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] flex flex-col">
+        <h2 className="text-2xl font-bold mb-4">{title}</h2>
+        <div className="flex-grow overflow-y-auto bg-gray-900 p-4 rounded-md border border-gray-700 mb-4">
+          <pre className="text-sm whitespace-pre-wrap">{content}</pre>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button 
+              onClick={() => {
+                  copyToClipboard(content).then(() => {
+                      alert(t('settings.tokenCopied'));
+                  }).catch(err => {
+                      console.error('Failed to copy content: ', err);
+                      alert('Failed to copy content.');
+                  });
+              }}
+              className="p-2 bg-gray-600 rounded-lg hover:bg-gray-500"
+              title={t('settings.copyButton')}
+          >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M7 3a1 1 0 011-1h3a1 1 0 011 1v1h1a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h1V3z" />
+                  <path d="M9 2a2 2 0 00-2 2v1h4V4a2 2 0 00-2-2z" />
+              </svg>
+          </button>
+          <button onClick={onClose} className="px-4 py-2 bg-gray-600 rounded-lg hover:bg-gray-500">{t('aiPanel.closeButton')}</button>
+        </div>
       </div>
-      <div className="flex justify-end">
-        <button onClick={onClose} className="px-4 py-2 bg-gray-600 rounded-lg hover:bg-gray-500">{t('aiPanel.closeButton')}</button>
-      </div>
-    </div>
-  </div>
-);
+    </div>,
+    document.body
+  );
+};
 
 const AIPanel: React.FC = () => {
   const { sentence, tokens, selectedTokens, explanation, isLoading, getExplanation, setSelectedTokens, clearTutor, setExplanation } = useTutorStore();
@@ -121,7 +151,7 @@ const AIPanel: React.FC = () => {
     getExplanation(finalPrompt);
   };
 
-  const selectedWord = useMemo(() => selectedTokens.map(t => t.surface).join(''), [selectedTokens]);
+  const selectedWord = useMemo(() => (selectedTokens || []).map(t => t.surface).join(''), [selectedTokens]);
 
   return (
     <>
@@ -170,8 +200,8 @@ const AIPanel: React.FC = () => {
         </div>
         
         <div className="flex-grow flex flex-col bg-gray-700 p-3 rounded-lg">
-          <button onClick={handleGetExplanation} className="px-4 py-2 bg-green-600 rounded-lg hover:bg-green-500 w-full mb-3 disabled:bg-gray-500" disabled={isLoading || selectedTokens.length === 0}>
-            {isLoading ? t('aiPanel.thinkingButton') : t('aiPanel.explainWordButton', { word: selectedWord })}
+          <button onClick={handleGetExplanation} className="px-4 py-2 bg-green-600 rounded-lg hover:bg-green-500 w-full mb-3" disabled={isLoading}>
+            {isLoading ? t('aiPanel.thinkingButton') : (selectedWord ? t('aiPanel.explainWordButton', { word: selectedWord }) : t('aiPanel.explainSentenceButton'))}
           </button>
           <textarea 
             rows={8}

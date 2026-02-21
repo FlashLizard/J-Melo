@@ -38,7 +38,7 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
             <h3 className="text-lg font-semibold mb-4">{t('lyricsDisplay.noLyrics.title')}</h3>
             <div className="space-y-3">
                 <button
-                    onClick={() => song && generateTranscriptionPreview(song)}
+                    onClick={() => song && generateTranscriptionPreview(song, t)}
                     className="w-full px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-500"
                 >
                     {t('lyricsDisplay.noLyrics.transcribeButton')}

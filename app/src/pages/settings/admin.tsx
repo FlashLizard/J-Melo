@@ -31,13 +31,16 @@ const AdminPage: React.FC = () => {
   const [cacheInfo, setCacheInfo] = useState<{
     media_cache: CacheInfo;
     token_cache: CacheInfo;
+    transcription_cache: CacheInfo;
     community_db: CacheInfo;
   } | null>(null);
   const [policies, setPolicies] = useState<{
     media_cache_policy: CachePolicy;
     token_cache_policy: CachePolicy;
+    transcription_cache_policy: CachePolicy;
     community_policy: CachePolicy;
   } | null>(null);
+  const [transcriptionTasks, setTranscriptionTasks] = useState<Record<string, any>>({});
   const [communitySongs, setCommunitySongs] = useState<CommunitySongAdmin[]>([]);
   const [isManagingCommunity, setIsManagingCommunity] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -71,23 +74,26 @@ const AdminPage: React.FC = () => {
     if (!backendUrl) return;
     setIsLoading(true);
     try {
-      const [infoResponse, configResponse] = await Promise.all([
+      const [infoResponse, configResponse, tasksResponse] = await Promise.all([
         fetch(`${backendUrl}/api/admin/cache-info`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`${backendUrl}/api/admin/config`, { headers: { 'Authorization': `Bearer ${token}` } })
+        fetch(`${backendUrl}/api/admin/config`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${backendUrl}/api/admin/transcription-tasks`, { headers: { 'Authorization': `Bearer ${token}` } })
       ]);
 
-      if (infoResponse.status === 403 || configResponse.status === 403) {
+      if (infoResponse.status === 403 || configResponse.status === 403 || tasksResponse.status === 403) {
         throw new Error(t('admin.invalidToken'));
       }
-      if (!infoResponse.ok || !configResponse.ok) {
+      if (!infoResponse.ok || !configResponse.ok || !tasksResponse.ok) {
         throw new Error(t('admin.fetchError'));
       }
       
       const infoData = await infoResponse.json();
       const configData = await configResponse.json();
+      const tasksData = await tasksResponse.json();
       
       setCacheInfo(infoData);
       setPolicies(configData);
+      setTranscriptionTasks(tasksData);
     } catch (e) {
       setError((e as Error).message);
       setIsAuthenticated(false);
@@ -102,7 +108,7 @@ const AdminPage: React.FC = () => {
     }
   }, [isAuthenticated, backendUrl]);
 
-  const handleClearCache = async (cacheName: 'media' | 'tokens') => {
+  const handleClearCache = async (cacheName: 'media' | 'tokens' | 'transcriptions') => {
     if (!window.confirm(t('admin.confirmClear', { cacheName }))) return;
     setIsLoading(true);
     try {
@@ -142,7 +148,7 @@ const AdminPage: React.FC = () => {
     }
   };
 
-  const handlePolicyChange = (cacheType: 'media_cache_policy' | 'token_cache_policy' | 'community_policy', field: string, value: string) => {
+  const handlePolicyChange = (cacheType: 'media_cache_policy' | 'token_cache_policy' | 'transcription_cache_policy' | 'community_policy', field: string, value: string) => {
     if (!policies) return;
     const numValue = value === '' ? null : Number(value);
     setPolicies({
@@ -275,6 +281,61 @@ const AdminPage: React.FC = () => {
                            <input type='number' value={policies.token_cache_policy?.max_age_hours ?? ''} onChange={e => handlePolicyChange('token_cache_policy', 'max_age_hours', e.target.value)} className='w-full p-2 rounded bg-gray-700 border border-gray-600' />
                         </div>
                     </div>
+                  </div>
+                </div>
+
+                {/* Transcription Cache Section */}
+                <div className="bg-gray-800 rounded-lg shadow p-6 space-y-4">
+                  <h2 className="text-xl font-semibold border-b border-gray-700 pb-3">{t('admin.transcriptionCacheTitle')}</h2>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p>{t('admin.totalSize')}: <span className="font-bold text-green-400">{filesize(cacheInfo.transcription_cache?.size_bytes || 0)}</span></p>
+                      <p>{t('admin.fileCount')}: <span className="font-bold text-green-400">{cacheInfo.transcription_cache?.file_count || 0}</span></p>
+                    </div>
+                    <button onClick={() => handleClearCache('transcriptions')} disabled={isLoading} className="px-4 py-2 bg-red-600 rounded-lg hover:bg-red-500 text-white disabled:opacity-50 font-bold">
+                      {t('admin.clearNowButton')}
+                    </button>
+                  </div>
+                   <div className="space-y-2">
+                    <h3 className="text-lg font-medium">{t('admin.autoCleanPolicy')}</h3>
+                     <div className='flex items-center gap-4'>
+                        <div>
+                           <label className="block text-sm font-medium text-gray-300">{t('admin.maxSize')} (MB)</label>
+                           <input type='number' value={policies.transcription_cache_policy?.max_size_mb ?? ''} onChange={e => handlePolicyChange('transcription_cache_policy', 'max_size_mb', e.target.value)} className='w-full p-2 rounded bg-gray-700 border border-gray-600' />
+                        </div>
+                        <div>
+                           <label className="block text-sm font-medium text-gray-300">{t('admin.maxAge')} (Days)</label>
+                           <input type='number' value={policies.transcription_cache_policy?.max_age_days ?? ''} onChange={e => handlePolicyChange('transcription_cache_policy', 'max_age_days', e.target.value)} className='w-full p-2 rounded bg-gray-700 border border-gray-600' />
+                        </div>
+                    </div>
+                  </div>
+
+                  {/* Tasks Sub-panel */}
+                  <div className="mt-4 border-t border-gray-700 pt-4">
+                      <h3 className="text-lg font-medium mb-2">{t('admin.transcriptionTasksTitle')}</h3>
+                      {Object.keys(transcriptionTasks).length === 0 ? (
+                          <p className="text-sm text-gray-400">{t('admin.noTasksRunning')}</p>
+                      ) : (
+                          <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                              {Object.entries(transcriptionTasks).map(([mediaId, task]) => (
+                                  <div key={mediaId} className="bg-gray-700 p-2 rounded text-sm flex flex-col gap-1">
+                                      <div className="flex justify-between items-center">
+                                          <div className="font-bold text-indigo-300 truncate pr-2" title={task.display_name}>
+                                              {task.display_name || mediaId}
+                                          </div>
+                                          <span className={`font-bold text-xs uppercase px-1.5 py-0.5 rounded ${task.status === 'processing' ? 'bg-yellow-500/20 text-yellow-400' : task.status === 'completed' ? 'bg-green-500/20 text-green-400' : task.status === 'error' ? 'bg-red-500/20 text-red-400' : 'bg-gray-600 text-gray-300'}`}>
+                                              {task.status}
+                                          </span>
+                                      </div>
+                                      <div className="flex justify-between items-center text-[10px] text-gray-500">
+                                          <span className="font-mono">{mediaId}</span>
+                                          <span>{new Date(task.started_at).toLocaleString()}</span>
+                                      </div>
+                                      {task.error && <p className="text-red-400 text-xs mt-1 border-t border-red-900/30 pt-1 italic">{task.error}</p>}
+                                  </div>
+                              ))}
+                          </div>
+                      )}
                   </div>
                 </div>
 

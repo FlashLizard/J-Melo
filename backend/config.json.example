@@ -8,6 +8,10 @@
         "max_size_mb": 100,
         "max_age_hours": 24
     },
+    "transcription_cache_policy": {
+        "max_size_mb": 500,
+        "max_age_days": 30
+    },
     "community_policy": {
         "max_size_mb": 500
     }

@@ -18,7 +18,7 @@ interface SongState {
   fetchSong: (url: string) => Promise<void>;
   loadSongById: (id: number) => Promise<void>;
   fetchAllSongs: () => Promise<SongData[]>;
-  generateTranscriptionPreview: (song: SongData) => Promise<void>;
+  generateTranscriptionPreview: (song: SongData, t: (key: string) => string) => Promise<void>;
   setProcessedLyrics: (lyrics: LyricLine[]) => void;
   updateLyricLine: (updatedLine: LyricLine) => void;
   updateSongInfo: (info: { title: string; artist: string }) => void;
@@ -192,26 +192,76 @@ const useSongStore = create<SongState>()(
           return [];
         }
     },
-    generateTranscriptionPreview: async (song) => {
+    generateTranscriptionPreview: async (song, t) => {
         set({ isLoading: true, error: null });
         const { settings } = useSettingsStore.getState();
         const BACKEND_URL = settings.backendUrl;
+        const mediaId = song.id!.toString();
         try {
           const songRecord = await db.songs.get(song.id!);
           if (!songRecord) throw new Error("Song not found in DB for transcription.");
   
+          // Check status first
+          let statusResponse = await fetch(`${BACKEND_URL}/api/transcribe/status/${mediaId}`);
+          if (statusResponse.ok) {
+              const statusData = await statusResponse.json();
+              if (statusData.status === 'completed') {
+                  const useCache = window.confirm(t('transcription.cacheFoundConfirm'));
+                  if (useCache) {
+                      const kuroshiro = await KuroshiroManager.getInstance();
+                      const tempLyrics = await processWhisperXOutput(statusData.data, kuroshiro);
+                      set({ previewLyrics: tempLyrics, isLoading: false });
+                      return;
+                  } else {
+                      // Force re-transcribe
+                      const newTranscriptionResponse = await fetch(`${BACKEND_URL}/api/transcribe`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ 
+                              local_path: songRecord.local_path, 
+                              media_id: mediaId, 
+                              display_name: song.title,
+                              force_retranscribe: true 
+                          }),
+                      });
+                      const newData = await newTranscriptionResponse.json();
+                      set({ isLoading: false });
+                      alert(t('transcription.startedAlert').replace('{{queue_position}}', newData.queue_position));
+                      return;
+                  }
+              } else if (statusData.status === 'running' || statusData.status === 'pending' || statusData.status === 'processing') {
+                  set({ isLoading: false });
+                  alert(t('transcription.inProgressAlert').replace('{{queue_position}}', statusData.queue_position));
+                  return;
+              }
+          }
+
+          // Start a new one
           const transcribeResponse = await fetch(`${BACKEND_URL}/api/transcribe`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ local_path: songRecord.local_path }),
+              body: JSON.stringify({ 
+                  local_path: songRecord.local_path, 
+                  media_id: mediaId, 
+                  display_name: song.title,
+                  force_retranscribe: false 
+              }),
           });
-          if (!transcribeResponse.ok) throw new Error((await transcribeResponse.json()).detail || 'Failed to transcribe audio');
-          const whisperData: WhisperXOutput = await transcribeResponse.json();
           
-          const kuroshiro = await KuroshiroManager.getInstance();
-          const tempLyrics = await processWhisperXOutput(whisperData, kuroshiro);
-          set({ previewLyrics: tempLyrics, isLoading: false });
-  
+          if (!transcribeResponse.ok) throw new Error((await transcribeResponse.json()).detail || t('transcription.failedStartError'));
+          
+          const startData = await transcribeResponse.json();
+          if (startData.status === 'cached' || startData.status === 'completed') {
+              // Edge case: it finished instantly or was cached right as we asked
+              statusResponse = await fetch(`${BACKEND_URL}/api/transcribe/status/${mediaId}`);
+              const statusData = await statusResponse.json();
+              const kuroshiro = await KuroshiroManager.getInstance();
+              const tempLyrics = await processWhisperXOutput(statusData.data, kuroshiro);
+              set({ previewLyrics: tempLyrics, isLoading: false });
+          } else {
+              set({ isLoading: false });
+              alert(t('transcription.startedAlert').replace('{{queue_position}}', startData.queue_position));
+          }
         } catch (err) {
           set({ error: (err as Error).message, isLoading: false });
         }

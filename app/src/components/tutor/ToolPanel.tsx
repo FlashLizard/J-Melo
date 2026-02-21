@@ -78,7 +78,7 @@ const ToolPanel: React.FC = () => {
                             {song?.is_cached ? t('toolPanel.audioCached') : t('toolPanel.cacheAudioButton')}
                         </button>
                         <button 
-                          onClick={() => song && generateTranscriptionPreview(song)}
+                          onClick={() => song && generateTranscriptionPreview(song, t)}
                           disabled={!song}
                           className="w-full text-left p-2 rounded-md bg-gray-700 hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >

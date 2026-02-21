@@ -24,6 +24,7 @@ DEFAULT_CONFIG = {
     "admin_token": None,
     "media_cache_policy": {"max_size_gb": 10, "max_age_days": 30},
     "token_cache_policy": {"max_size_mb": 100, "max_age_hours": 24},
+    "transcription_cache_policy": {"max_size_mb": 500, "max_age_days": 30},
     "community_policy": {"max_size_mb": 500}
 }
 ADMIN_CONFIG = DEFAULT_CONFIG.copy()
@@ -48,16 +49,19 @@ CACHE_DIR = "media_cache"
 os.makedirs(CACHE_DIR, exist_ok=True)
 TEMP_DATA_DIR = "temp_data"
 os.makedirs(TEMP_DATA_DIR, exist_ok=True)
+TRANSCRIPTION_CACHE_DIR = "transcription_cache"
+os.makedirs(TRANSCRIPTION_CACHE_DIR, exist_ok=True)
 
 app = FastAPI()
 
 # In-memory storage for simplicity. For production, consider a more robust solution like Redis.
 token_storage = {}
+TRANSCRIPTION_TASKS = {} # media_id -> {"status", "error", "started_at", "completed_at", "result_path"}
 
 # --- Global Models ---
 print("Loading Whisper model...")
 try:
-    model_size = "tiny"
+    model_size = "medium"
     model = WhisperModel(model_size, device=DEVICE, compute_type="int8")
 except Exception as e:
     import traceback
@@ -92,7 +96,10 @@ class MediaFetchResponse(BaseModel):
     local_path: str
 
 class TranscribeRequest(BaseModel):
+    media_id: str
     local_path: str
+    display_name: str | None = "Unknown Track"
+    force_retranscribe: bool = False
 
 class ClearCacheRequest(BaseModel):
     cache_name: str
@@ -106,6 +113,7 @@ class CachePolicy(BaseModel):
 class UpdateConfigRequest(BaseModel):
     media_cache_policy: CachePolicy | None = None
     token_cache_policy: CachePolicy | None = None
+    transcription_cache_policy: CachePolicy | None = None
     community_policy: CachePolicy | None = None
 
 class SharedSongUpload(BaseModel):
@@ -220,25 +228,99 @@ def run_transcription_blocking(audio_path: str, whisper_model: WhisperModel):
         
     return formatted_result
 
+async def process_transcription_task(media_id: str, audio_path: str, cache_path: str):
+    try:
+        async with TRANSCRIPTION_SEMAPHORE:
+            TRANSCRIPTION_TASKS[media_id]["status"] = "processing"
+            result = await asyncio.to_thread(run_transcription_blocking, audio_path, model)
+            
+            with open(cache_path, "w", encoding="utf-8") as f:
+                json.dump(result, f, ensure_ascii=False)
+                
+            TRANSCRIPTION_TASKS[media_id]["status"] = "completed"
+            TRANSCRIPTION_TASKS[media_id]["completed_at"] = datetime.utcnow().isoformat()
+            TRANSCRIPTION_TASKS[media_id]["result_path"] = cache_path
+    except Exception as e:
+        TRANSCRIPTION_TASKS[media_id]["status"] = "error"
+        TRANSCRIPTION_TASKS[media_id]["error"] = str(e)
+        import traceback
+        traceback.print_exc()
+
+def get_queue_position(target_media_id: str) -> int:
+    """Calculate how many tasks are ahead of the target task in the queue."""
+    pending_tasks = [
+        media_id for media_id, task in TRANSCRIPTION_TASKS.items()
+        if task.get("status") == "pending"
+    ]
+    # Sort by started_at to simulate a queue
+    pending_tasks.sort(key=lambda m_id: TRANSCRIPTION_TASKS[m_id].get("started_at", ""))
+    
+    try:
+        return pending_tasks.index(target_media_id)
+    except ValueError:
+        return 0 # Not in pending queue (might be processing or completed)
+
 @app.post("/api/transcribe")
 async def transcribe_audio(request: TranscribeRequest):
     if not model:
         raise HTTPException(status_code=500, detail="WhisperX model is not loaded.")
     
+    media_id = request.media_id
     audio_path = request.local_path
+    force_retranscribe = request.force_retranscribe
+    cache_path = os.path.join(TRANSCRIPTION_CACHE_DIR, f"{media_id}.json")
+
     if not os.path.exists(audio_path):
         raise HTTPException(status_code=404, detail=f"Audio file not found at path: {audio_path}")
 
-    try:
-        print(f"Request to transcribe {audio_path} received, waiting for semaphore...")
-        async with TRANSCRIPTION_SEMAPHORE:
-            print(f"Semaphore acquired for {audio_path}, running transcription in thread...")
-            result = await asyncio.to_thread(run_transcription_blocking, audio_path, model)
-            return result
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Transcribe error: {str(e)}")
+    if force_retranscribe:
+        if os.path.exists(cache_path):
+            os.remove(cache_path)
+        if media_id in TRANSCRIPTION_TASKS:
+            del TRANSCRIPTION_TASKS[media_id]
+
+    if os.path.exists(cache_path) and not force_retranscribe:
+        return {"status": "cached", "message": "Transcription result exists in cache."}
+
+    task = TRANSCRIPTION_TASKS.get(media_id)
+    if task:
+        if task["status"] in ["pending", "processing"]:
+            queue_pos = get_queue_position(media_id)
+            return {"status": "running", "message": "Transcription is already in progress.", "queue_position": queue_pos, "details": task}
+        elif task["status"] == "completed" and not force_retranscribe:
+            return {"status": "cached", "message": "Transcription completed.", "details": task}
+
+    # Start new task
+    TRANSCRIPTION_TASKS[media_id] = {
+        "status": "pending",
+        "started_at": datetime.utcnow().isoformat(),
+        "audio_path": audio_path,
+        "display_name": request.display_name
+    }
+    
+    asyncio.create_task(process_transcription_task(media_id, audio_path, cache_path))
+    
+    queue_pos = get_queue_position(media_id)
+    return {"status": "started", "message": "Transcription started in background.", "queue_position": queue_pos}
+
+@app.get("/api/transcribe/status/{media_id}")
+async def get_transcribe_status(media_id: str):
+    cache_path = os.path.join(TRANSCRIPTION_CACHE_DIR, f"{media_id}.json")
+    
+    if os.path.exists(cache_path):
+        try:
+            with open(cache_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return {"status": "completed", "data": data}
+        except Exception as e:
+            return {"status": "error", "error": f"Failed to load cached result: {str(e)}"}
+            
+    task = TRANSCRIPTION_TASKS.get(media_id)
+    if task:
+        queue_pos = get_queue_position(media_id) if task["status"] == "pending" else 0
+        return {"status": task["status"], "error": task.get("error"), "queue_position": queue_pos, "details": task}
+        
+    return {"status": "not_found", "message": "No transcription found or running for this ID."}
 
 def format_whisper_output(segments):
     formatted_segments = []
@@ -446,6 +528,7 @@ def get_dir_size(path='.'):
 def get_cache_info():
     media_cache_size, media_cache_files = get_dir_size(CACHE_DIR)
     token_cache_size, token_cache_files = get_dir_size(TEMP_DATA_DIR)
+    transcription_cache_size, transcription_cache_files = get_dir_size(TRANSCRIPTION_CACHE_DIR)
     
     community_db_size = 0
     if os.path.exists("shared_songs.db"):
@@ -460,6 +543,10 @@ def get_cache_info():
             "size_bytes": token_cache_size,
             "file_count": token_cache_files
         },
+        "transcription_cache": {
+            "size_bytes": transcription_cache_size,
+            "file_count": transcription_cache_files
+        },
         "community_db": {
             "size_bytes": community_db_size
         }
@@ -471,6 +558,9 @@ def clear_cache(request: ClearCacheRequest):
         dir_to_clear = CACHE_DIR
     elif request.cache_name == "tokens":
         dir_to_clear = TEMP_DATA_DIR
+    elif request.cache_name == "transcriptions":
+        dir_to_clear = TRANSCRIPTION_CACHE_DIR
+        TRANSCRIPTION_TASKS.clear() # Also clear active tasks from memory
     else:
         raise HTTPException(status_code=400, detail="Invalid cache name specified.")
 
@@ -490,6 +580,7 @@ def get_config():
     return {
         "media_cache_policy": ADMIN_CONFIG.get("media_cache_policy"),
         "token_cache_policy": ADMIN_CONFIG.get("token_cache_policy"),
+        "transcription_cache_policy": ADMIN_CONFIG.get("transcription_cache_policy"),
         "community_policy": ADMIN_CONFIG.get("community_policy"),
     }
 
@@ -499,6 +590,8 @@ def update_config(request: UpdateConfigRequest):
         ADMIN_CONFIG["media_cache_policy"].update(request.media_cache_policy.dict(exclude_unset=True))
     if request.token_cache_policy:
         ADMIN_CONFIG["token_cache_policy"].update(request.token_cache_policy.dict(exclude_unset=True))
+    if request.transcription_cache_policy:
+        ADMIN_CONFIG.setdefault("transcription_cache_policy", {}).update(request.transcription_cache_policy.dict(exclude_unset=True))
     if request.community_policy:
         ADMIN_CONFIG.setdefault("community_policy", {}).update(request.community_policy.dict(exclude_unset=True))
     
@@ -506,6 +599,20 @@ def update_config(request: UpdateConfigRequest):
         json.dump(ADMIN_CONFIG, f, indent=4)
     
     return {"message": "Configuration updated successfully."}
+
+@app.get("/api/admin/transcription-tasks", dependencies=[Depends(get_admin_user)])
+def admin_get_transcription_tasks():
+    # Return a filtered copy of tasks to avoid sending actual file paths
+    tasks = {}
+    for media_id, info in TRANSCRIPTION_TASKS.items():
+        tasks[media_id] = {
+            "status": info.get("status"),
+            "display_name": info.get("display_name"),
+            "started_at": info.get("started_at"),
+            "completed_at": info.get("completed_at"),
+            "error": info.get("error")
+        }
+    return tasks
 
 @app.get("/api/admin/community/songs", dependencies=[Depends(get_admin_user)])
 def admin_list_shared_songs(limit: int = 100, offset: int = 0):
@@ -626,6 +733,37 @@ async def background_cleanup_task():
                 if oldest_file.is_file():
                     file_size = oldest_file.stat().st_size
                     print(f"Media cache size ({total_size_bytes / 1024**3:.2f} GB) exceeds limit ({max_size_gb} GB). Deleting oldest file: {oldest_file}")
+                    os.remove(oldest_file)
+                    total_size_bytes -= file_size
+
+        # 4. Clean transcription cache directory
+        transcription_policy = ADMIN_CONFIG.get("transcription_cache_policy", {})
+        max_age_days_trans = transcription_policy.get("max_age_days")
+        max_size_mb_trans = transcription_policy.get("max_size_mb")
+
+        files = sorted(Path(TRANSCRIPTION_CACHE_DIR).iterdir(), key=os.path.getmtime)
+
+        # Age-based cleaning
+        if max_age_days_trans is not None:
+            for file_path in files:
+                if file_path.is_file():
+                    file_mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
+                    if (now - file_mtime) > timedelta(days=max_age_days_trans):
+                        print(f"Transcription file {file_path} is older than {max_age_days_trans} days, deleting.")
+                        os.remove(file_path)
+                    else:
+                        break
+
+        # Size-based cleaning
+        if max_size_mb_trans is not None:
+            total_size_bytes, _ = get_dir_size(TRANSCRIPTION_CACHE_DIR)
+            max_size_bytes = max_size_mb_trans * 1024 * 1024
+            files = sorted(Path(TRANSCRIPTION_CACHE_DIR).iterdir(), key=os.path.getmtime)
+            while total_size_bytes > max_size_bytes and files:
+                oldest_file = files.pop(0)
+                if oldest_file.is_file():
+                    file_size = oldest_file.stat().st_size
+                    print(f"Transcription cache size ({total_size_bytes / 1024 / 1024:.2f} MB) exceeds limit ({max_size_mb_trans} MB). Deleting oldest file: {oldest_file}")
                     os.remove(oldest_file)
                     total_size_bytes -= file_size
 

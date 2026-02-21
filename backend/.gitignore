@@ -33,6 +33,7 @@ uvicorn.log
 # Media Cache (important for media files downloaded by yt-dlp)
 media_cache/
 temp_data/
+transcription_cache/
 
 # Database files
 shared_songs.db

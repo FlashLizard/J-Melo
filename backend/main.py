@@ -268,44 +268,54 @@ async def transcribe_audio(request: TranscribeRequest):
     media_id = request.media_id
     audio_path = request.local_path
     force_retranscribe = request.force_retranscribe
-    cache_path = os.path.join(TRANSCRIPTION_CACHE_DIR, f"{media_id}.json")
-
+    
     if not os.path.exists(audio_path):
         raise HTTPException(status_code=404, detail=f"Audio file not found at path: {audio_path}")
+        
+    # Use the audio filename (without extension) as the unique cache identifier
+    # This prevents collisions if different users assign different media_ids to the same underlying audio file
+    audio_filename = os.path.basename(audio_path)
+    audio_identifier = os.path.splitext(audio_filename)[0]
+    cache_path = os.path.join(TRANSCRIPTION_CACHE_DIR, f"{audio_identifier}.json")
 
     if force_retranscribe:
         if os.path.exists(cache_path):
             os.remove(cache_path)
-        if media_id in TRANSCRIPTION_TASKS:
-            del TRANSCRIPTION_TASKS[media_id]
+        if audio_identifier in TRANSCRIPTION_TASKS:
+            del TRANSCRIPTION_TASKS[audio_identifier]
 
     if os.path.exists(cache_path) and not force_retranscribe:
         return {"status": "cached", "message": "Transcription result exists in cache."}
 
-    task = TRANSCRIPTION_TASKS.get(media_id)
+    task = TRANSCRIPTION_TASKS.get(audio_identifier)
     if task:
         if task["status"] in ["pending", "processing"]:
-            queue_pos = get_queue_position(media_id)
+            queue_pos = get_queue_position(audio_identifier)
             return {"status": "running", "message": "Transcription is already in progress.", "queue_position": queue_pos, "details": task}
         elif task["status"] == "completed" and not force_retranscribe:
             return {"status": "cached", "message": "Transcription completed.", "details": task}
 
-    # Start new task
-    TRANSCRIPTION_TASKS[media_id] = {
+    # Start new task using audio_identifier instead of media_id
+    TRANSCRIPTION_TASKS[audio_identifier] = {
         "status": "pending",
         "started_at": datetime.utcnow().isoformat(),
         "audio_path": audio_path,
         "display_name": request.display_name
     }
     
-    asyncio.create_task(process_transcription_task(media_id, audio_path, cache_path))
+    asyncio.create_task(process_transcription_task(audio_identifier, audio_path, cache_path))
     
-    queue_pos = get_queue_position(media_id)
-    return {"status": "started", "message": "Transcription started in background.", "queue_position": queue_pos}
+    queue_pos = get_queue_position(audio_identifier)
+    return {"status": "started", "message": "Transcription started in background.", "queue_position": queue_pos, "transcription_id": audio_identifier}
 
 @app.get("/api/transcribe/status/{media_id}")
-async def get_transcribe_status(media_id: str):
-    cache_path = os.path.join(TRANSCRIPTION_CACHE_DIR, f"{media_id}.json")
+async def get_transcribe_status(media_id: str, local_path: str = Query(None)):
+    # Try to resolve by local_path first if provided (more robust)
+    audio_identifier = media_id
+    if local_path and os.path.exists(local_path):
+         audio_identifier = os.path.splitext(os.path.basename(local_path))[0]
+         
+    cache_path = os.path.join(TRANSCRIPTION_CACHE_DIR, f"{audio_identifier}.json")
     
     if os.path.exists(cache_path):
         try:
@@ -315,9 +325,9 @@ async def get_transcribe_status(media_id: str):
         except Exception as e:
             return {"status": "error", "error": f"Failed to load cached result: {str(e)}"}
             
-    task = TRANSCRIPTION_TASKS.get(media_id)
+    task = TRANSCRIPTION_TASKS.get(audio_identifier)
     if task:
-        queue_pos = get_queue_position(media_id) if task["status"] == "pending" else 0
+        queue_pos = get_queue_position(audio_identifier) if task["status"] == "pending" else 0
         return {"status": task["status"], "error": task.get("error"), "queue_position": queue_pos, "details": task}
         
     return {"status": "not_found", "message": "No transcription found or running for this ID."}

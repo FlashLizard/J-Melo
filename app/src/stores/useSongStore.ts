@@ -202,7 +202,9 @@ const useSongStore = create<SongState>()(
           if (!songRecord) throw new Error("Song not found in DB for transcription.");
   
           // Check status first
-          let statusResponse = await fetch(`${BACKEND_URL}/api/transcribe/status/${mediaId}`);
+          const statusUrl = new URL(`${BACKEND_URL}/api/transcribe/status/${mediaId}`);
+          statusUrl.searchParams.append('local_path', songRecord.local_path);
+          let statusResponse = await fetch(statusUrl.toString());
           if (statusResponse.ok) {
               const statusData = await statusResponse.json();
               if (statusData.status === 'completed') {
@@ -253,7 +255,9 @@ const useSongStore = create<SongState>()(
           const startData = await transcribeResponse.json();
           if (startData.status === 'cached' || startData.status === 'completed') {
               // Edge case: it finished instantly or was cached right as we asked
-              statusResponse = await fetch(`${BACKEND_URL}/api/transcribe/status/${mediaId}`);
+              const verifyUrl = new URL(`${BACKEND_URL}/api/transcribe/status/${mediaId}`);
+              verifyUrl.searchParams.append('local_path', songRecord.local_path);
+              statusResponse = await fetch(verifyUrl.toString());
               const statusData = await statusResponse.json();
               const kuroshiro = await KuroshiroManager.getInstance();
               const tempLyrics = await processWhisperXOutput(statusData.data, kuroshiro);

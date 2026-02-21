@@ -1,33 +1,24 @@
-// src/lib/kuroshiro.ts
+// app/src/lib/kuroshiro.ts
 import Kuroshiro from 'kuroshiro';
+// @ts-ignore
 import KuromojiAnalyzer from 'kuroshiro-analyzer-kuromoji';
 
 class KuroshiroManager {
-  private static instance: Kuroshiro | null = null;
-  private static analyzer: KuromojiAnalyzer | null = null;
-  private static initializing: Promise<void> | null = null;
+  private static instance: Promise<Kuroshiro> | null = null;
 
-  private constructor() {}
-
-  public static async getInstance(): Promise<Kuroshiro> {
-    if (KuroshiroManager.instance) {
-      return KuroshiroManager.instance;
-    }
-
-    if (!KuroshiroManager.initializing) {
-      KuroshiroManager.initializing = (async () => {
-        const kuroshiro = new Kuroshiro();
-        const analyzer = new KuromojiAnalyzer({
-          dictPath: '/dict', // Path relative to the public directory
+  public static getInstance(): Promise<Kuroshiro> {
+    if (!KuroshiroManager.instance) {
+      const kuroshiro = new Kuroshiro();
+      KuroshiroManager.instance = kuroshiro.init(new KuromojiAnalyzer({ dictPath: '/dict' }))
+        .then(() => kuroshiro)
+        .catch(err => {
+          console.error("Failed to initialize Kuroshiro", err);
+          // Prevent future attempts if initialization fails
+          KuroshiroManager.instance = null;
+          throw err; // Re-throw to allow callers to handle the error
         });
-        await kuroshiro.init(analyzer);
-        KuroshiroManager.instance = kuroshiro;
-        KuroshiroManager.analyzer = analyzer;
-      })();
     }
-
-    await KuroshiroManager.initializing;
-    return KuroshiroManager.instance!;
+    return KuroshiroManager.instance;
   }
 }
 

@@ -204,7 +204,19 @@ const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, onSave, onCancel,
     setJsonString(newJsonString);
     try {
       const parsed = JSON.parse(newJsonString);
-      setCurrentLine(parsed);
+      // Validate that it's a single LyricLine object, not an array
+      if (Array.isArray(parsed)) {
+          throw new Error('Please enter a single LyricLine object, not an array of lines.');
+      }
+      if (typeof parsed !== 'object' || parsed === null) {
+          throw new Error('Invalid LyricLine object structure.');
+      }
+      // Ensure the ID hasn't been accidentally stripped or changed if it's crucial for the parent
+      if (parsed.id !== currentLine.id) {
+          parsed.id = currentLine.id; 
+      }
+      
+      setCurrentLine(parsed as LyricLine);
       setJsonError(null);
     } catch (error) {
       setJsonError((error as Error).message);

@@ -1,6 +1,6 @@
 // src/lib/db.ts
 import Dexie, { Table } from 'dexie';
-import { SongData } from '@/stores/useSongStore';
+import { SongData } from '@/interfaces';
 import { LyricLine } from '../interfaces/lyrics';
 
 export interface SongRecord extends SongData {
@@ -42,8 +42,12 @@ export interface Settings {
   translationLLMApiKey?: string | null; // New: API Key for translation
   translationLLMApiUrl?: string | null; // New: API URL for translation
   translationLLMModelType?: string | null; // New: Model Type for translation
+  translationLLMMaxTokens?: number; // New: Max tokens for translation
   targetTranslationLanguage: string; // New: Target language for translation, e.g., 'en', 'zh', 'ja'
   backendUrl: string; // New: Backend URL
+  llmMaxTokens?: number; // Default LLM max tokens
+  lyricFixLLMMaxTokens?: number; // Lyric fix LLM max tokens
+  sharerNickname?: string; // New: Sharer nickname
 }
 
 export interface PromptTemplate {
@@ -167,6 +171,22 @@ class JeloDB extends Dexie {
     }).upgrade(async (tx) => {
       await tx.table('settings').toCollection().modify(setting => {
         if (setting.backendUrl === undefined) setting.backendUrl = 'http://localhost:8000'; // Default value
+      });
+    });
+    this.version(15).stores({
+      settings: 'id, openaiApiKey, llmApiUrl, llmModelType, aiResponseLanguage, uiLanguage, lyricFixLLMApiKey, lyricFixLLMModelType, lyricFixLLMApiUrl, defaultPromptTemplateId, defaultCardTemplateId, showReadings, showTranslations, translationLLMApiKey, translationLLMApiUrl, translationLLMModelType, targetTranslationLanguage, backendUrl, llmMaxTokens, lyricFixLLMMaxTokens, translationLLMMaxTokens',
+    }).upgrade(async (tx) => {
+      await tx.table('settings').toCollection().modify(setting => {
+        if (setting.llmMaxTokens === undefined) setting.llmMaxTokens = 32768;
+        if (setting.lyricFixLLMMaxTokens === undefined) setting.lyricFixLLMMaxTokens = 32768;
+        if (setting.translationLLMMaxTokens === undefined) setting.translationLLMMaxTokens = 32768;
+      });
+    });
+    this.version(16).stores({
+      settings: 'id, openaiApiKey, llmApiUrl, llmModelType, aiResponseLanguage, uiLanguage, lyricFixLLMApiKey, lyricFixLLMModelType, lyricFixLLMApiUrl, defaultPromptTemplateId, defaultCardTemplateId, showReadings, showTranslations, translationLLMApiKey, translationLLMApiUrl, translationLLMModelType, targetTranslationLanguage, backendUrl, llmMaxTokens, lyricFixLLMMaxTokens, translationLLMMaxTokens, sharerNickname',
+    }).upgrade(async (tx) => {
+      await tx.table('settings').toCollection().modify(setting => {
+        if (setting.sharerNickname === undefined) setting.sharerNickname = '';
       });
     });
   }

@@ -172,14 +172,27 @@ const WordCard = ({ word, song, t }: { word: WordRecord, song?: SongRecord, t: (
     }
   };
 
+  const getProficiencyStyle = (p: number) => {
+    if (p < 0) return 'bg-red-500/20 text-red-400 border-red-500/50';
+    if (p === 0) return 'bg-gray-500/20 text-gray-400 border-gray-500/50';
+    if (p <= 10) return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50';
+    if (p <= 30) return 'bg-green-500/20 text-green-400 border-green-500/50';
+    return 'bg-blue-500/20 text-blue-400 border-blue-500/50';
+  };
+
   return (
     <div onClick={handleClick} className={cn("bg-gray-800 p-4 rounded-lg flex items-center gap-4 transition-colors", { 'hover:bg-gray-700 cursor-pointer': !isSelectionMode, 'ring-2 ring-green-500': isSelectionMode && selectedIds.has(word.id!) })}>
       {isSelectionMode && <input type="checkbox" checked={selectedIds.has(word.id!)} onChange={() => {}} className="h-5 w-5 rounded bg-gray-700 border-gray-600 text-green-500 focus:ring-green-500" />}
       <div className="flex-grow">
-        <p className="font-bold text-lg">{word.surface}</p>
+        <div className="flex items-center gap-2">
+            <p className="font-bold text-lg">{word.surface}</p>
+            <span className={cn("text-[10px] px-1.5 py-0.5 rounded border uppercase font-bold tracking-wider", getProficiencyStyle(word.proficiency || 0))}>
+                {word.proficiency || 0}
+            </span>
+        </div>
         <p className="text-sm text-gray-400">{word.reading}</p>
       </div>
-      {song && <p className="text-xs text-gray-500 text-right">{song.title}</p>}
+      {song && <p className="text-xs text-gray-500 text-right max-w-[150px] truncate">{song.title}</p>}
     </div>
   );
 };

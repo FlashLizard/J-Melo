@@ -7,6 +7,7 @@ import usePlayerStore from '@/stores/usePlayerStore';
 import useUIPanelStore from '@/stores/useUIPanelStore';
 import useMobileViewStore from '@/stores/useMobileViewStore';
 import useSettingsStore from '@/stores/useSettingsStore';
+import useSongStore from '@/stores/useSongStore';
 import useTranslation from '@/hooks/useTranslation';
 import ContextMenu, { MenuItem } from '@/components/common/ContextMenu';
 import cn from 'classnames';
@@ -29,7 +30,30 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
   const { setActiveView } = useMobileViewStore();
   const { settings, toggleShowReadings, toggleShowTranslations } = useSettingsStore();
   const { t } = useTranslation();
+  const { song, generateTranscriptionPreview, previewLyrics, commitPreviewLyrics, clearPreviewLyrics } = useSongStore();
 
+  if (!lyrics || lyrics.length === 0) {
+    return (
+        <div className="flex flex-col items-center justify-center h-full text-center p-4">
+            <h3 className="text-lg font-semibold mb-4">{t('lyricsDisplay.noLyrics.title')}</h3>
+            <div className="space-y-3">
+                <button
+                    onClick={() => song && generateTranscriptionPreview(song)}
+                    className="w-full px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-500"
+                >
+                    {t('lyricsDisplay.noLyrics.transcribeButton')}
+                </button>
+                <button
+                    onClick={() => setActivePanel('TIMELESS_LYRICS_IMPORTER')}
+                    className="w-full px-4 py-2 bg-purple-600 rounded-lg hover:bg-purple-500"
+                >
+                    {t('lyricsDisplay.noLyrics.importButton')}
+                </button>
+            </div>
+        </div>
+    );
+  }
+  
   useEffect(() => {
     if (activeLineRef.current && scrollContainerRef.current) {
       const activeLineTop = activeLineRef.current.offsetTop;
@@ -82,6 +106,13 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
 
   return (
     <div className="h-full bg-gray-800 text-white relative flex flex-col" onClick={handleContainerClick}>
+        {previewLyrics && (
+            <div className="absolute top-0 left-0 right-0 p-2 bg-yellow-500/20 backdrop-blur-sm z-30 flex justify-center items-center gap-4">
+                <p className="text-sm text-yellow-200">{t('lyricsDisplay.preview.title')}</p>
+                <button onClick={commitPreviewLyrics} className="px-3 py-1 text-xs bg-green-600 rounded-lg hover:bg-green-500">{t('lyricsDisplay.preview.accept')}</button>
+                <button onClick={clearPreviewLyrics} className="px-3 py-1 text-xs bg-red-600 rounded-lg hover:bg-red-500">{t('lyricsDisplay.preview.reject')}</button>
+            </div>
+        )}
       {/* Scrollable lyrics content */}
       <div ref={scrollContainerRef} className="flex-grow overflow-y-auto overflow-x-hidden pt-4 pb-16 select-none">
         {lyrics.map((line) => {
@@ -106,7 +137,9 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
                       className="word-span inline-block align-bottom mr-1 cursor-pointer"
                       onClick={(e) => {
                         e.stopPropagation();
-                        playerStoreActions.seek(token.startTime);
+                        if (token.startTime > 0) { // Only seek if startTime is not 0
+                            playerStoreActions.seek(token.startTime);
+                        }
                       }}
                       onMouseEnter={() => setHoveredToken(token)}
                       onMouseLeave={() => setHoveredToken(null)}

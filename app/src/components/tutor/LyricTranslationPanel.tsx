@@ -12,6 +12,7 @@ import { copyToClipboard } from '@/utils/copyToClipboard';
 import cn from 'classnames';
 
 type TranslationMode = 'mapProvided' | 'current';
+type MainMode = 'generate' | 'import';
 
 // Define the Modal component within this file for simplicity, passing t prop
 const Modal: React.FC<{ title: string; content: string; onClose: () => void; t: (key: string) => string; children?: React.ReactNode }> = ({ title, content, onClose, t, children }) => {
@@ -142,10 +143,11 @@ const LyricTranslationPanel: React.FC = () => {
   const { setActivePanel } = useUIPanelStore();
   const { setActiveView } = useMobileViewStore();
   const { t } = useTranslation();
-  const { settings } = useSettingsStore();
 
+  const [mainMode, setMainMode] = useState<MainMode>('generate');
   const [translationMode, setTranslationMode] = useState<TranslationMode>('current');
   const [providedLyrics, setProvidedLyrics] = useState('');
+  const [jsonInput, setJsonInput] = useState('');
   const [promptTemplate, setPromptTemplate] = useState(DEFAULT_CURRENT_LYRICS_PROMPT); // Default to current lyrics mode
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -192,6 +194,7 @@ const LyricTranslationPanel: React.FC = () => {
       const apiKey = storedSettings?.translationLLMApiKey || storedSettings?.openaiApiKey;
       const apiUrl = storedSettings?.translationLLMApiUrl || storedSettings?.llmApiUrl || 'https://api.openai.com/v1/chat/completions';
       const modelType = storedSettings?.translationLLMModelType || storedSettings?.llmModelType || 'gpt-3.5-turbo';
+      const maxTokens = storedSettings?.translationLLMMaxTokens || storedSettings?.llmMaxTokens || 32768;
       const targetLanguage = storedSettings?.targetTranslationLanguage || 'English'; // Use targetTranslationLanguage from settings
 
       if (!apiKey) throw new Error(t('lyricTranslationPanel.apiKeyNotSet'));
@@ -211,7 +214,7 @@ const LyricTranslationPanel: React.FC = () => {
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: modelType, messages: [{ role: 'user', content: finalPrompt }], temperature: 0.2 }),
+        body: JSON.stringify({ model: modelType, messages: [{ role: 'user', content: finalPrompt }], temperature: 0.2, max_tokens: maxTokens }),
       });
 
       if (!response.ok) {
@@ -263,6 +266,18 @@ const LyricTranslationPanel: React.FC = () => {
     }
     setPromptPreview(finalPrompt);
   };
+
+  const handleDirectImport = async () => {
+    try {
+        const parsedLyrics = JSON.parse(jsonInput);
+        await updateLyricTranslations(parsedLyrics);
+        alert(t('lyricTranslationPanel.translationAppliedSuccess'));
+        setActivePanel('TOOL_PANEL');
+        setActiveView('lyrics');
+    } catch (e) {
+        alert(t('home.importError', { message: (e as Error).message }));
+    }
+  };
   
   const handleConfirmTranslation = async () => {
     if (previewData) {
@@ -300,6 +315,15 @@ const LyricTranslationPanel: React.FC = () => {
             {t('lyricTranslationPanel.backButton')}
           </button>
         </div>
+
+        <div className="flex border-b border-gray-700 mb-4">
+          <button onClick={() => setMainMode('generate')} className={cn('px-4 py-2 text-sm font-medium', { 'border-b-2 border-green-500 text-white': mainMode === 'generate', 'text-gray-400': mainMode !== 'generate' })}>
+              {t('lyricTranslationPanel.generateMode')}
+          </button>
+          <button onClick={() => setMainMode('import')} className={cn('px-4 py-2 text-sm font-medium', { 'border-b-2 border-green-500 text-white': mainMode === 'import', 'text-gray-400': mainMode !== 'import' })}>
+              {t('lyricTranslationPanel.importMode')}
+          </button>
+        </div>
         
         {error && editableLlmOutput && (
           <ErrorEditing 
@@ -317,98 +341,114 @@ const LyricTranslationPanel: React.FC = () => {
             </div>
         )}
 
-        <div className="flex-grow flex flex-col space-y-4 overflow-y-auto">
-          {/* Mode Selection */}
-          <div className="bg-gray-700 p-3 rounded-lg">
-            <h3 className="text-lg font-semibold mb-2">{t('lyricTranslationPanel.selectModeTitle')}</h3>
-            <div className="flex space-x-4">
-              <label className="inline-flex items-center">
-                <input
-                  type="radio"
-                  className="form-radio text-green-500"
-                  name="translationMode"
-                  value="current"
-                  checked={translationMode === 'current'}
-                  onChange={() => setTranslationMode('current')}
-                  disabled={isLoading || !song || !lyrics} // Disable if no song or lyrics
-                />
-                <span className="ml-2">{t('lyricTranslationPanel.modeCurrentLyrics')}</span>
-              </label>
-              <label className="inline-flex items-center">
-                <input
-                  type="radio"
-                  className="form-radio text-green-500"
-                  name="translationMode"
-                  value="mapProvided"
-                  checked={translationMode === 'mapProvided'}
-                  onChange={() => setTranslationMode('mapProvided')}
-                  disabled={isLoading || !song || !lyrics} // Disable if no song or lyrics
-                />
-                <span className="ml-2">{t('lyricTranslationPanel.modeMapProvidedTranslations')}</span>
-              </label>
+        {mainMode === 'generate' && (
+          <div className="flex-grow flex flex-col space-y-4 overflow-y-auto">
+            {/* Mode Selection */}
+            <div className="bg-gray-700 p-3 rounded-lg">
+              <h3 className="text-lg font-semibold mb-2">{t('lyricTranslationPanel.selectModeTitle')}</h3>
+              <div className="flex flex-col sm:flex-row sm:space-x-4 space-y-2 sm:space-y-0">
+                <label className="inline-flex items-center">
+                  <input
+                    type="radio"
+                    className="form-radio text-green-500"
+                    name="translationMode"
+                    value="current"
+                    checked={translationMode === 'current'}
+                    onChange={() => setTranslationMode('current')}
+                    disabled={isLoading || !song || !lyrics} // Disable if no song or lyrics
+                  />
+                  <span className="ml-2">{t('lyricTranslationPanel.modeCurrentLyrics')}</span>
+                </label>
+                <label className="inline-flex items-center">
+                  <input
+                    type="radio"
+                    className="form-radio text-green-500"
+                    name="translationMode"
+                    value="mapProvided"
+                    checked={translationMode === 'mapProvided'}
+                    onChange={() => setTranslationMode('mapProvided')}
+                    disabled={isLoading || !song || !lyrics} // Disable if no song or lyrics
+                  />
+                  <span className="ml-2">{t('lyricTranslationPanel.modeMapProvidedTranslations')}</span>
+                </label>
+              </div>
             </div>
-          </div>
 
-          {/* Provided Lyrics Input */}
-          {translationMode === 'mapProvided' && (
+            {/* Provided Lyrics Input */}
+            {translationMode === 'mapProvided' && (
+              <div className="flex flex-col">
+                <label htmlFor="provided-lyrics" className="text-sm font-semibold mb-1 text-gray-300">
+                  {t('lyricTranslationPanel.step1PasteLyrics')}
+                </label>
+                <textarea
+                  id="provided-lyrics"
+                  rows={6}
+                  className="w-full bg-gray-900 text-white p-2 rounded border border-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  placeholder={t('lyricTranslationPanel.pasteLyricsPlaceholder')}
+                  value={providedLyrics}
+                  onChange={(e) => setProvidedLyrics(e.target.value)}
+                  disabled={isLoading}
+                />
+              </div>
+            )}
+
+            {/* Prompt Template */}
             <div className="flex flex-col">
-              <label htmlFor="provided-lyrics" className="text-sm font-semibold mb-1 text-gray-300">
-                {t('lyricTranslationPanel.step1PasteLyrics')}
+              <label htmlFor="prompt-template" className="text-sm font-semibold mb-1 text-gray-300">
+                {t('lyricTranslationPanel.step2LlmPromptTemplate')}
               </label>
               <textarea
-                id="provided-lyrics"
-                rows={8}
-                className="w-full bg-gray-900 text-white p-2 rounded border border-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500"
-                placeholder={t('lyricTranslationPanel.pasteLyricsPlaceholder')}
-                value={providedLyrics}
-                onChange={(e) => setProvidedLyrics(e.target.value)}
+                id="prompt-template"
+                rows={6}
+                className="w-full bg-gray-900 text-white p-2 rounded border border-gray-700 font-mono text-xs"
+                value={promptTemplate}
+                onChange={(e) => setPromptTemplate(e.target.value)}
                 disabled={isLoading}
               />
+              <div className="text-xs text-gray-500 mt-1">
+                {t('lyricTranslationPanel.promptTemplateTagsHint')}
+              </div>
             </div>
-          )}
 
-          {/* Prompt Template */}
-          <div className="flex flex-col">
-            <label htmlFor="prompt-template" className="text-sm font-semibold mb-1 text-gray-300">
-              {t('lyricTranslationPanel.step2LlmPromptTemplate')}
-            </label>
-            <textarea
-              id="prompt-template"
-              rows={8}
-              className="w-full bg-gray-900 text-white p-2 rounded border border-gray-700 font-mono text-xs"
-              value={promptTemplate}
-              onChange={(e) => setPromptTemplate(e.target.value)}
-              disabled={isLoading}
-            />
-             <div className="text-xs text-gray-500 mt-1">
-              {t('lyricTranslationPanel.promptTemplateTagsHint')}
+            <div className="mt-4 grid grid-cols-2 gap-2 pb-4">
+              <button
+                className="px-4 py-2 bg-indigo-600 rounded-lg hover:bg-indigo-500 disabled:opacity-50"
+                onClick={handlePreviewPrompt}
+                disabled={isLoading || !song || !lyrics} // Disable if no song or lyrics
+              >
+                {t('lyricTranslationPanel.previewPromptButton')}
+              </button>
+              <button
+                className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-500 disabled:opacity-50"
+                onClick={handleTranslate}
+                disabled={isLoading || !song || !lyrics || (translationMode === 'mapProvided' && !providedLyrics.trim())} // Disable if no song or lyrics
+              >
+                {isLoading ? t('lyricTranslationPanel.processingButton') : t('lyricTranslationPanel.translateButton')}
+              </button>
             </div>
           </div>
-        </div>
+        )}
 
-        <div className="mt-4 grid grid-cols-3 gap-2">
-          <button
-            className="px-4 py-2 bg-gray-600 rounded-lg hover:bg-gray-500 disabled:opacity-50"
-            onClick={handleBack}
-            disabled={isLoading}
-          >
-            {t('lyricTranslationPanel.backButton')}
-          </button>
-          <button
-            className="px-4 py-2 bg-indigo-600 rounded-lg hover:bg-indigo-500 disabled:opacity-50"
-            onClick={handlePreviewPrompt}
-            disabled={isLoading || !song || !lyrics} // Disable if no song or lyrics
-          >
-            {t('lyricTranslationPanel.previewPromptButton')}
-          </button>
-          <button
-            className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-500 disabled:opacity-50"
-            onClick={handleTranslate}
-            disabled={isLoading || !song || !lyrics || (translationMode === 'mapProvided' && !providedLyrics.trim())} // Disable if no song or lyrics
-          >
-            {isLoading ? t('lyricTranslationPanel.processingButton') : t('lyricTranslationPanel.translateButton')}
-          </button>
-        </div>
+        {mainMode === 'import' && (
+          <div className="flex-grow flex flex-col space-y-4 overflow-y-auto">
+            <div className="flex flex-col">
+              <label className="text-sm font-semibold mb-1 text-gray-300">{t('lyricTranslationPanel.pasteJson')}</label>
+              <textarea 
+                rows={20} 
+                className="w-full bg-gray-900 text-white p-2 rounded border border-gray-700 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-green-500" 
+                placeholder={t('lyricTranslationPanel.jsonPlaceholder')} 
+                value={jsonInput} 
+                onChange={(e) => setJsonInput(e.target.value)} 
+              />
+            </div>
+            <div className="flex justify-end mt-4">
+              <button onClick={handleDirectImport} className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-500" disabled={!jsonInput.trim()}>
+                  {t('lyricTranslationPanel.importJsonButton')}
+              </button>
+            </div>
+          </div>
+        )}
+
       </div>
     </>
   );

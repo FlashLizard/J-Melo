@@ -6,13 +6,40 @@ import httpx
 import asyncio
 from datetime import datetime, timedelta
 import secrets
-from fastapi import FastAPI, HTTPException, Response, Query
+import shutil
+import sqlite3
+from pathlib import Path
+from fastapi import Depends, FastAPI, HTTPException, Response, Query
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from faster_whisper import WhisperModel
+from typing import Dict, Any
 
 # --- Configuration & Setup ---
+
+CONFIG_FILE = "config.json"
+DEFAULT_CONFIG = {
+    "admin_token": None,
+    "media_cache_policy": {"max_size_gb": 10, "max_age_days": 30},
+    "token_cache_policy": {"max_size_mb": 100, "max_age_hours": 24},
+    "community_policy": {"max_size_mb": 500}
+}
+ADMIN_CONFIG = DEFAULT_CONFIG.copy()
+
+if os.path.exists(CONFIG_FILE):
+    with open(CONFIG_FILE, "r") as f:
+        try:
+            loaded_config = json.load(f)
+            ADMIN_CONFIG.update(loaded_config)
+        except json.JSONDecodeError:
+            print("WARNING: Could not decode config.json. Using default config.")
+else:
+    print("WARNING: config.json not found. Admin endpoints will be disabled.")
+
+if not ADMIN_CONFIG.get("admin_token"):
+    print("WARNING: 'admin_token' not found in config. Admin endpoints will be disabled.")
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {DEVICE}")
@@ -38,6 +65,15 @@ except Exception as e:
     print(f"Error loading WhisperX model: {e}")
     model = None
 
+# --- Security ---
+bearer_scheme = HTTPBearer()
+
+async def get_admin_user(credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)):
+    token = ADMIN_CONFIG.get("admin_token")
+    if not token or credentials.scheme != "Bearer" or credentials.credentials != token:
+        raise HTTPException(status_code=403, detail="Invalid or missing admin token")
+    return
+
 # --- Pydantic Models ---
 class UserData(BaseModel):
     songs: list
@@ -57,6 +93,28 @@ class MediaFetchResponse(BaseModel):
 
 class TranscribeRequest(BaseModel):
     local_path: str
+
+class ClearCacheRequest(BaseModel):
+    cache_name: str
+
+class CachePolicy(BaseModel):
+    max_size_gb: int | None = None
+    max_age_days: int | None = None
+    max_size_mb: int | None = None
+    max_age_hours: int | None = None
+
+class UpdateConfigRequest(BaseModel):
+    media_cache_policy: CachePolicy | None = None
+    token_cache_policy: CachePolicy | None = None
+    community_policy: CachePolicy | None = None
+
+class SharedSongUpload(BaseModel):
+    title: str
+    artist: str | None = None
+    cover_url: str | None = None
+    sharer_name: str
+    song_data: dict
+    words_data: list
 
 # --- Services ---
 def fetch_media_info(url: str) -> dict:
@@ -110,7 +168,7 @@ async def proxy_image(url: str = Query(..., description="The URL of the image to
             raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
 @app.get("/api/media/fetch", response_model=MediaFetchResponse) # Changed to GET
-async def media_fetch(url: str = Query(..., description="The URL of the media to fetch")): # Changed to Query parameter
+def media_fetch(url: str = Query(..., description="The URL of the media to fetch")): # Changed to Query parameter
     try:
         info = fetch_media_info(url) # Use the url from Query
         media_id = info.get("id")
@@ -143,24 +201,40 @@ async def media_fetch(url: str = Query(..., description="The URL of the media to
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
+# Semaphore to limit concurrent transcriptions to 1, preventing GPU/CPU overload
+TRANSCRIPTION_SEMAPHORE = asyncio.Semaphore(1)
+
+def run_transcription_blocking(audio_path: str, whisper_model: WhisperModel):
+    """Synchronous function that runs the actual transcription."""
+    print(f"Starting transcription for {audio_path}...")
+    segments, _ = whisper_model.transcribe(audio_path, language="ja", word_timestamps=True)
+    segments_list = list(segments)
+    print("Transcription complete. Formatting output...")
+    formatted_result = format_whisper_output(segments_list)
+    
+    # Manual garbage collection to free up memory, especially important for GPU memory
+    import gc
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        
+    return formatted_result
+
 @app.post("/api/transcribe")
 async def transcribe_audio(request: TranscribeRequest):
     if not model:
         raise HTTPException(status_code=500, detail="WhisperX model is not loaded.")
+    
     audio_path = request.local_path
     if not os.path.exists(audio_path):
         raise HTTPException(status_code=404, detail=f"Audio file not found at path: {audio_path}")
+
     try:
-        print(f"Transcribing audio from {audio_path}...")
-        segments, info = model.transcribe(audio_path, language="ja", word_timestamps=True)
-        segments_list = list(segments) 
-        print("Transcription complete. Formatting output...")
-        formatted_result = format_whisper_output(segments_list)
-        import gc
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        return formatted_result
+        print(f"Request to transcribe {audio_path} received, waiting for semaphore...")
+        async with TRANSCRIPTION_SEMAPHORE:
+            print(f"Semaphore acquired for {audio_path}, running transcription in thread...")
+            result = await asyncio.to_thread(run_transcription_blocking, audio_path, model)
+            return result
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -190,7 +264,7 @@ def format_whisper_output(segments):
 # --- Data Backup & Restore Endpoints ---
 
 @app.post("/api/export")
-async def export_data(data: UserData, expire_hours: int = Query(24, ge=1, le=24)):
+def export_data(data: UserData, expire_hours: int = Query(24, ge=1, le=24)):
     token = secrets.token_hex(16)
     expiry_time = datetime.utcnow() + timedelta(hours=expire_hours)
     file_path = os.path.join(TEMP_DATA_DIR, f"{token}.json")
@@ -206,7 +280,7 @@ async def export_data(data: UserData, expire_hours: int = Query(24, ge=1, le=24)
     return {"token": token, "expires_at": expiry_time.isoformat()}
 
 @app.get("/api/import")
-async def import_data(token: str = Query(...)):
+def import_data(token: str = Query(...)):
     if token not in token_storage:
         raise HTTPException(status_code=404, detail="Token not found.")
 
@@ -233,23 +307,349 @@ async def import_data(token: str = Query(...)):
 
     return data
 
-async def cleanup_expired_tokens():
+# --- Community Sharing Endpoints ---
+
+@app.post("/api/community/share")
+def share_song(payload: SharedSongUpload):
+    if not payload.sharer_name or not payload.sharer_name.strip():
+        raise HTTPException(status_code=400, detail="Sharer name is required.")
+        
+    db_path = "shared_songs.db"
+    
+    # Enforce community quota
+    quota_mb = ADMIN_CONFIG.get("community_policy", {}).get("max_size_mb")
+    if quota_mb and os.path.exists(db_path):
+        current_size = os.path.getsize(db_path)
+        if current_size > quota_mb * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Community server storage quota exceeded. Cannot share more songs at this time.")
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "INSERT INTO shared_songs (title, artist, cover_url, sharer_name, song_data, words_data) VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                payload.title,
+                payload.artist,
+                payload.cover_url,
+                payload.sharer_name,
+                json.dumps(payload.song_data, ensure_ascii=False),
+                json.dumps(payload.words_data, ensure_ascii=False)
+            )
+        )
+        conn.commit()
+        return {"message": "Song shared successfully!", "id": cursor.lastrowid}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+@app.get("/api/community/songs")
+def list_shared_songs(q: str = None, sharer: str = None, limit: int = 50, offset: int = 0):
+    conn = sqlite3.connect("shared_songs.db")
+    cursor = conn.cursor()
+    
+    query = "SELECT id, title, artist, cover_url, sharer_name, created_at FROM shared_songs WHERE 1=1"
+    params = []
+    
+    if q:
+        query += " AND (title LIKE ? OR artist LIKE ?)"
+        params.extend([f"%{q}%", f"%{q}%"])
+    
+    if sharer:
+        query += " AND sharer_name = ?"
+        params.append(sharer)
+        
+    query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+    
+    try:
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        songs = []
+        for row in rows:
+            songs.append({
+                "id": row[0],
+                "title": row[1],
+                "artist": row[2],
+                "cover_url": row[3],
+                "sharer_name": row[4],
+                "created_at": row[5]
+            })
+        return {"songs": songs}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+@app.get("/api/community/songs/{song_id}")
+def get_shared_song(song_id: int):
+    conn = sqlite3.connect("shared_songs.db")
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT song_data, words_data FROM shared_songs WHERE id = ?", (song_id,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Shared song not found.")
+        
+        return {
+            "songs": [json.loads(row[0])],
+            "words": json.loads(row[1])
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+@app.delete("/api/community/songs/{song_id}")
+def delete_shared_song(song_id: int, sharer_name: str = Query(...)):
+    conn = sqlite3.connect("shared_songs.db")
+    cursor = conn.cursor()
+    try:
+        # Check ownership
+        cursor.execute("SELECT sharer_name FROM shared_songs WHERE id = ?", (song_id,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Shared song not found.")
+            
+        if row[0] != sharer_name:
+            raise HTTPException(status_code=403, detail="You do not have permission to delete this song.")
+            
+        cursor.execute("DELETE FROM shared_songs WHERE id = ?", (song_id,))
+        conn.commit()
+        return {"message": "Shared song deleted successfully."}
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+# --- Admin Endpoints ---
+
+def get_dir_size(path='.'):
+    total_size = 0
+    file_count = 0
+    if not os.path.exists(path):
+        return 0, 0
+    for entry in os.scandir(path):
+        if entry.is_file():
+            total_size += entry.stat().st_size
+            file_count += 1
+        elif entry.is_dir():
+            size, count = get_dir_size(entry.path)
+            total_size += size
+            file_count += count
+    return total_size, file_count
+
+@app.get("/api/admin/cache-info", dependencies=[Depends(get_admin_user)])
+def get_cache_info():
+    media_cache_size, media_cache_files = get_dir_size(CACHE_DIR)
+    token_cache_size, token_cache_files = get_dir_size(TEMP_DATA_DIR)
+    
+    community_db_size = 0
+    if os.path.exists("shared_songs.db"):
+        community_db_size = os.path.getsize("shared_songs.db")
+        
+    return {
+        "media_cache": {
+            "size_bytes": media_cache_size,
+            "file_count": media_cache_files
+        },
+        "token_cache": {
+            "size_bytes": token_cache_size,
+            "file_count": token_cache_files
+        },
+        "community_db": {
+            "size_bytes": community_db_size
+        }
+    }
+
+@app.post("/api/admin/clear-cache", dependencies=[Depends(get_admin_user)])
+def clear_cache(request: ClearCacheRequest):
+    if request.cache_name == "media":
+        dir_to_clear = CACHE_DIR
+    elif request.cache_name == "tokens":
+        dir_to_clear = TEMP_DATA_DIR
+    else:
+        raise HTTPException(status_code=400, detail="Invalid cache name specified.")
+
+    try:
+        for filename in os.listdir(dir_to_clear):
+            file_path = os.path.join(dir_to_clear, filename)
+            if os.path.isfile(file_path) or os.path.islink(file_path):
+                os.unlink(file_path)
+            elif os.path.isdir(file_path):
+                shutil.rmtree(file_path)
+        return {"message": f"Successfully cleared the {request.cache_name} cache."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to clear cache: {e}")
+
+@app.get("/api/admin/config", dependencies=[Depends(get_admin_user)])
+def get_config():
+    return {
+        "media_cache_policy": ADMIN_CONFIG.get("media_cache_policy"),
+        "token_cache_policy": ADMIN_CONFIG.get("token_cache_policy"),
+        "community_policy": ADMIN_CONFIG.get("community_policy"),
+    }
+
+@app.post("/api/admin/config", dependencies=[Depends(get_admin_user)])
+def update_config(request: UpdateConfigRequest):
+    if request.media_cache_policy:
+        ADMIN_CONFIG["media_cache_policy"].update(request.media_cache_policy.dict(exclude_unset=True))
+    if request.token_cache_policy:
+        ADMIN_CONFIG["token_cache_policy"].update(request.token_cache_policy.dict(exclude_unset=True))
+    if request.community_policy:
+        ADMIN_CONFIG.setdefault("community_policy", {}).update(request.community_policy.dict(exclude_unset=True))
+    
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(ADMIN_CONFIG, f, indent=4)
+    
+    return {"message": "Configuration updated successfully."}
+
+@app.get("/api/admin/community/songs", dependencies=[Depends(get_admin_user)])
+def admin_list_shared_songs(limit: int = 100, offset: int = 0):
+    conn = sqlite3.connect("shared_songs.db")
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT id, title, artist, sharer_name, created_at FROM shared_songs ORDER BY created_at DESC LIMIT ? OFFSET ?", (limit, offset))
+        rows = cursor.fetchall()
+        songs = []
+        for row in rows:
+            songs.append({
+                "id": row[0],
+                "title": row[1],
+                "artist": row[2],
+                "sharer_name": row[3],
+                "created_at": row[4]
+            })
+        
+        cursor.execute("SELECT COUNT(id) FROM shared_songs")
+        total = cursor.fetchone()[0]
+        
+        return {"songs": songs, "total": total}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+@app.delete("/api/admin/community/songs/{song_id}", dependencies=[Depends(get_admin_user)])
+def admin_delete_shared_song(song_id: int):
+    conn = sqlite3.connect("shared_songs.db")
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM shared_songs WHERE id = ?", (song_id,))
+        conn.commit()
+        if cursor.rowcount == 0:
+             raise HTTPException(status_code=404, detail="Song not found")
+        return {"message": "Shared song deleted successfully by admin."}
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+# --- Background Tasks ---
+
+async def background_cleanup_task():
     while True:
-        await asyncio.sleep(60 * 60) # Run every hour
+        await asyncio.sleep(3600)  # Run every hour
+        print("Running background cleanup task...")
+
         now = datetime.utcnow()
-        expired_tokens = [
-            token for token, info in token_storage.items() 
-            if now > info["expiry_time"]
-        ]
+        
+        # 1. Clean expired temp tokens (in-memory list)
+        expired_tokens = [token for token, info in token_storage.items() if now > info["expiry_time"]]
         for token in expired_tokens:
             info = token_storage.pop(token, None)
             if info and os.path.exists(info["file_path"]):
-                print(f"Cleaning up expired data for token: {token}")
+                print(f"Cleaning up expired data file: {info['file_path']}")
                 os.remove(info["file_path"])
+
+        # 2. Clean token cache directory based on file age and directory size
+        token_policy = ADMIN_CONFIG["token_cache_policy"]
+        max_age_hours = token_policy.get("max_age_hours")
+        max_size_mb = token_policy.get("max_size_mb")
+
+        files = sorted(Path(TEMP_DATA_DIR).iterdir(), key=os.path.getmtime)
+        
+        # Age-based cleaning
+        if max_age_hours is not None:
+            for file_path in files:
+                if file_path.is_file():
+                    file_mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
+                    if (now - file_mtime) > timedelta(hours=max_age_hours):
+                        print(f"Token file {file_path} is older than {max_age_hours} hours, deleting.")
+                        os.remove(file_path)
+                    else:
+                        break # Files are sorted by time, so we can stop
+
+        # Size-based cleaning
+        if max_size_mb is not None:
+            total_size_bytes, _ = get_dir_size(TEMP_DATA_DIR)
+            max_size_bytes = max_size_mb * 1024 * 1024
+            files = sorted(Path(TEMP_DATA_DIR).iterdir(), key=os.path.getmtime) # Re-fetch sorted files
+            while total_size_bytes > max_size_bytes and files:
+                oldest_file = files.pop(0)
+                if oldest_file.is_file():
+                    file_size = oldest_file.stat().st_size
+                    print(f"Token cache size ({total_size_bytes / 1024 / 1024:.2f} MB) exceeds limit ({max_size_mb} MB). Deleting oldest file: {oldest_file}")
+                    os.remove(oldest_file)
+                    total_size_bytes -= file_size
+
+        # 3. Clean media cache directory based on file age and directory size
+        media_policy = ADMIN_CONFIG["media_cache_policy"]
+        max_age_days = media_policy.get("max_age_days")
+        max_size_gb = media_policy.get("max_size_gb")
+
+        files = sorted(Path(CACHE_DIR).iterdir(), key=os.path.getmtime)
+
+        # Age-based cleaning
+        if max_age_days is not None:
+            for file_path in files:
+                if file_path.is_file():
+                    file_mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
+                    if (now - file_mtime) > timedelta(days=max_age_days):
+                        print(f"Media file {file_path} is older than {max_age_days} days, deleting.")
+                        os.remove(file_path)
+                    else:
+                        break # Files are sorted by time
+
+        # Size-based cleaning
+        if max_size_gb is not None:
+            total_size_bytes, _ = get_dir_size(CACHE_DIR)
+            max_size_bytes = max_size_gb * 1024 * 1024 * 1024
+            files = sorted(Path(CACHE_DIR).iterdir(), key=os.path.getmtime)
+            while total_size_bytes > max_size_bytes and files:
+                oldest_file = files.pop(0)
+                if oldest_file.is_file():
+                    file_size = oldest_file.stat().st_size
+                    print(f"Media cache size ({total_size_bytes / 1024**3:.2f} GB) exceeds limit ({max_size_gb} GB). Deleting oldest file: {oldest_file}")
+                    os.remove(oldest_file)
+                    total_size_bytes -= file_size
 
 @app.on_event("startup")
 async def startup_event():
-    asyncio.create_task(cleanup_expired_tokens())
+    # Initialize SQLite DB for community shared songs
+    conn = sqlite3.connect("shared_songs.db")
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS shared_songs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            artist TEXT,
+            cover_url TEXT,
+            sharer_name TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            song_data TEXT NOT NULL,
+            words_data TEXT NOT NULL
+        )
+    ''')
+    conn.commit()
+    conn.close()
+    
+    asyncio.create_task(background_cleanup_task())
 
 if __name__ == "__main__":
     import uvicorn

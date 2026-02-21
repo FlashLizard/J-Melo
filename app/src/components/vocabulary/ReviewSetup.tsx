@@ -14,9 +14,11 @@ const ReviewSetup: React.FC<ReviewSetupProps> = ({ onClose }) => {
   const [selectedSongIds, setSelectedSongIds] = useState<Set<number>>(new Set());
   const { t } = useTranslation(); // Initialize useTranslation
 
-  const songsWithWords = useMemo(() => {
+  const songsWithWords: SongRecord[] = useMemo(() => {
     const songIdWithWords = new Set(words.map(w => w.sourceSongId));
-    return songs.filter(song => songIdWithWords.has(song.id!));
+    return songs.filter((song): song is SongRecord & { title: string } => 
+        songIdWithWords.has(song.id!) && typeof song.title === 'string'
+    );
   }, [songs, words]);
 
   const handleToggleSong = (songId: number) => {

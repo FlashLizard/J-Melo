@@ -2,7 +2,7 @@
 import React from 'react';
 import MediaDisplay from './MediaDisplay';
 import PlayerControls from './PlayerControls';
-import { SongData } from '@/stores/useSongStore';
+import { SongData } from '@/interfaces';
 
 interface Props {
   song: SongData | null;

@@ -24,8 +24,12 @@ const DEFAULT_SETTINGS: Settings = {
   translationLLMApiKey: null,
   translationLLMApiUrl: null,
   translationLLMModelType: null,
+  translationLLMMaxTokens: 32768,
   targetTranslationLanguage: 'en', // Default target language
   backendUrl: 'http://localhost:8000', // New: Default backend URL
+  llmMaxTokens: 32768,
+  lyricFixLLMMaxTokens: 32768,
+  sharerNickname: '', // New: default sharer nickname
 };
 
 const useSettingsStore = create<SettingsState>()(
@@ -33,26 +37,29 @@ const useSettingsStore = create<SettingsState>()(
     immer((set, get) => ({
       settings: DEFAULT_SETTINGS, // Initialize with defaults
       loadSettings: async () => {
-        const storedSettings = await db.settings.get(0);
-        let configBackendUrl = null;
+        // Priority for backendUrl: 1. User Saved (in DB), 2. config.json, 3. Hardcoded fallback
+        let deploymentDefaultUrl = 'http://localhost:8000'; // 3. Hardcoded fallback
         try {
-          const response = await fetch('/config.json.example');
+          const response = await fetch('/config.json'); // Correctly fetch config.json
           if (response.ok) {
             const config = await response.json();
-            configBackendUrl = config.backendUrl;
+            if (config.backendUrl) {
+              deploymentDefaultUrl = config.backendUrl; // 2. config.json overrides fallback
+            }
           }
         } catch (error) {
-          console.warn("Failed to load config.json.example, using default backend URL.", error);
+          // It's okay if config.json is not found, we'll use the hardcoded default.
+          console.info("'/config.json' not found. Using hardcoded default backend URL.");
         }
+
+        const storedSettings = await db.settings.get(0);
+
         set(state => {
-          // Merge stored settings with defaults, then apply configBackendUrl if no stored value
-          state.settings = { ...DEFAULT_SETTINGS, ...storedSettings };
-          if (!state.settings.backendUrl && configBackendUrl) {
-            state.settings.backendUrl = configBackendUrl;
-          } else if (state.settings.backendUrl === 'http://localhost:8000' && configBackendUrl) {
-            // If the stored backendUrl is still the hardcoded default, and a configBackendUrl exists, use the config one
-            state.settings.backendUrl = configBackendUrl;
-          }
+          // Establish the final default settings, with backendUrl determined by the logic above.
+          const finalDefaultSettings = { ...DEFAULT_SETTINGS, backendUrl: deploymentDefaultUrl };
+          
+          // User's stored settings (from DB) override any defaults.
+          state.settings = { ...finalDefaultSettings, ...storedSettings };
         });
       },
       updateSetting: async (key, value) => {

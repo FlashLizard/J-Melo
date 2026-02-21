@@ -16,6 +16,9 @@ pip-delete-this-directory.txt
 htmlcov/
 .mypy_cache/
 
+# Config files
+config.json
+
 # Jupyter Notebook
 .ipynb_checkpoints
 
@@ -30,3 +33,11 @@ uvicorn.log
 # Media Cache (important for media files downloaded by yt-dlp)
 media_cache/
 temp_data/
+
+# Database files
+shared_songs.db
+
+# npm package manager files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml

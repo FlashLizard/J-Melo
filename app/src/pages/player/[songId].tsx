@@ -24,6 +24,8 @@ import useMobileViewStore, { MOBILE_VIEWS } from '@/stores/useMobileViewStore';
 import useTranslation from '@/hooks/useTranslation';
 import { LyricLine } from '@/interfaces/lyrics';
 
+import TimelessLyricsImporter from '@/components/tutor/TimelessLyricsImporter';
+
 const RightHandPanel = () => {
   const { song, updateLyricLine } = useSongStore();
   const editingLine = useEditorStore((state) => state.editingLine);
@@ -55,6 +57,7 @@ const RightHandPanel = () => {
   if (activePanel === 'FULL_LYRICS_EDITOR') return <FullLyricsEditor />;
   if (activePanel === 'SONG_INFO_EDITOR') return <SongInfoEditor />;
   if (activePanel === 'LYRIC_TRANSLATION_PANEL') return <LyricTranslationPanel />;
+  if (activePanel === 'TIMELESS_LYRICS_IMPORTER') return <TimelessLyricsImporter />;
 
   return <ToolPanel />;
 };

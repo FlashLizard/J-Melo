@@ -9,7 +9,13 @@ import { LyricLine } from '@/interfaces/lyrics';
 import useTranslation from '@/hooks/useTranslation'; // Import useTranslation
 import { copyToClipboard } from '@/utils/copyToClipboard';
 
-const Modal: React.FC<{ title: string; content: string; onClose: () => void; t: (key: string) => string }> = ({ title, content, onClose, t }) => {
+const Modal: React.FC<{ 
+  title: string; 
+  content: string; 
+  onClose: () => void; 
+  t: (key: string) => string;
+  children?: React.ReactNode;
+}> = ({ title, content, onClose, t, children }) => {
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
@@ -25,7 +31,10 @@ const Modal: React.FC<{ title: string; content: string; onClose: () => void; t: 
         <div className="flex-grow overflow-y-auto bg-gray-900 p-4 rounded-md border border-gray-700 mb-4">
           <pre className="text-sm whitespace-pre-wrap">{content}</pre>
         </div>
-        <div className="flex justify-end gap-2">
+
+        {children}
+
+        <div className="flex justify-end gap-2 mt-4">
           <button 
               onClick={() => {
                   copyToClipboard(content).then(() => {
@@ -63,7 +72,12 @@ const LyricPreviewModal: React.FC<{
     content={`${t('aiLyricCorrector.parsedJsonPreview')}:\n\n${JSON.stringify(newLyrics, null, 2)}\n\n---\n\n${t('aiLyricCorrector.rawLlmOutput')}:\n\n${rawLLMOutput}`}
     onClose={onCancel}
     t={t}
-  />
+  >
+    <div className="flex justify-end gap-2">
+        <button onClick={onCancel} className="px-4 py-2 bg-gray-600 rounded-lg hover:bg-gray-500">{t('sentenceEditor.cancelButton')}</button>
+        <button onClick={onConfirm} className="px-4 py-2 bg-green-600 rounded-lg hover:bg-green-500 font-bold">{t('sentenceEditor.saveButton')}</button>
+    </div>
+  </Modal>
 );
 
 const ErrorEditing: React.FC<{
@@ -129,6 +143,7 @@ const AILyricCorrector: React.FC = () => {
       const apiKey = settings?.lyricFixLLMApiKey || settings?.openaiApiKey;
       const apiUrl = settings?.lyricFixLLMApiUrl || settings?.llmApiUrl || 'https://api.openai.com/v1/chat/completions';
       const modelType = settings?.lyricFixLLMModelType || settings?.llmModelType || 'gpt-3.5-turbo';
+      const maxTokens = settings?.lyricFixLLMMaxTokens || settings?.llmMaxTokens || 32768;
   
       if (!apiKey) throw new Error(t('aiLyricCorrector.apiKeyNotSet'));
       if (!correctLyrics.trim()) throw new Error(t('aiLyricCorrector.pasteCorrectLyricsHint'));
@@ -141,7 +156,7 @@ const AILyricCorrector: React.FC = () => {
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: modelType, messages: [{ role: 'user', content: finalPrompt }], temperature: 0.2 }),
+        body: JSON.stringify({ model: modelType, messages: [{ role: 'user', content: finalPrompt }], temperature: 0.2, max_tokens: maxTokens }),
       });
   
       if (!response.ok) {

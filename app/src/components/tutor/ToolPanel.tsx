@@ -8,7 +8,7 @@ import useVocabularyStore from '@/stores/useVocabularyStore';
 import { db } from '@/lib/db';
 
 const ToolPanel: React.FC = () => {
-  const { song, cacheCurrentSongAudio } = useSongStore();
+  const { song, cacheCurrentSongAudio, generateTranscriptionPreview } = useSongStore();
   const { setActivePanel } = useUIPanelStore();
   const { t } = useTranslation();
   const { startReview } = useVocabularyStore();
@@ -70,19 +70,33 @@ const ToolPanel: React.FC = () => {
             >
                 {t('home.reviewButton')}
             </button>
-            <button 
-                onClick={cacheCurrentSongAudio}
-                disabled={!song || song.is_cached}
-                className="w-full text-left p-2 rounded-md bg-gray-700 hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-                {song?.is_cached ? t('toolPanel.audioCached') : t('toolPanel.cacheAudioButton')}
-            </button>
-            <button 
-              className="w-full text-left p-2 rounded-md bg-gray-700 hover:bg-gray-600 transition-colors"
-              onClick={() => setActivePanel('AI_CORRECTOR')}
-            >
-              {t('toolPanel.aiLyricCorrectionButton')}
-            </button>
+                        <button 
+                            onClick={cacheCurrentSongAudio}
+                            disabled={!song || song.is_cached}
+                            className="w-full text-left p-2 rounded-md bg-gray-700 hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {song?.is_cached ? t('toolPanel.audioCached') : t('toolPanel.cacheAudioButton')}
+                        </button>
+                        <button 
+                          onClick={() => song && generateTranscriptionPreview(song)}
+                          disabled={!song}
+                          className="w-full text-left p-2 rounded-md bg-gray-700 hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {t('toolPanel.retranscribeButton')}
+                        </button>
+                        <button 
+                          onClick={() => setActivePanel('TIMELESS_LYRICS_IMPORTER')}
+                          disabled={!song}
+                          className="w-full text-left p-2 rounded-md bg-gray-700 hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {t('lyricsDisplay.noLyrics.importButton')}
+                        </button>
+                        <button 
+                          className="w-full text-left p-2 rounded-md bg-gray-700 hover:bg-gray-600 transition-colors"
+                          onClick={() => setActivePanel('AI_CORRECTOR')}
+                        >
+                          {t('toolPanel.aiLyricCorrectionButton')}
+                        </button>
             <button 
               className="w-full text-left p-2 rounded-md bg-gray-700 hover:bg-gray-600 transition-colors"
               onClick={() => setActivePanel('FULL_LYRICS_EDITOR')}

@@ -37,12 +37,14 @@ const Reviewer: React.FC = () => {
       
       <div className="flex-grow flex items-center justify-center">
         <div className="w-full max-w-2xl bg-gray-800 rounded-lg p-6 min-h-[300px] flex flex-col justify-center items-center text-center">
-          {!isFlipped ? (
-            <div className="prose prose-invert max-w-none">
-              <ReactMarkdown>{currentReviewCard.cardFront}</ReactMarkdown>
+          <div className="prose prose-invert max-w-none mb-4">
+            <ReactMarkdown>{currentReviewCard.cardFront}</ReactMarkdown>
+          </div>
+          
+          {isFlipped && (
+            <div className="w-full border-t border-gray-700 pt-4 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="whitespace-pre-wrap">{currentReviewCard.cardBack}</div>
             </div>
-          ) : (
-            <div className="whitespace-pre-wrap">{currentReviewCard.cardBack}</div>
           )}
         </div>
       </div>

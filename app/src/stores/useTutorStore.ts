@@ -64,13 +64,14 @@ const useTutorStore = create<TutorState>()(
           const apiKey = settings.openaiApiKey;
           const apiUrl = settings.llmApiUrl || 'https://api.openai.com/v1/chat/completions';
           const modelType = settings.llmModelType || 'gpt-3.5-turbo';
+          const maxTokens = settings.llmMaxTokens || 32768;
           
           if (!apiKey) throw new Error('API key is not set in settings.');
 
           const response = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-            body: JSON.stringify({ model: modelType, messages: [{ role: 'user', content: finalPrompt }], temperature: 0.5, max_tokens: 150 }),
+            body: JSON.stringify({ model: modelType, messages: [{ role: 'user', content: finalPrompt }], temperature: 0.5, max_tokens: maxTokens }),
           });
 
           if (useUIPanelStore.getState().activePanel !== 'AI_TUTOR') return;

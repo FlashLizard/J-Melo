@@ -1,13 +1,14 @@
 // app/src/pages/index.tsx
 import Head from 'next/head';
 import Link from 'next/link';
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import useSongStore from '@/stores/useSongStore';
 import useTranslation from '@/hooks/useTranslation';
 import SongInput from '@/components/common/SongInput';
-import { db, blobToBase64 } from '@/lib/db';
+import ImportConflictModal, { Conflict } from '@/components/common/ImportConflictModal';
+import AboutModal from '@/components/common/AboutModal';
+import { db, blobToBase64, WordRecord, SongRecord } from '@/lib/db';
 import { saveAs } from 'file-saver';
-import { SongRecord } from '@/lib/db';
 
 interface DisplaySongData {
   id?: number;
@@ -16,12 +17,23 @@ interface DisplaySongData {
   cover_url?: string | null;
 }
 
+interface ImportState {
+  conflicts: Conflict[];
+  nonConflictingSongs: SongRecord[];
+  importedWords: WordRecord[];
+}
+
 const HomePage = () => {
-  const { fetchAllSongs, isLoading, deleteSongs, importSongs } = useSongStore();
+  const { fetchAllSongs, isLoading, deleteSongs } = useSongStore();
   const [songs, setSongs] = useState<DisplaySongData[]>([]);
   const { t } = useTranslation();
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedSongIds, setSelectedSongIds] = useState<number[]>([]);
+  const [importState, setImportState] = useState<ImportState | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isAboutOpen, setIsAboutOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const loadSongs = async () => {
     const allSongs = await fetchAllSongs();
@@ -31,6 +43,16 @@ const HomePage = () => {
   useEffect(() => {
     loadSongs();
   }, [fetchAllSongs]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+        if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+            setIsMenuOpen(false);
+        }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const handleSelectSong = (songId: number) => {
     setSelectedSongIds(prev =>
@@ -58,7 +80,13 @@ const HomePage = () => {
 
   const handleShareSelected = async () => {
     if (selectedSongIds.length === 0) return;
+    
+    // Fetch songs
     const songsToShare = await db.songs.where('id').anyOf(selectedSongIds).toArray();
+    
+    // Fetch words associated with these songs
+    const wordsToShare = await db.words.where('sourceSongId').anyOf(selectedSongIds).toArray();
+
     const sanitizedSongs = await Promise.all(songsToShare.map(async (song) => {
         const { audioData, ...rest } = song;
         let coverImageBase64 = '';
@@ -67,8 +95,73 @@ const HomePage = () => {
         }
         return { ...rest, coverImageData: coverImageBase64 };
     }));
-    const blob = new Blob([JSON.stringify(sanitizedSongs, null, 2)], { type: 'application/json' });
+    
+    const exportData = {
+        songs: sanitizedSongs,
+        words: wordsToShare
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
     saveAs(blob, 'j-melo-songs.json');
+  };
+
+  const handleUploadSelected = async () => {
+    if (selectedSongIds.length === 0) return;
+    const settings = await db.settings.get(0);
+    const backendUrl = settings?.backendUrl || 'http://localhost:8000';
+    const sharerNickname = settings?.sharerNickname?.trim();
+
+    if (!sharerNickname) {
+        alert(t('home.sharerNicknameRequiredAlert'));
+        return;
+    }
+
+    setIsUploading(true);
+    try {
+        const songsToShare = await db.songs.where('id').anyOf(selectedSongIds).toArray();
+        let successCount = 0;
+        
+        for (const song of songsToShare) {
+            const wordsToShare = await db.words.where('sourceSongId').equals(song.id!).toArray();
+            
+            // Prepare song payload (remove binary data, reconstruct urls if needed)
+            const { audioData, ...rest } = song;
+            let coverImageBase64 = '';
+            if (song.coverImageData) {
+                coverImageBase64 = await blobToBase64(song.coverImageData);
+            }
+            const songPayload = { ...rest, coverImageData: coverImageBase64 };
+            
+            const payload = {
+                title: song.title,
+                artist: song.artist,
+                cover_url: song.cover_url,
+                sharer_name: sharerNickname,
+                song_data: songPayload,
+                words_data: wordsToShare
+            };
+
+            const response = await fetch(`${backendUrl}/api/community/share`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                console.error(`Failed to upload ${song.title}`);
+            } else {
+                successCount++;
+            }
+        }
+        
+        alert(t('home.uploadSuccessAlert', { count: successCount, total: selectedSongIds.length }));
+        setIsSelectMode(false);
+        setSelectedSongIds([]);
+    } catch (e) {
+        alert(t('home.uploadErrorAlert', { error: (e as Error).message }));
+    } finally {
+        setIsUploading(false);
+    }
   };
 
   const handleImportClick = () => {
@@ -80,16 +173,49 @@ const HomePage = () => {
       if (file) {
         const text = await file.text();
         try {
-          const songsData = JSON.parse(text);
-          await importSongs(songsData);
-          loadSongs(); // Refresh the list
-          alert(t('home.importSuccess'));
+          const parsedData = JSON.parse(text);
+          const songsData: SongRecord[] = Array.isArray(parsedData) ? parsedData : (parsedData.songs || []);
+          const wordsData: WordRecord[] = parsedData.words || [];
+
+          const allExistingSongs = await db.songs.toArray();
+          const existingUrlMap = new Map(allExistingSongs.map(s => [s.sourceUrl, s]));
+
+          const foundConflicts: Conflict[] = [];
+          const newSongs: SongRecord[] = [];
+
+          for (const importedSong of songsData) {
+            const existingSong = existingUrlMap.get(importedSong.sourceUrl);
+            if (existingSong) {
+              foundConflicts.push({ existingSong, importedSong });
+            } else {
+              newSongs.push(importedSong);
+            }
+          }
+
+          if (foundConflicts.length > 0) {
+            setImportState({ 
+              conflicts: foundConflicts, 
+              nonConflictingSongs: newSongs, 
+              importedWords: wordsData 
+            });
+          } else {
+            // No conflicts, proceed with simple import
+            const { addManySongs } = useSongStore.getState();
+            await addManySongs(newSongs, wordsData);
+            loadSongs();
+            alert(t('home.importSuccess'));
+          }
         } catch (error) {
-          alert(t('home.importError', { message: error.message }));
+          alert(t('home.importError', { message: (error as Error).message }));
         }
       }
     };
     input.click();
+  };
+
+  const handleImportComplete = () => {
+    setImportState(null);
+    loadSongs();
   };
 
   const isAllSelected = useMemo(() => {
@@ -109,16 +235,60 @@ const HomePage = () => {
       <Head>
         <title>{`J-Melo - ${t('home.title')}`}</title>
       </Head>
+
+      {importState && (
+        <ImportConflictModal
+          isOpen={!!importState}
+          onClose={() => setImportState(null)}
+          conflicts={importState.conflicts}
+          nonConflictingSongs={importState.nonConflictingSongs}
+          importedWords={importState.importedWords}
+          onImportComplete={handleImportComplete}
+        />
+      )}
+
+      <AboutModal isOpen={isAboutOpen} onClose={() => setIsAboutOpen(false)} />
+
       <main className="bg-gray-900 min-h-screen text-white p-4">
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4 relative">
           <h1 className="text-3xl font-bold">{t('home.title')}</h1>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 items-center w-full sm:w-auto">
             {!isSelectMode && (
                 <>
-                    <button onClick={handleImportClick} className="px-3 py-1 text-sm bg-purple-600 rounded-lg hover:bg-purple-500 text-white">{t('home.importButton')}</button>
-                    <Link href="/vocabulary" className="px-3 py-1 text-sm bg-yellow-600 rounded-lg hover:bg-yellow-500 text-white">{t('index.vocabularyButton')}</Link>
-                    <button onClick={() => setIsSelectMode(true)} className="px-3 py-1 text-sm bg-blue-600 rounded-lg hover:bg-blue-500 text-white">{t('home.selectButton')}</button>
-                    <Link href="/settings" className="px-3 py-1 text-sm bg-gray-600 rounded-lg hover:bg-gray-500 text-white">{t('index.settingsButton')}</Link>
+                    <button onClick={() => setIsSelectMode(true)} className="flex-1 sm:flex-none px-4 py-2 text-sm bg-blue-600 rounded-lg hover:bg-blue-500 text-white font-bold">{t('home.selectButton')}</button>
+                    <Link href="/explore" className="flex-1 sm:flex-none px-4 py-2 text-sm bg-indigo-600 rounded-lg hover:bg-indigo-500 text-white font-bold text-center">{t('home.exploreButton')}</Link>
+                    <Link href="/vocabulary" className="flex-1 sm:flex-none px-4 py-2 text-sm bg-yellow-600 rounded-lg hover:bg-yellow-500 text-white font-bold text-center">{t('index.vocabularyButton')}</Link>
+                    
+                    <div className="relative" ref={menuRef}>
+                        <button 
+                            onClick={() => setIsMenuOpen(!isMenuOpen)} 
+                            className="px-3 py-2 text-sm bg-gray-700 rounded-lg hover:bg-gray-600 text-white flex items-center gap-1"
+                        >
+                            <span>{t('home.moreMenu') || 'More'}</span>
+                            <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 transition-transform ${isMenuOpen ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                            </svg>
+                        </button>
+                        
+                        {isMenuOpen && (
+                            <div className="absolute right-0 mt-2 w-48 bg-gray-800 rounded-md shadow-lg border border-gray-700 z-50 py-1">
+                                <button onClick={() => { setIsAboutOpen(true); setIsMenuOpen(false); }} className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white">
+                                    {t('home.aboutButton')}
+                                </button>
+                                <div className="border-t border-gray-700 my-1"></div>
+                                <button onClick={() => { handleImportClick(); setIsMenuOpen(false); }} className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white">
+                                    {t('home.importButton')}
+                                </button>
+                                <Link href="/my-shared" onClick={() => setIsMenuOpen(false)} className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white">
+                                    {t('home.mySharedButton')}
+                                </Link>
+                                <div className="border-t border-gray-700 my-1"></div>
+                                <Link href="/settings" onClick={() => setIsMenuOpen(false)} className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white">
+                                    {t('index.settingsButton')}
+                                </Link>
+                            </div>
+                        )}
+                    </div>
                 </>
             )}
           </div>
@@ -133,8 +303,9 @@ const HomePage = () => {
                     <input type="checkbox" checked={isAllSelected} onChange={handleSelectAll} className="form-checkbox h-5 w-5 text-green-600 bg-gray-700 border-gray-600 rounded focus:ring-green-500"/>
                     <label className="ml-2 text-sm">{t('home.selectAll')}</label>
                 </div>
-                <div className="flex gap-2">
-                    <button onClick={handleShareSelected} className="px-3 py-1 text-sm bg-green-600 rounded-lg hover:bg-green-500 disabled:opacity-50" disabled={selectedSongIds.length === 0}>{t('home.shareButton')}</button>
+                <div className="flex gap-2 flex-wrap justify-end">
+                    <button onClick={handleUploadSelected} className="px-3 py-1 text-sm bg-indigo-600 rounded-lg hover:bg-indigo-500 disabled:opacity-50" disabled={selectedSongIds.length === 0 || isUploading}>{isUploading ? t('home.uploadingButton') : t('home.uploadButton')}</button>
+                    <button onClick={handleShareSelected} className="px-3 py-1 text-sm bg-green-600 rounded-lg hover:bg-green-500 disabled:opacity-50" disabled={selectedSongIds.length === 0}>{t('home.exportButton')}</button>
                     <button onClick={handleDeleteSelected} className="px-3 py-1 text-sm bg-red-600 rounded-lg hover:bg-red-500 disabled:opacity-50" disabled={selectedSongIds.length === 0}>{t('home.deleteButton')}</button>
                     <button onClick={() => { setIsSelectMode(false); setSelectedSongIds([]); }} className="px-3 py-1 text-sm bg-gray-600 rounded-lg hover:bg-gray-500">{t('home.cancelButton')}</button>
                 </div>

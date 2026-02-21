@@ -12,9 +12,10 @@ const SongInput: React.FC = () => {
 
   const handleFetch = async () => {
     if (url) {
-      const newSong = await fetchSong(url);
-      if (newSong && newSong.id) {
-        router.push(`/player/${newSong.id}`); // Redirect to player page after loading
+      await fetchSong(url);
+      const songStore = useSongStore.getState();
+      if (songStore.song && songStore.song.id) {
+        router.push(`/player/${songStore.song.id}`); // Redirect to player page after loading
       }
     }
   };

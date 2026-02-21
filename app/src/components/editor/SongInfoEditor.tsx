@@ -47,6 +47,7 @@ const SongInfoEditor: React.FC = () => {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             className="mt-1 block w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500"
+            placeholder={t('songInfoEditor.titlePlaceholder')}
           />
         </div>
         <div>
@@ -57,6 +58,7 @@ const SongInfoEditor: React.FC = () => {
             value={artist}
             onChange={(e) => setArtist(e.target.value)}
             className="mt-1 block w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500"
+            placeholder={t('songInfoEditor.artistPlaceholder')}
           />
         </div>
       </div>

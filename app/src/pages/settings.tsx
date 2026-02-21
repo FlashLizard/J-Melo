@@ -23,8 +23,9 @@ const SettingsPage: React.FC = () => {
   }, [loadSettings]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    updateSetting(name as keyof typeof settings, value);
+    const { name, value, type } = e.target as HTMLInputElement;
+    const finalValue = type === 'number' ? (value ? Number(value) : undefined) : value;
+    updateSetting(name as keyof typeof settings, finalValue);
   };
 
   const handleExport = async () => {
@@ -107,17 +108,37 @@ const SettingsPage: React.FC = () => {
             {/* Backend Settings Section */}
             <div className="bg-gray-800 rounded-lg shadow p-6">
                 <h2 className="text-xl font-semibold border-b border-gray-700 pb-3 mb-4">{t('settings.backendSettingsTitle')}</h2>
+                <div className="space-y-4">
+                    <div>
+                        <label htmlFor="backendUrl" className="block text-sm font-medium text-gray-300">{t('settings.backendUrlLabel')}</label>
+                        <input
+                            type="text"
+                            id="backendUrl"
+                            name="backendUrl"
+                            value={settings.backendUrl || ''}
+                            onChange={handleInputChange}
+                            placeholder="e.g., http://localhost:8000"
+                            className="mt-1 block w-full p-2 rounded bg-gray-700 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500"
+                        />
+                    </div>
+                </div>
+            </div>
+
+            {/* Community / Sharing Settings Section */}
+            <div className="bg-gray-800 rounded-lg shadow p-6">
+                <h2 className="text-xl font-semibold border-b border-gray-700 pb-3 mb-4">{t('settings.communitySettingsTitle')}</h2>
                 <div>
-                    <label htmlFor="backendUrl" className="block text-sm font-medium text-gray-300">{t('settings.backendUrlLabel')}</label>
+                    <label htmlFor="sharerNickname" className="block text-sm font-medium text-gray-300">{t('settings.sharerNicknameLabel')}</label>
                     <input
                         type="text"
-                        id="backendUrl"
-                        name="backendUrl"
-                        value={settings.backendUrl || ''}
+                        id="sharerNickname"
+                        name="sharerNickname"
+                        value={settings.sharerNickname || ''}
                         onChange={handleInputChange}
-                        placeholder="e.g., http://localhost:8000"
+                        placeholder={t('settings.sharerNicknamePlaceholder')}
                         className="mt-1 block w-full p-2 rounded bg-gray-700 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500"
                     />
+                    <p className="text-xs text-gray-400 mt-2">{t('settings.sharerNicknameHint')}</p>
                 </div>
             </div>
 
@@ -197,6 +218,20 @@ const SettingsPage: React.FC = () => {
                 </div>
             </div>
 
+            {/* Admin Section */}
+            <div className="bg-gray-800 rounded-lg shadow p-6">
+                <h2 className="text-xl font-semibold border-b border-gray-700 pb-3 mb-4">{t('settings.adminSectionTitle')}</h2>
+                <div className="flex justify-between items-center">
+                    <p className="text-gray-300">{t('settings.adminDescription')}</p>
+                    <button
+                        onClick={() => router.push('/settings/admin')}
+                        className="px-4 py-2 bg-indigo-600 rounded-lg hover:bg-indigo-500 text-white"
+                    >
+                        {t('settings.adminButton')}
+                    </button>
+                </div>
+            </div>
+
             {/* LLM API Section */}
             <div className="bg-gray-800 rounded-lg shadow p-6">
               <h2 className="text-xl font-semibold border-b border-gray-700 pb-3 mb-4">{t('settings.llmApiSectionTitle')}</h2>
@@ -220,6 +255,10 @@ const SettingsPage: React.FC = () => {
                   <label className="block text-sm font-medium text-gray-300">{t('settings.llmModelType')}</label>
                   <input type="text" name="llmModelType" value={settings.llmModelType || ''} onChange={handleInputChange} placeholder="e.g., gpt-3.5-turbo" className="mt-1 block w-full p-2 rounded bg-gray-700 border border-gray-600" />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300">{t('settings.llmMaxTokens')}</label>
+                  <input type="number" name="llmMaxTokens" value={settings.llmMaxTokens || ''} onChange={handleInputChange} placeholder="e.g., 32768" className="mt-1 block w-full p-2 rounded bg-gray-700 border border-gray-600" />
+                </div>
               </div>
             </div>
             
@@ -238,6 +277,10 @@ const SettingsPage: React.FC = () => {
                     <div>
                         <label className="block text-sm font-medium text-gray-300">{t('settings.llmModelType')}</label>
                         <input type="text" name="lyricFixLLMModelType" value={settings.lyricFixLLMModelType || ''} onChange={handleInputChange} className="mt-1 block w-full p-2 rounded bg-gray-700 border border-gray-600" />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300">{t('settings.llmMaxTokens')}</label>
+                        <input type="number" name="lyricFixLLMMaxTokens" value={settings.lyricFixLLMMaxTokens || ''} onChange={handleInputChange} placeholder="e.g., 32768" className="mt-1 block w-full p-2 rounded bg-gray-700 border border-gray-600" />
                     </div>
                     <p className="text-xs text-gray-400 mt-2">{t('settings.lyricFixApiKeyHint')}</p>
                 </div>
@@ -270,6 +313,10 @@ const SettingsPage: React.FC = () => {
                     <div>
                         <label className="block text-sm font-medium text-gray-300">{t('settings.llmModelType')}</label>
                         <input type="text" name="translationLLMModelType" value={settings.translationLLMModelType || ''} onChange={handleInputChange} className="mt-1 block w-full p-2 rounded bg-gray-700 border border-gray-600" />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300">{t('settings.llmMaxTokens')}</label>
+                        <input type="number" name="translationLLMMaxTokens" value={settings.translationLLMMaxTokens || ''} onChange={handleInputChange} placeholder="e.g., 32768" className="mt-1 block w-full p-2 rounded bg-gray-700 border border-gray-600" />
                     </div>
                     <p className="text-xs text-gray-400 mt-2">{t('settings.lyricTranslationApiKeyHint')}</p>
                 </div>

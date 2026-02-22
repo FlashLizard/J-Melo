@@ -35,6 +35,8 @@ const AdminPage: React.FC = () => {
     community_db: CacheInfo;
   } | null>(null);
   const [policies, setPolicies] = useState<{
+    admin_token?: string;
+    proxy?: string;
     media_cache_policy: CachePolicy;
     token_cache_policy: CachePolicy;
     transcription_cache_policy: CachePolicy;
@@ -230,6 +232,32 @@ const AdminPage: React.FC = () => {
                 <p className='text-center'>{t('admin.loadingInfo')}</p>
             ) : cacheInfo && policies && (
               <>
+                {/* General Settings Section */}
+                <div className="bg-gray-800 rounded-lg shadow p-6 space-y-4">
+                  <h2 className="text-xl font-semibold border-b border-gray-700 pb-3">{t('admin.generalSettingsTitle')}</h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-1">{t('admin.proxyLabel')}</label>
+                      <input
+                        type="text"
+                        value={policies.proxy || ''}
+                        onChange={(e) => setPolicies({ ...policies, proxy: e.target.value })}
+                        placeholder="http://127.0.0.1:7890"
+                        className="w-full p-2 rounded bg-gray-700 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-1">{t('admin.adminTokenLabel')}</label>
+                      <input
+                        type="text"
+                        value={policies.admin_token || ''}
+                        onChange={(e) => setPolicies({ ...policies, admin_token: e.target.value })}
+                        className="w-full p-2 rounded bg-gray-700 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 {/* Media Cache Section */}
                 <div className="bg-gray-800 rounded-lg shadow p-6 space-y-4">
                   <h2 className="text-xl font-semibold border-b border-gray-700 pb-3">{t('admin.mediaCacheTitle')}</h2>

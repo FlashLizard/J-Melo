@@ -9,3 +9,5 @@ transformers
 ffmpeg-python
 httpx
 faster_whisper
+beautifulsoup4
+html5lib

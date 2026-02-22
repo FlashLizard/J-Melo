@@ -170,7 +170,11 @@ const ExplorePage: React.FC = () => {
                                 <div key={song.id} className="bg-gray-800 rounded-lg shadow-lg overflow-hidden flex flex-col cursor-pointer hover:bg-gray-700 transition" onClick={() => handleDownload(song.id)}>
                                     <div className="h-48 bg-gray-700 relative">
                                         {song.cover_url ? (
-                                            <img src={song.cover_url} alt={song.title} className="w-full h-full object-cover" />
+                                            <img 
+                                                src={song.cover_url.startsWith('/') ? `${backendUrl}${song.cover_url}` : song.cover_url} 
+                                                alt={song.title} 
+                                                className="w-full h-full object-cover" 
+                                            />
                                         ) : (
                                             <div className="flex items-center justify-center w-full h-full text-gray-500">No Cover</div>
                                         )}

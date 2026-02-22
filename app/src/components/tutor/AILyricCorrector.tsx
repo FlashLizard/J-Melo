@@ -105,16 +105,105 @@ const ErrorEditing: React.FC<{
   </div>
 );
 
+// --- Utaten Search Modal ---
+const UtatenSearchModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    defaultQuery: string;
+    onSelect: (url: string) => void;
+    t: (key: string) => string;
+}> = ({ isOpen, onClose, defaultQuery, onSelect, t }) => {
+    const [searchQuery, setSearchQuery] = useState(defaultQuery);
+    const [searchResults, setSearchResults] = useState<any[]>([]);
+    const [isSearching, setIsSearching] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    // Perform initial search when modal opens
+    useEffect(() => {
+        if (isOpen && defaultQuery) {
+            setSearchQuery(defaultQuery);
+            handleSearch(defaultQuery);
+        }
+    }, [isOpen, defaultQuery]);
+
+    const handleSearch = async (query: string) => {
+        if (!query.trim()) return;
+        setIsSearching(true);
+        setError(null);
+        setSearchResults([]);
+        try {
+            const storedSettings = await db.settings.get(0);
+            const backendUrl = storedSettings?.backendUrl || 'http://localhost:8000';
+            const response = await fetch(`${backendUrl}/api/lyrics/search-utaten?q=${encodeURIComponent(query)}`);
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.detail || 'Search failed');
+            }
+            const data = await response.json();
+            setSearchResults(data.results);
+        } catch (err) {
+            setError((err as Error).message);
+        } finally {
+            setIsSearching(false);
+        }
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60] p-4">
+            <div className="bg-gray-800 text-white rounded-lg p-6 max-w-lg w-full max-h-[90vh] flex flex-col">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl font-bold text-indigo-400">{t('aiLyricCorrector.utatenSearchTitle')}</h2>
+                    <button onClick={onClose} className="text-gray-400 hover:text-white">✕</button>
+                </div>
+                
+                <form onSubmit={(e) => { e.preventDefault(); handleSearch(searchQuery); }} className="flex gap-2 mb-4">
+                    <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="flex-grow p-2 rounded bg-gray-900 border border-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        placeholder={t('explore.searchPlaceholder')}
+                    />
+                    <button type="submit" disabled={isSearching} className="px-4 py-2 bg-indigo-600 rounded hover:bg-indigo-500 font-bold disabled:opacity-50">
+                        {isSearching ? t('index.searchingStatus') : t('index.searchButton')}
+                    </button>
+                </form>
+
+                {error && <div className="text-red-400 text-sm mb-4">{error}</div>}
+
+                <div className="flex-grow overflow-y-auto pr-2 space-y-2 custom-scrollbar">
+                    {searchResults.length === 0 && !isSearching && !error && (
+                        <p className="text-center text-gray-500 py-4">{t('index.noResultsFound')}</p>
+                    )}
+                    {searchResults.map((result, idx) => (
+                        <div 
+                            key={idx}
+                            onClick={() => onSelect(result.url)}
+                            className="bg-gray-700/50 p-3 rounded cursor-pointer hover:bg-gray-700 border border-transparent hover:border-indigo-500 transition-colors"
+                        >
+                            <h3 className="font-bold text-gray-200">{result.title}</h3>
+                            <p className="text-sm text-gray-400">{result.artist}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const DEFAULT_PROMPT_TEMPLATE = `You are an expert in audio transcription and Japanese lyrics. A user has provided a potentially inaccurate transcription of a song. They have also provided a block of text containing the correct lyrics, and the original JSON data to use as a timing reference.\n\nYour task is to listen to the song audio and produce a new, perfectly accurate, time-coded JSON transcription.\n\nThe user-provided correct lyrics are:\n---\n{correct_lyrics}\n---\n\nThe original, potentially inaccurate JSON is:\n---\n{original_lyrics_json}\n---\n\nPlease output a JSON object that follows the specified format. The JSON should be enclosed in a single markdown code block.\n\nThe format is an array of "lyric lines". Each line object must contain:\n- "startTime": The start time of the sentence in seconds.\n- "endTime": The end time of the sentence in seconds.\n- "text": The full Japanese text of the sentence.\n- "tokens": An array of word objects.\n\nEach word object in the "tokens" array must contain:\n- "surface": The Japanese word.\n- "reading": The hiragana reading of the word.\n- "startTime": The start time of the word in seconds.\n- "endTime": The end time of the word in seconds.`;
 
-
 const AILyricCorrector: React.FC = () => {
-  const { lyrics, setProcessedLyrics } = useSongStore(); // Get setProcessedLyrics directly
-  const { t } = useTranslation(); // Initialize useTranslation
-  const { setActiveView } = useMobileViewStore(); // Get setActiveView
+  const { song, lyrics, setProcessedLyrics } = useSongStore(); // Get song to use its title for searching
+  const { t } = useTranslation();
+  const { setActiveView } = useMobileViewStore();
 
   const [correctLyrics, setCorrectLyrics] = useState('');
-  const [promptTemplate, setPromptTemplate] = useState(DEFAULT_PROMPT_TEMPLATE); // Initialize with hardcoded string
+  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const [isFetchingUtaten, setIsFetchingUtaten] = useState(false);
+  const [promptTemplate, setPromptTemplate] = useState(DEFAULT_PROMPT_TEMPLATE);
   const { setActivePanel } = useUIPanelStore();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -122,6 +211,29 @@ const AILyricCorrector: React.FC = () => {
   const [previewData, setPreviewData] = useState<{ newLyrics: LyricLine[], rawLLMOutput: string } | null>(null);
   const [promptPreview, setPromptPreview] = useState<string | null>(null);
   const [editableLlmOutput, setEditableLlmOutput] = useState<string>('');
+
+  const handleFetchUtaten = async (url: string) => {
+    setIsSearchModalOpen(false); // Close modal when selection is made
+    setIsFetchingUtaten(true);
+    setError(null);
+    try {
+        const storedSettings = await db.settings.get(0);
+        const backendUrl = storedSettings?.backendUrl || 'http://localhost:8000';
+        const response = await fetch(`${backendUrl}/api/lyrics/fetch-utaten?url=${encodeURIComponent(url)}`);
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.detail || 'Failed to fetch from Utaten');
+        }
+        const data = await response.json();
+        // We use furigana_text as it's more comprehensive for the LLM
+        setCorrectLyrics(data.furigana_text);
+        alert(t('aiLyricCorrector.fetchSuccess'));
+    } catch (err) {
+        setError(t('aiLyricCorrector.fetchError', { error: (err as Error).message }));
+    } finally {
+        setIsFetchingUtaten(false);
+    }
+  };
 
   const parseLlmOutput = (output: string) => {
     const jsonRegex = /```json\n([\s\S]*?)\n```/;
@@ -215,6 +327,13 @@ const AILyricCorrector: React.FC = () => {
   
   return (
     <>
+      <UtatenSearchModal 
+        isOpen={isSearchModalOpen}
+        onClose={() => setIsSearchModalOpen(false)}
+        defaultQuery={song?.title || ''}
+        onSelect={handleFetchUtaten}
+        t={t}
+      />
       {previewData && (
         <LyricPreviewModal
           newLyrics={previewData.newLyrics}
@@ -252,6 +371,21 @@ const AILyricCorrector: React.FC = () => {
         )}
 
         <div className="flex-grow flex flex-col space-y-4 overflow-y-auto">
+          {/* Utaten Fetcher Section */}
+          <div className="bg-gray-700/50 p-3 rounded-lg border border-gray-700 flex justify-between items-center">
+            <div>
+                <h3 className="text-sm font-bold text-indigo-300">{t('aiLyricCorrector.utatenTitle')}</h3>
+                <p className="text-xs text-gray-400 mt-1">{t('aiLyricCorrector.utatenDescription')}</p>
+            </div>
+            <button
+                onClick={() => setIsSearchModalOpen(true)}
+                disabled={isFetchingUtaten}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded text-sm font-bold disabled:opacity-50 transition-colors whitespace-nowrap ml-2"
+            >
+                {isFetchingUtaten ? t('aiLyricCorrector.fetchingButton') : t('aiLyricCorrector.searchUtatenButton')}
+            </button>
+          </div>
+
           <div className="flex flex-col">
             <label htmlFor="correct-lyrics" className="text-sm font-semibold mb-1 text-gray-300">
               {t('aiLyricCorrector.step1PasteCorrectLyrics')}

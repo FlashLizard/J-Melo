@@ -1,6 +1,7 @@
 // src/components/lyrics/ProgressHighlighter.tsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useMemo } from 'react';
 import usePlayerStore from '@/stores/usePlayerStore';
+import cn from 'classnames';
 
 interface Props {
   surface: string;
@@ -8,66 +9,41 @@ interface Props {
   endTime: number;
   isActive: boolean;
   isHovered: boolean;
+  fontSizeMultiplier?: number;
 }
 
-const ProgressHighlighter: React.FC<Props> = ({ surface, startTime, endTime, isActive, isHovered }) => {
-  const [width, setWidth] = useState(0);
-  const animationFrameId = useRef<number>(0);
-  const animationStartTimestamp = useRef<number>(0);
+const ProgressHighlighter: React.FC<Props> = ({ surface, startTime, endTime, isActive, isHovered, fontSizeMultiplier = 1.0 }) => {
+  const { currentTime } = usePlayerStore();
 
-  useEffect(() => {
-    const wordDuration = (endTime - startTime) * 1000; // in milliseconds
-
-    const animate = (timestamp: number) => {
-      if (animationStartTimestamp.current === undefined) {
-        animationStartTimestamp.current = timestamp;
-      }
-      
-      const elapsed = timestamp - animationStartTimestamp.current;
-      const progress = Math.min(1, elapsed / wordDuration);
-      
-      setWidth(progress * 100);
-
-      if (progress < 1) {
-        animationFrameId.current = requestAnimationFrame(animate);
-      }
-    };
-
-    if (isActive) {
-      // Correctly handle starting animation midway through a word
-      const initialPlayerTime = usePlayerStore.getState().currentTime;
-      const initialOffset = (initialPlayerTime - startTime) * 1000;
-      animationStartTimestamp.current = performance.now() - initialOffset;
-
-      animationFrameId.current = requestAnimationFrame(animate);
-    } else {
-      // Reset when not active
-      setWidth(0);
-      animationStartTimestamp.current = undefined;
-    }
-
-    return () => {
-      if (animationFrameId.current) {
-        cancelAnimationFrame(animationFrameId.current);
-      }
-    };
-  }, [isActive, startTime, endTime]);
-
-  const highlightColor = isHovered ? 'text-yellow-300' : 'text-green-400';
-  const baseColor = isHovered ? 'text-yellow-300' : 'text-white';
+  const progress = useMemo(() => {
+    if (!isActive) return 0;
+    const duration = endTime - startTime;
+    if (duration <= 0) return 100;
+    const currentProgress = ((currentTime - startTime) / duration) * 100;
+    return Math.min(Math.max(currentProgress, 0), 100);
+  }, [currentTime, startTime, endTime, isActive]);
 
   return (
-    <span className={`relative block text-lg ${baseColor}`}>
-      <span>{surface}</span>
-      <span
-        className={`absolute top-0 left-0 h-full overflow-hidden whitespace-nowrap ${highlightColor}`}
-        style={{ width: `${width}%` }}
-      >
-        {surface}
-      </span>
+    <span 
+        className={cn('relative block leading-tight', { 'text-yellow-300': isHovered, 'text-white': !isHovered })}
+        style={{ fontSize: `${1.125 * fontSizeMultiplier}rem` }}
+    >
+      {/* Base text: Matches the rest of the line's color (white) */}
+      <span className="whitespace-pre">{surface}</span>
+      
+      {/* Highlighted text overlay: Paints over the base text from left to right */}
+      {isActive && !isHovered && (
+        <span 
+          className="absolute left-0 top-0 text-green-400 whitespace-pre pointer-events-none"
+          style={{ 
+              clipPath: `inset(0 ${100 - progress}% 0 0)`,
+          }}
+        >
+          {surface}
+        </span>
+      )}
     </span>
   );
 };
 
 export default ProgressHighlighter;
-

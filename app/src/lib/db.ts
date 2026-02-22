@@ -48,6 +48,7 @@ export interface Settings {
   llmMaxTokens?: number; // Default LLM max tokens
   lyricFixLLMMaxTokens?: number; // Lyric fix LLM max tokens
   sharerNickname?: string; // New: Sharer nickname
+  lyricsFontSize?: number; // New: Lyrics font size multiplier
 }
 
 export interface PromptTemplate {
@@ -187,6 +188,13 @@ class JeloDB extends Dexie {
     }).upgrade(async (tx) => {
       await tx.table('settings').toCollection().modify(setting => {
         if (setting.sharerNickname === undefined) setting.sharerNickname = '';
+      });
+    });
+    this.version(17).stores({
+      settings: 'id, openaiApiKey, llmApiUrl, llmModelType, aiResponseLanguage, uiLanguage, lyricFixLLMApiKey, lyricFixLLMModelType, lyricFixLLMApiUrl, defaultPromptTemplateId, defaultCardTemplateId, showReadings, showTranslations, translationLLMApiKey, translationLLMApiUrl, translationLLMModelType, targetTranslationLanguage, backendUrl, llmMaxTokens, lyricFixLLMMaxTokens, translationLLMMaxTokens, sharerNickname, lyricsFontSize',
+    }).upgrade(async (tx) => {
+      await tx.table('settings').toCollection().modify(setting => {
+        if (setting.lyricsFontSize === undefined) setting.lyricsFontSize = 1.0;
       });
     });
   }

@@ -28,9 +28,11 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
   const { startExplanation, clearTutor } = useTutorStore();
   const { isPlaying } = usePlayerStore();
   const { setActiveView } = useMobileViewStore();
-  const { settings, toggleShowReadings, toggleShowTranslations } = useSettingsStore();
+  const { settings, toggleShowReadings, toggleShowTranslations, setLyricsFontSize } = useSettingsStore();
   const { t } = useTranslation();
   const { song, generateTranscriptionPreview, previewLyrics, commitPreviewLyrics, clearPreviewLyrics } = useSongStore();
+
+  const fontSizeMultiplier = settings.lyricsFontSize || 1.0;
 
   if (!lyrics || lyrics.length === 0) {
     return (
@@ -44,7 +46,10 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
                     {t('lyricsDisplay.noLyrics.transcribeButton')}
                 </button>
                 <button
-                    onClick={() => setActivePanel('TIMELESS_LYRICS_IMPORTER')}
+                    onClick={() => {
+                        setActivePanel('TIMELESS_LYRICS_IMPORTER');
+                        setActiveView('tools');
+                    }}
                     className="w-full px-4 py-2 bg-purple-600 rounded-lg hover:bg-purple-500"
                 >
                     {t('lyricsDisplay.noLyrics.importButton')}
@@ -125,7 +130,7 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
               className={cn('mb-6 transition-all duration-300 text-center p-2 rounded-lg', { 'opacity-50': !isLineActive, 'scale-105': isLineActive, 'bg-gray-700/50': isLineSelected })}
               onClick={() => handleLineSelect(line.id)}
             >
-              <p className="text-2xl font-semibold tracking-wider mb-2">
+              <p className="font-semibold tracking-wider mb-2" style={{ fontSize: `${1.5 * fontSizeMultiplier}rem`, lineHeight: 1.2 }}>
                 {line.tokens.map((token, index) => {
                   const isTokenActive = isLineActive && currentTime >= token.startTime && currentTime < token.endTime;
                   const hasTokenPassed = isLineActive && currentTime >= token.endTime;
@@ -134,7 +139,7 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
                   return (
                     <span
                       key={`${token.surface}-${token.startTime}-${index}`}
-                      className="word-span inline-block align-bottom mr-1 cursor-pointer"
+                      className="word-span inline-flex flex-col items-center align-bottom mr-1 cursor-pointer"
                       onClick={(e) => {
                         e.stopPropagation();
                         if (token.startTime > 0) { // Only seek if startTime is not 0
@@ -145,7 +150,12 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
                       onMouseLeave={() => setHoveredToken(null)}
                       onContextMenu={(e) => handleContextMenu(e, token, line)}
                     >
-                      {settings.showReadings && <span className="text-xs text-gray-400">{token.reading}</span>}
+                      <span className={cn(
+                        "text-gray-400 block w-full text-center whitespace-nowrap",
+                        settings.showReadings ? "visible" : "invisible"
+                      )} style={{ fontSize: `${0.75 * fontSizeMultiplier}rem`, height: `${1 * fontSizeMultiplier}rem`, lineHeight: 1 }}>
+                        {token.reading}
+                      </span>
                       
                       {isTokenActive ? (
                         <ProgressHighlighter 
@@ -154,13 +164,14 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
                           endTime={token.endTime}
                           isActive={isTokenActive}
                           isHovered={isHovered}
+                          fontSizeMultiplier={fontSizeMultiplier}
                         />
                       ) : (
-                        <span className={cn('block text-lg', {
+                        <span className={cn('block whitespace-pre text-center leading-tight', {
                           'text-green-400': hasTokenPassed && !isHovered,
                           'text-yellow-300': isHovered,
                           'text-white': !hasTokenPassed && !isHovered,
-                        })}>
+                        })} style={{ fontSize: `${1.125 * fontSizeMultiplier}rem` }}>
                           {token.surface}
                         </span>
                       )}
@@ -168,7 +179,9 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
                   );
                 })}
               </p>
-              {settings.showTranslations && <p className="text-sm text-gray-300">{line.translation}</p>}
+              <div className={cn("transition-opacity duration-200", settings.showTranslations ? "opacity-100" : "opacity-0 invisible h-0")} style={{ minHeight: `${1.25 * fontSizeMultiplier}rem` }}>
+                <p className="text-gray-300" style={{ fontSize: `${0.875 * fontSizeMultiplier}rem` }}>{line.translation}</p>
+              </div>
               
               {isLineSelected && (
                 <div className="mt-2 flex justify-center gap-2">
@@ -202,51 +215,75 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
       </div>
 
       {/* Fixed button bar at the bottom */}
-      <div className="absolute bottom-0 right-0 p-4 flex space-x-2 z-20 bg-gray-800/80 backdrop-blur-sm w-full justify-end">
-          <button
-              onClick={(e) => { 
-                e.stopPropagation(); 
-                if (isPlaying) playerStoreActions.pause();
-                else playerStoreActions.play();
-              }}
-              className="lyric-toggle-button p-2 rounded-full text-white bg-blue-600 hover:bg-blue-500"
-              title={isPlaying ? "Pause" : "Play"}
-          >
-              {isPlaying ? (
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 002 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+      <div className="absolute bottom-0 right-0 p-4 flex space-x-2 z-20 bg-gray-800/80 backdrop-blur-sm w-full justify-between sm:justify-end items-center">
+          <div className="flex space-x-2 bg-gray-700/50 rounded-full p-1">
+             <button
+                onClick={(e) => { e.stopPropagation(); setLyricsFontSize(Math.max(0.5, fontSizeMultiplier - 0.1)); }}
+                className="p-1.5 rounded-full text-gray-300 hover:text-white hover:bg-gray-600 transition-colors"
+                title={t('lyricsDisplay.decreaseFontSize') || "Decrease Font Size"}
+             >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
                 </svg>
-              ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+             </button>
+             <span className="text-xs text-gray-400 px-2 flex items-center font-mono">{Math.round(fontSizeMultiplier * 100)}%</span>
+             <button
+                onClick={(e) => { e.stopPropagation(); setLyricsFontSize(Math.min(2.5, fontSizeMultiplier + 0.1)); }}
+                className="p-1.5 rounded-full text-gray-300 hover:text-white hover:bg-gray-600 transition-colors"
+                title={t('lyricsDisplay.increaseFontSize') || "Increase Font Size"}
+             >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
-              )}
-          </button>
-          <button
-              onClick={(e) => { e.stopPropagation(); toggleShowReadings(); }}
-              className={cn(
-                  "lyric-toggle-button p-2 rounded-full text-white",
-                  settings.showReadings ? "bg-green-600 hover:bg-green-500" : "bg-gray-600 hover:bg-gray-500"
-              )}
-              title={settings.showReadings ? "Hide Readings" : "Show Readings"}
-          >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                  <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
-                  <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
-              </svg>
-          </button>
-          <button
-              onClick={(e) => { e.stopPropagation(); toggleShowTranslations(); }}
-              className={cn(
-                  "lyric-toggle-button p-2 rounded-full text-white",
-                  settings.showTranslations ? "bg-green-600 hover:bg-green-500" : "bg-gray-600 hover:bg-gray-500"
-              )}
-              title={settings.showTranslations ? "Hide Translations" : "Show Translations"}
-          >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0113 3.414L16.586 7A2 2 0 0118 8.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm0 3a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1z" clipRule="evenodd" />
-              </svg>
-          </button>
+             </button>
+          </div>
+
+          <div className="flex space-x-2">
+            <button
+                onClick={(e) => { 
+                    e.stopPropagation(); 
+                    if (isPlaying) playerStoreActions.pause();
+                    else playerStoreActions.play();
+                }}
+                className="lyric-toggle-button p-2 rounded-full text-white bg-blue-600 hover:bg-blue-500"
+                title={isPlaying ? "Pause" : "Play"}
+            >
+                {isPlaying ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 002 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                    </svg>
+                )}
+            </button>
+            <button
+                onClick={(e) => { e.stopPropagation(); toggleShowReadings(); }}
+                className={cn(
+                    "lyric-toggle-button p-2 rounded-full text-white",
+                    settings.showReadings ? "bg-green-600 hover:bg-green-500" : "bg-gray-600 hover:bg-gray-500"
+                )}
+                title={settings.showReadings ? "Hide Readings" : "Show Readings"}
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+                    <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
+                </svg>
+            </button>
+            <button
+                onClick={(e) => { e.stopPropagation(); toggleShowTranslations(); }}
+                className={cn(
+                    "lyric-toggle-button p-2 rounded-full text-white",
+                    settings.showTranslations ? "bg-green-600 hover:bg-green-500" : "bg-gray-600 hover:bg-gray-500"
+                )}
+                title={settings.showTranslations ? "Hide Translations" : "Show Translations"}
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0113 3.414L16.586 7A2 2 0 0118 8.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm0 3a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1z" clipRule="evenodd" />
+                </svg>
+            </button>
+          </div>
       </div>
 
       {contextMenu && (

@@ -9,6 +9,7 @@ interface PlayerState {
 }
 
 let mediaElement: HTMLAudioElement | HTMLVideoElement | null = null;
+let rafId: number | null = null;
 
 const usePlayerStore = create<PlayerState>(() => ({
   isPlaying: false,
@@ -18,9 +19,10 @@ const usePlayerStore = create<PlayerState>(() => ({
   loopB: null,
 }));
 
-const handleTimeUpdate = () => {
+const updateTimeLoop = () => {
     if (!mediaElement) return;
-    const { loopA, loopB, currentTime } = usePlayerStore.getState();
+    
+    const { loopA, loopB, isPlaying } = usePlayerStore.getState();
     const newTime = mediaElement.currentTime;
 
     // Check for looping
@@ -28,33 +30,57 @@ const handleTimeUpdate = () => {
         mediaElement.currentTime = loopA;
         usePlayerStore.setState({ currentTime: loopA });
     } else {
-        // Update time directly for smooth animation
         usePlayerStore.setState({ currentTime: newTime });
     }
+
+    if (isPlaying) {
+        rafId = requestAnimationFrame(updateTimeLoop);
+    }
 };
+
 const handleLoadedMetadata = () => mediaElement && usePlayerStore.setState({ duration: mediaElement.duration });
-const handlePlay = () => usePlayerStore.setState({ isPlaying: true });
-const handlePause = () => usePlayerStore.setState({ isPlaying: false });
-const handleEnded = () => usePlayerStore.setState({ isPlaying: false });
+const handlePlay = () => {
+    usePlayerStore.setState({ isPlaying: true });
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(updateTimeLoop);
+};
+const handlePause = () => {
+    usePlayerStore.setState({ isPlaying: false });
+    if (rafId) cancelAnimationFrame(rafId);
+    // Force one last update on pause to ensure absolute precision
+    if (mediaElement) usePlayerStore.setState({ currentTime: mediaElement.currentTime });
+};
+const handleEnded = () => {
+    usePlayerStore.setState({ isPlaying: false });
+    if (rafId) cancelAnimationFrame(rafId);
+};
+const handleSeeked = () => {
+    if (mediaElement) usePlayerStore.setState({ currentTime: mediaElement.currentTime });
+};
 
 export const playerStoreActions = {
   setMediaElement: (element: HTMLAudioElement | HTMLVideoElement | null) => {
     console.log("playerStoreActions.setMediaElement called with:", element);
     if (mediaElement) {
-        mediaElement.removeEventListener('timeupdate', handleTimeUpdate);
         mediaElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
         mediaElement.removeEventListener('play', handlePlay);
         mediaElement.removeEventListener('pause', handlePause);
         mediaElement.removeEventListener('ended', handleEnded);
+        mediaElement.removeEventListener('seeked', handleSeeked);
+        if (rafId) cancelAnimationFrame(rafId);
     }
     mediaElement = element;
     usePlayerStore.setState({ isPlaying: false, currentTime: 0, duration: 0 });
     if (element) {
-        element.addEventListener('timeupdate', handleTimeUpdate);
         element.addEventListener('loadedmetadata', handleLoadedMetadata);
         element.addEventListener('play', handlePlay);
         element.addEventListener('pause', handlePause);
         element.addEventListener('ended', handleEnded);
+        element.addEventListener('seeked', handleSeeked);
+        // If element is somehow already playing when attached
+        if (!element.paused) {
+            handlePlay();
+        }
     }
   },
   play: () => {
@@ -75,7 +101,10 @@ export const playerStoreActions = {
     }
   },
   seek: (time: number) => { 
-    if (mediaElement) mediaElement.currentTime = time; 
+    if (mediaElement) {
+        mediaElement.currentTime = time; 
+        usePlayerStore.setState({ currentTime: time }); // Force instant state update
+    }
   },
   setLoopA: () => usePlayerStore.setState({ loopA: usePlayerStore.getState().currentTime, loopB: null }),
   setLoopB: () => {

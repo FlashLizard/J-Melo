@@ -8,6 +8,7 @@ import useSongStore from '@/stores/useSongStore'; // Changed from songStoreActio
 import { LyricLine } from '@/interfaces/lyrics';
 import useTranslation from '@/hooks/useTranslation'; // Import useTranslation
 import { copyToClipboard } from '@/utils/copyToClipboard';
+import cn from 'classnames';
 
 const Modal: React.FC<{ 
   title: string; 
@@ -150,12 +151,12 @@ const UtatenSearchModal: React.FC<{
 
     if (!isOpen) return null;
 
-    return (
+    return createPortal(
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60] p-4">
-            <div className="bg-gray-800 text-white rounded-lg p-6 max-w-lg w-full max-h-[90vh] flex flex-col">
+            <div className="bg-gray-800 text-white rounded-lg p-6 max-w-lg w-full max-h-[90vh] flex flex-col mx-auto my-auto shadow-2xl">
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-xl font-bold text-indigo-400">{t('aiLyricCorrector.utatenSearchTitle')}</h2>
-                    <button onClick={onClose} className="text-gray-400 hover:text-white">✕</button>
+                    <button onClick={onClose} className="text-gray-400 hover:text-white font-bold text-xl">&times;</button>
                 </div>
                 
                 <form onSubmit={(e) => { e.preventDefault(); handleSearch(searchQuery); }} className="flex gap-2 mb-4">
@@ -189,7 +190,8 @@ const UtatenSearchModal: React.FC<{
                     ))}
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
 
@@ -201,6 +203,8 @@ const AILyricCorrector: React.FC = () => {
   const { setActiveView } = useMobileViewStore();
 
   const [correctLyrics, setCorrectLyrics] = useState('');
+  const [jsonInput, setJsonInput] = useState('');
+  const [mainMode, setMainMode] = useState<'generate' | 'import'>('generate');
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [isFetchingUtaten, setIsFetchingUtaten] = useState(false);
   const [promptTemplate, setPromptTemplate] = useState(DEFAULT_PROMPT_TEMPLATE);
@@ -324,6 +328,18 @@ const AILyricCorrector: React.FC = () => {
     setActivePanel('TOOL_PANEL');
     setActiveView('lyrics'); // Navigate to lyrics view on mobile after confirm
   };
+
+  const handleDirectImport = () => {
+    try {
+        const parsedLyrics = JSON.parse(jsonInput);
+        setProcessedLyrics(parsedLyrics);
+        alert(t('aiLyricCorrector.lyricsUpdatedSuccess'));
+        setActivePanel('TOOL_PANEL');
+        setActiveView('lyrics');
+    } catch (e) {
+        alert(t('home.importError', { message: (e as Error).message }));
+    }
+  };
   
   return (
     <>
@@ -352,7 +368,25 @@ const AILyricCorrector: React.FC = () => {
         />
       )}
       <div className="bg-gray-800 p-4 rounded-lg h-full flex flex-col text-white">
-        <h2 className="text-xl font-bold mb-4">{t('aiLyricCorrector.title')}</h2>
+        <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold">{t('aiLyricCorrector.title')}</h2>
+            <button
+                className="px-3 py-1 bg-gray-600 rounded-lg hover:bg-gray-500 text-sm"
+                onClick={() => { setActivePanel('TOOL_PANEL'); setActiveView('lyrics'); }}
+                disabled={isLoading}
+            >
+                {t('aiLyricCorrector.backButton')}
+            </button>
+        </div>
+
+        <div className="flex border-b border-gray-700 mb-4">
+          <button onClick={() => setMainMode('generate')} className={cn('px-4 py-2 text-sm font-medium', { 'border-b-2 border-green-500 text-white': mainMode === 'generate', 'text-gray-400': mainMode !== 'generate' })}>
+              {t('timelessLyricsImporter.generateMode')}
+          </button>
+          <button onClick={() => setMainMode('import')} className={cn('px-4 py-2 text-sm font-medium', { 'border-b-2 border-green-500 text-white': mainMode === 'import', 'text-gray-400': mainMode !== 'import' })}>
+              {t('timelessLyricsImporter.importMode')}
+          </button>
+        </div>
         
         {error && editableLlmOutput && (
           <ErrorEditing 
@@ -370,78 +404,93 @@ const AILyricCorrector: React.FC = () => {
             </div>
         )}
 
-        <div className="flex-grow flex flex-col space-y-4 overflow-y-auto">
-          {/* Utaten Fetcher Section */}
-          <div className="bg-gray-700/50 p-3 rounded-lg border border-gray-700 flex justify-between items-center">
-            <div>
-                <h3 className="text-sm font-bold text-indigo-300">{t('aiLyricCorrector.utatenTitle')}</h3>
-                <p className="text-xs text-gray-400 mt-1">{t('aiLyricCorrector.utatenDescription')}</p>
+        {mainMode === 'generate' && (
+            <div className="flex-grow flex flex-col space-y-4 overflow-y-auto">
+              {/* Utaten Fetcher Section */}
+              <div className="bg-gray-700/50 p-3 rounded-lg border border-gray-700 flex justify-between items-center">
+                <div>
+                    <h3 className="text-sm font-bold text-indigo-300">{t('aiLyricCorrector.utatenTitle')}</h3>
+                    <p className="text-xs text-gray-400 mt-1">{t('aiLyricCorrector.utatenDescription')}</p>
+                </div>
+                <button
+                    onClick={() => setIsSearchModalOpen(true)}
+                    disabled={isFetchingUtaten}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded text-sm font-bold disabled:opacity-50 transition-colors whitespace-nowrap ml-2"
+                >
+                    {isFetchingUtaten ? t('aiLyricCorrector.fetchingButton') : t('aiLyricCorrector.searchUtatenButton')}
+                </button>
+              </div>
+
+              <div className="flex flex-col">
+                <label htmlFor="correct-lyrics" className="text-sm font-semibold mb-1 text-gray-300">
+                  {t('aiLyricCorrector.step1PasteCorrectLyrics')}
+                </label>
+                <textarea
+                  id="correct-lyrics"
+                  rows={8}
+                  className="w-full bg-gray-900 text-white p-2 rounded border border-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  placeholder={t('aiLyricCorrector.pasteCorrectLyricsPlaceholder')}
+                  value={correctLyrics}
+                  onChange={(e) => setCorrectLyrics(e.target.value)}
+                  disabled={isLoading}
+                />
+              </div>
+
+              <div className="flex flex-col">
+                <label htmlFor="prompt-template" className="text-sm font-semibold mb-1 text-gray-300">
+                  {t('aiLyricCorrector.step2LlmPromptTemplate')}
+                </label>
+                <textarea
+                  id="prompt-template"
+                  rows={8}
+                  className="w-full bg-gray-900 text-white p-2 rounded border border-gray-700 font-mono text-xs"
+                  value={promptTemplate}
+                  onChange={(e) => setPromptTemplate(e.target.value)}
+                  disabled={isLoading}
+                />
+                 <div className="text-xs text-gray-500 mt-1">
+                  {t('aiLyricCorrector.promptTemplateTagsHint')}
+                </div>
+              </div>
+            
+              <div className="mt-4 grid grid-cols-2 gap-2 pb-4">
+                <button
+                  className="px-4 py-2 bg-indigo-600 rounded-lg hover:bg-indigo-500 disabled:opacity-50"
+                  onClick={handlePreviewPrompt}
+                  disabled={isLoading}
+                >
+                  {t('aiLyricCorrector.previewPromptButton')}
+                </button>
+                <button
+                  className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-500 disabled:opacity-50"
+                  onClick={handleSmartFix}
+                  disabled={isLoading}
+                >
+                  {isLoading ? t('aiLyricCorrector.processingButton') : t('aiLyricCorrector.smartFixButton')}
+                </button>
+              </div>
             </div>
-            <button
-                onClick={() => setIsSearchModalOpen(true)}
-                disabled={isFetchingUtaten}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded text-sm font-bold disabled:opacity-50 transition-colors whitespace-nowrap ml-2"
-            >
-                {isFetchingUtaten ? t('aiLyricCorrector.fetchingButton') : t('aiLyricCorrector.searchUtatenButton')}
-            </button>
-          </div>
+        )}
 
-          <div className="flex flex-col">
-            <label htmlFor="correct-lyrics" className="text-sm font-semibold mb-1 text-gray-300">
-              {t('aiLyricCorrector.step1PasteCorrectLyrics')}
-            </label>
-            <textarea
-              id="correct-lyrics"
-              rows={8}
-              className="w-full bg-gray-900 text-white p-2 rounded border border-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500"
-              placeholder={t('aiLyricCorrector.pasteCorrectLyricsPlaceholder')}
-              value={correctLyrics}
-              onChange={(e) => setCorrectLyrics(e.target.value)}
-              disabled={isLoading}
-            />
-          </div>
-
-          <div className="flex flex-col">
-            <label htmlFor="prompt-template" className="text-sm font-semibold mb-1 text-gray-300">
-              {t('aiLyricCorrector.step2LlmPromptTemplate')}
-            </label>
-            <textarea
-              id="prompt-template"
-              rows={8}
-              className="w-full bg-gray-900 text-white p-2 rounded border border-gray-700 font-mono text-xs"
-              value={promptTemplate}
-              onChange={(e) => setPromptTemplate(e.target.value)}
-              disabled={isLoading}
-            />
-             <div className="text-xs text-gray-500 mt-1">
-              {t('aiLyricCorrector.promptTemplateTagsHint')}
+        {mainMode === 'import' && (
+          <div className="flex-grow flex flex-col space-y-4 overflow-y-auto">
+            <div className="flex flex-col">
+              <label className="text-sm font-semibold mb-1 text-gray-300">{t('timelessLyricsImporter.pasteJson')}</label>
+              <textarea 
+                rows={20} 
+                className="w-full bg-gray-900 text-white p-2 rounded border border-gray-700 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-green-500" 
+                placeholder={t('timelessLyricsImporter.jsonPlaceholder')} 
+                value={jsonInput} 
+                onChange={(e) => setJsonInput(e.target.value)} 
+              />
+            </div>
+            <div className="flex justify-end mt-4">
+              <button onClick={handleDirectImport} className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-500" disabled={!jsonInput.trim()}>
+                  {t('timelessLyricsImporter.importJsonButton')}
+              </button>
             </div>
           </div>
-        </div>
-
-        <div className="mt-4 grid grid-cols-3 gap-2">
-          <button
-            className="px-4 py-2 bg-gray-600 rounded-lg hover:bg-gray-500 disabled:opacity-50"
-            onClick={() => { setActivePanel('TOOL_PANEL'); setActiveView('lyrics'); }}
-            disabled={isLoading}
-          >
-            {t('aiLyricCorrector.backButton')}
-          </button>
-          <button
-            className="px-4 py-2 bg-indigo-600 rounded-lg hover:bg-indigo-500 disabled:opacity-50"
-            onClick={handlePreviewPrompt}
-            disabled={isLoading}
-          >
-            {t('aiLyricCorrector.previewPromptButton')}
-          </button>
-          <button
-            className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-500 disabled:opacity-50"
-            onClick={handleSmartFix}
-            disabled={isLoading}
-          >
-            {isLoading ? t('aiLyricCorrector.processingButton') : t('aiLyricCorrector.smartFixButton')}
-          </button>
-        </div>
+        )}
       </div>
     </>
   );

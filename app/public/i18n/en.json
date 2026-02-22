@@ -305,6 +305,8 @@
   "lyricsDisplay.preview.title": "Transcription Preview:",
   "lyricsDisplay.preview.accept": "Accept",
   "lyricsDisplay.preview.reject": "Reject",
+  "lyricsDisplay.increaseFontSize": "Increase Font Size",
+  "lyricsDisplay.decreaseFontSize": "Decrease Font Size",
   "importConflict.title": "Resolve Import Conflicts",
   "importConflict.description": "Found {{count}} song(s) that already exist in your library. Please choose how to handle each conflict.",
   "importConflict.optionSkip": "Keep Existing",

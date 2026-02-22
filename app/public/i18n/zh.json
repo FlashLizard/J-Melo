@@ -305,6 +305,8 @@
   "lyricsDisplay.preview.title": "转录预览：",
   "lyricsDisplay.preview.accept": "接受",
   "lyricsDisplay.preview.reject": "拒绝",
+  "lyricsDisplay.increaseFontSize": "增大字体",
+  "lyricsDisplay.decreaseFontSize": "减小字体",
   "importConflict.title": "解决导入冲突",
   "importConflict.description": "发现 {{count}} 首歌曲已存在于您的音乐库中。请选择如何处理每个冲突。",
   "importConflict.optionSkip": "保留现有",

@@ -10,6 +10,7 @@ interface SettingsState {
   updateSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => Promise<void>;
   toggleShowReadings: () => Promise<void>;
   toggleShowTranslations: () => Promise<void>;
+  setLyricsFontSize: (size: number) => Promise<void>;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -76,6 +77,11 @@ const useSettingsStore = create<SettingsState>()(
       },
       toggleShowTranslations: async () => {
         set(state => { state.settings.showTranslations = !state.settings.showTranslations; });
+        const currentSettings = get().settings;
+        await db.settings.put({ ...currentSettings, id: 0 });
+      },
+      setLyricsFontSize: async (size: number) => {
+        set(state => { state.settings.lyricsFontSize = size; });
         const currentSettings = get().settings;
         await db.settings.put({ ...currentSettings, id: 0 });
       },

@@ -7,6 +7,7 @@ import useTranslation from '@/hooks/useTranslation';
 import SongInput from '@/components/common/SongInput';
 import ImportConflictModal, { Conflict } from '@/components/common/ImportConflictModal';
 import AboutModal from '@/components/common/AboutModal';
+import TranscriptionStatusModal from '@/components/common/TranscriptionStatusModal';
 import { db, blobToBase64, WordRecord, SongRecord } from '@/lib/db';
 import { saveAs } from 'file-saver';
 
@@ -33,6 +34,7 @@ const HomePage = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
+  const [isTranscriptionModalOpen, setTranscriptionModalOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const loadSongs = async () => {
@@ -249,6 +251,8 @@ const HomePage = () => {
 
       <AboutModal isOpen={isAboutOpen} onClose={() => setIsAboutOpen(false)} />
 
+      <TranscriptionStatusModal isOpen={isTranscriptionModalOpen} onClose={() => setTranscriptionModalOpen(false)} />
+
       <main className="bg-gray-900 min-h-screen text-white p-4">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4 relative">
           <h1 className="text-3xl font-bold">{t('home.title')}</h1>
@@ -278,6 +282,9 @@ const HomePage = () => {
                                 <div className="border-t border-gray-700 my-1"></div>
                                 <button onClick={() => { handleImportClick(); setIsMenuOpen(false); }} className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white">
                                     {t('home.importButton')}
+                                </button>
+                                <button onClick={() => setTranscriptionModalOpen(true)} className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white">
+                                    {t('index.transcriptionQueue')}
                                 </button>
                                 <Link href="/my-shared" onClick={() => setIsMenuOpen(false)} className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white">
                                     {t('home.mySharedButton')}

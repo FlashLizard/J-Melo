@@ -116,7 +116,13 @@ const MySharedPage: React.FC = () => {
                                 <div key={song.id} className="bg-gray-800 p-4 rounded-lg shadow flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                                     <div className="flex items-center gap-4">
                                         <div className="w-16 h-16 bg-gray-700 flex-shrink-0 rounded overflow-hidden">
-                                            {song.cover_url && <img src={song.cover_url} alt={song.title} className="w-full h-full object-cover" />}
+                                            {song.cover_url && (
+                                                <img 
+                                                    src={song.cover_url.startsWith('/') ? `${backendUrl}${song.cover_url}` : song.cover_url} 
+                                                    alt={song.title} 
+                                                    className="w-full h-full object-cover" 
+                                                />
+                                            )}
                                         </div>
                                         <div>
                                             <h2 className="text-lg font-bold">{song.title}</h2>

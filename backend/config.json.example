@@ -1,5 +1,6 @@
 {
     "admin_token": "your-secret-token-here",
+    "proxy": "http://127.0.0.1:7890",
     "media_cache_policy": {
         "max_size_gb": 10,
         "max_age_days": 30

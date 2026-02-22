@@ -8,20 +8,23 @@ from datetime import datetime, timedelta
 import secrets
 import shutil
 import sqlite3
+import base64
 from pathlib import Path
+from bs4 import BeautifulSoup
 from fastapi import Depends, FastAPI, HTTPException, Response, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from faster_whisper import WhisperModel
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 # --- Configuration & Setup ---
 
 CONFIG_FILE = "config.json"
 DEFAULT_CONFIG = {
     "admin_token": None,
+    "proxy": None,
     "media_cache_policy": {"max_size_gb": 10, "max_age_days": 30},
     "token_cache_policy": {"max_size_mb": 100, "max_age_hours": 24},
     "transcription_cache_policy": {"max_size_mb": 500, "max_age_days": 30},
@@ -56,7 +59,8 @@ app = FastAPI()
 
 # In-memory storage for simplicity. For production, consider a more robust solution like Redis.
 token_storage = {}
-TRANSCRIPTION_TASKS = {} # media_id -> {"status", "error", "started_at", "completed_at", "result_path"}
+TRANSCRIPTION_TASKS = {} # audio_identifier -> {"status", "error", "started_at", "completed_at", "result_path", "display_name"}
+BACKGROUND_TASKS: List[asyncio.Task] = []
 
 # --- Global Models ---
 print("Loading Whisper model...")
@@ -111,6 +115,8 @@ class CachePolicy(BaseModel):
     max_age_hours: int | None = None
 
 class UpdateConfigRequest(BaseModel):
+    admin_token: str | None = None
+    proxy: str | None = None
     media_cache_policy: CachePolicy | None = None
     token_cache_policy: CachePolicy | None = None
     transcription_cache_policy: CachePolicy | None = None
@@ -127,6 +133,9 @@ class SharedSongUpload(BaseModel):
 # --- Services ---
 def fetch_media_info(url: str) -> dict:
     command = ["yt-dlp", "--dump-json", "--no-playlist", url]
+    proxy = ADMIN_CONFIG.get("proxy")
+    if proxy:
+        command.extend(["--proxy", proxy])
     try:
         result = subprocess.run(command, capture_output=True, text=True, check=True, encoding='utf-8')
         return json.loads(result.stdout)
@@ -139,6 +148,9 @@ def fetch_media_info(url: str) -> dict:
 def download_media(info: dict, destination: str) -> None:
     url = info.get("webpage_url")
     command = ["yt-dlp", "-f", "bestaudio/best", "--extract-audio", "--audio-format", "mp3", "-o", destination, url]
+    proxy = ADMIN_CONFIG.get("proxy")
+    if proxy:
+        command.extend(["--proxy", proxy])
     try:
         subprocess.run(command, check=True, capture_output=True)
     except subprocess.CalledProcessError as e:
@@ -163,7 +175,8 @@ async def proxy_image(url: str = Query(..., description="The URL of the image to
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
-    async with httpx.AsyncClient() as client:
+    proxy = ADMIN_CONFIG.get("proxy")
+    async with httpx.AsyncClient(proxy=proxy) as client:
         try:
             response = await client.get(url, headers=headers, follow_redirects=True)
             response.raise_for_status()
@@ -272,8 +285,6 @@ async def transcribe_audio(request: TranscribeRequest):
     if not os.path.exists(audio_path):
         raise HTTPException(status_code=404, detail=f"Audio file not found at path: {audio_path}")
         
-    # Use the audio filename (without extension) as the unique cache identifier
-    # This prevents collisions if different users assign different media_ids to the same underlying audio file
     audio_filename = os.path.basename(audio_path)
     audio_identifier = os.path.splitext(audio_filename)[0]
     cache_path = os.path.join(TRANSCRIPTION_CACHE_DIR, f"{audio_identifier}.json")
@@ -295,7 +306,6 @@ async def transcribe_audio(request: TranscribeRequest):
         elif task["status"] == "completed" and not force_retranscribe:
             return {"status": "cached", "message": "Transcription completed.", "details": task}
 
-    # Start new task using audio_identifier instead of media_id
     TRANSCRIPTION_TASKS[audio_identifier] = {
         "status": "pending",
         "started_at": datetime.utcnow().isoformat(),
@@ -310,7 +320,6 @@ async def transcribe_audio(request: TranscribeRequest):
 
 @app.get("/api/transcribe/status/{media_id}")
 async def get_transcribe_status(media_id: str, local_path: str = Query(None)):
-    # Try to resolve by local_path first if provided (more robust)
     audio_identifier = media_id
     if local_path and os.path.exists(local_path):
          audio_identifier = os.path.splitext(os.path.basename(local_path))[0]
@@ -379,7 +388,6 @@ def import_data(token: str = Query(...)):
     token_info = token_storage[token]
 
     if datetime.utcnow() > token_info["expiry_time"]:
-        # Clean up expired token and file immediately
         if os.path.exists(token_info["file_path"]):
             os.remove(token_info["file_path"])
         del token_storage[token]
@@ -387,50 +395,234 @@ def import_data(token: str = Query(...)):
 
     file_path = token_info["file_path"]
     if not os.path.exists(file_path):
-        del token_storage[token] # Clean up inconsistent record
+        del token_storage[token]
         raise HTTPException(status_code=404, detail="Data file not found.")
 
     with open(file_path, "r", encoding="utf-8") as f:
         data = json.load(f)
     
-    # Clean up after successful retrieval
     os.remove(file_path)
     del token_storage[token]
 
     return data
 
-# --- Community Sharing Endpoints ---
+def search_media(query: str, results: int = 10) -> list:
+    search_prefix = "ytsearch"
+    command = ["yt-dlp", f"{search_prefix}{results}:{query}", "--dump-json", "--no-playlist", "--flat-playlist"]
+    proxy = ADMIN_CONFIG.get("proxy")
+    if proxy:
+        command.extend(["--proxy", proxy])
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, check=True, encoding='utf-8')
+        search_results = []
+        for line in result.stdout.strip().split('\n'):
+            if not line: continue
+            info = json.loads(line)
+            item_id = info.get("id")
+            url = f"https://www.youtube.com/watch?v={item_id}"
+            search_results.append({
+                "id": item_id, "title": info.get("title"), "uploader": info.get("uploader") or info.get("channel"),
+                "duration": info.get("duration"), "url": url,
+                "thumbnail": info.get("thumbnail") or (info.get("thumbnails")[0].get("url") if info.get("thumbnails") else None)
+            })
+        return search_results
+    except subprocess.CalledProcessError as e:
+        print(f"yt-dlp search error: {e.stderr}")
+        return []
+    except Exception as e:
+        print(f"Unexpected search error: {str(e)}")
+        return []
+
+@app.get("/api/media/search")
+def media_search(q: str = Query(..., description="Search query")):
+    results = search_media(q)
+    return {"results": results}
+
+# --- External Tools ---
+
+@app.get("/api/lyrics/search-utaten")
+async def search_utaten_lyrics(q: str = Query(..., description="Song title to search on utaten")):
+    url = f"https://utaten.com/search?sort=popular_sort_asc&artist_name=&title={q}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+    proxy = ADMIN_CONFIG.get("proxy")
+    
+    async with httpx.AsyncClient(proxy=proxy) as client:
+        try:
+            response = await client.get(url, headers=headers, follow_redirects=True)
+            response.raise_for_status()
+            html = response.text
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to fetch Utaten search page: {str(e)}")
+
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html, 'html.parser')
+        results = []
+        
+        # Utaten search results are in a table, each row is a song
+        for row in soup.select("tr"):
+            title_td = row.select_one("td:has(.searchResult__title)")
+            artist_td = row.select_one("td.searchResult__artist")
+            
+            if title_td and artist_td:
+                title_a = title_td.select_one(".searchResult__title a")
+                artist_a = artist_td.select_one("p a")
+                
+                if title_a:
+                    title = title_a.get_text(strip=True)
+                    href = title_a.get("href")
+                    if href and href.startswith("/"):
+                        href = "https://utaten.com" + href
+                    
+                    artist = artist_a.get_text(strip=True) if artist_a else "Unknown"
+                    
+                    results.append({
+                        "title": title,
+                        "artist": artist,
+                        "url": href
+                    })
+                    
+        return {"results": results}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error parsing Utaten search results: {str(e)}")
+
+@app.get("/api/lyrics/fetch-utaten")
+async def fetch_utaten_lyrics(url: str = Query(..., description="The Utaten URL to fetch lyrics from")):
+    if not url.startswith("https://utaten.com/"):
+        raise HTTPException(status_code=400, detail="Invalid URL. Only utaten.com URLs are supported.")
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+    proxy = ADMIN_CONFIG.get("proxy")
+    
+    async with httpx.AsyncClient(proxy=proxy) as client:
+        try:
+            response = await client.get(url, headers=headers, follow_redirects=True)
+            response.raise_for_status()
+            html = response.text
+            
+            # Save HTML for debugging
+            with open("debug_utaten.html", "w", encoding="utf-8") as debug_file:
+                debug_file.write(html)
+                
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to fetch Utaten page: {str(e)}")
+
+    try:
+        # Use html5lib because Utaten's HTML is often malformed (e.g., unclosed tags, naked text nodes)
+        soup = BeautifulSoup(html, 'html5lib')
+        lyrics_div = soup.select_one(".hiragana")
+        if not lyrics_div:
+            raise HTTPException(status_code=404, detail="Could not find lyrics content on the page.")
+
+        def process_node(element):
+            clean = ""
+            furi = ""
+            if not hasattr(element, 'children'):
+                return clean, furi
+                
+            for child in element.children:
+                if isinstance(child, str):
+                    clean += child
+                    furi += child
+                elif child.name == "br":
+                    clean += "\n"
+                    furi += "\n"
+                elif child.name == "span" and "ruby" in child.get("class", []):
+                    rb = child.select_one(".rb")
+                    rt = child.select_one(".rt")
+                    if rb and rt:
+                        rb_text = rb.get_text().strip()
+                        rt_text = rt.get_text().strip()
+                        clean += rb_text
+                        furi += f"{rb_text}[{rt_text}]"
+                    else:
+                        text = child.get_text()
+                        clean += text
+                        furi += text
+                elif child.name == "ruby":
+                    rt = child.select_one("rt")
+                    rb_text = ""
+                    for c in child.children:
+                        if isinstance(c, str): rb_text += c
+                        elif c.name != "rt": rb_text += c.get_text()
+                    
+                    rt_text = rt.get_text() if rt else ""
+                    clean += rb_text
+                    if rt_text:
+                        furi += f"{rb_text}[{rt_text}]"
+                    else:
+                        furi += rb_text
+                elif hasattr(child, 'children'):
+                    c, f = process_node(child)
+                    clean += c
+                    furi += f
+            return clean, furi
+
+        total_clean, total_furi = process_node(lyrics_div)
+        
+        import re
+        # Clean up multiple consecutive newlines and leading/trailing whitespace on lines
+        total_furi = "\n".join([line.strip() for line in total_furi.split("\n")])
+        total_furi = re.sub(r'\n{3,}', '\n\n', total_furi).strip()
+        
+        total_clean = "\n".join([line.strip() for line in total_clean.split("\n")])
+        total_clean = re.sub(r'\n{3,}', '\n\n', total_clean).strip()
+
+        return {
+            "clean_text": total_clean,
+            "furigana_text": total_furi
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error parsing Utaten lyrics: {str(e)}")
 
 @app.post("/api/community/share")
 def share_song(payload: SharedSongUpload):
     if not payload.sharer_name or not payload.sharer_name.strip():
         raise HTTPException(status_code=400, detail="Sharer name is required.")
-        
     db_path = "shared_songs.db"
-    
-    # Enforce community quota
     quota_mb = ADMIN_CONFIG.get("community_policy", {}).get("max_size_mb")
     if quota_mb and os.path.exists(db_path):
-        current_size = os.path.getsize(db_path)
-        if current_size > quota_mb * 1024 * 1024:
-            raise HTTPException(status_code=413, detail="Community server storage quota exceeded. Cannot share more songs at this time.")
-
+        if os.path.getsize(db_path) > quota_mb * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Community server storage quota exceeded.")
+    
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     try:
+        # Extract cover data if present
+        cover_blob = None
+        cover_image_data = payload.song_data.get("coverImageData")
+        if cover_image_data:
+            if "," in cover_image_data:
+                cover_image_data = cover_image_data.split(",")[1]
+            cover_blob = base64.b64decode(cover_image_data)
+
         cursor.execute(
-            "INSERT INTO shared_songs (title, artist, cover_url, sharer_name, song_data, words_data) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO shared_songs (title, artist, cover_url, sharer_name, song_data, words_data, cover_image) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 payload.title,
                 payload.artist,
-                payload.cover_url,
+                payload.cover_url, # Original URL as fallback
                 payload.sharer_name,
                 json.dumps(payload.song_data, ensure_ascii=False),
-                json.dumps(payload.words_data, ensure_ascii=False)
+                json.dumps(payload.words_data, ensure_ascii=False),
+                cover_blob
             )
         )
+        song_id = cursor.lastrowid
+        
+        # Update the cover_url to point to our internal server endpoint
+        if cover_blob:
+            new_cover_url = f"/api/community/songs/{song_id}/cover"
+            cursor.execute("UPDATE shared_songs SET cover_url = ? WHERE id = ?", (new_cover_url, song_id))
+            
         conn.commit()
-        return {"message": "Song shared successfully!", "id": cursor.lastrowid}
+        return {"message": "Song shared successfully!", "id": song_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
@@ -440,37 +632,21 @@ def share_song(payload: SharedSongUpload):
 def list_shared_songs(q: str = None, sharer: str = None, limit: int = 50, offset: int = 0):
     conn = sqlite3.connect("shared_songs.db")
     cursor = conn.cursor()
-    
     query = "SELECT id, title, artist, cover_url, sharer_name, created_at FROM shared_songs WHERE 1=1"
     params = []
-    
     if q:
         query += " AND (title LIKE ? OR artist LIKE ?)"
         params.extend([f"%{q}%", f"%{q}%"])
-    
     if sharer:
         query += " AND sharer_name = ?"
         params.append(sharer)
-        
     query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
     params.extend([limit, offset])
-    
     try:
         cursor.execute(query, params)
         rows = cursor.fetchall()
-        songs = []
-        for row in rows:
-            songs.append({
-                "id": row[0],
-                "title": row[1],
-                "artist": row[2],
-                "cover_url": row[3],
-                "sharer_name": row[4],
-                "created_at": row[5]
-            })
+        songs = [{"id": r[0], "title": r[1], "artist": r[2], "cover_url": r[3], "sharer_name": r[4], "created_at": r[5]} for r in rows]
         return {"songs": songs}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
     finally:
         conn.close()
 
@@ -479,17 +655,34 @@ def get_shared_song(song_id: int):
     conn = sqlite3.connect("shared_songs.db")
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT song_data, words_data FROM shared_songs WHERE id = ?", (song_id,))
+        cursor.execute("SELECT song_data, words_data, cover_image, cover_url FROM shared_songs WHERE id = ?", (song_id,))
         row = cursor.fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="Shared song not found.")
+        if not row: raise HTTPException(status_code=404, detail="Shared song not found.")
         
-        return {
-            "songs": [json.loads(row[0])],
-            "words": json.loads(row[1])
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        song_data = json.loads(row[0])
+        words_data = json.loads(row[1])
+        cover_image = row[2]
+        cover_url = row[3]
+        
+        if cover_image:
+            encoded_string = base64.b64encode(cover_image).decode('utf-8')
+            song_data["coverImageData"] = f"data:image/jpeg;base64,{encoded_string}"
+        
+        song_data["cover_url"] = cover_url
+        return {"songs": [song_data], "words": words_data}
+    finally:
+        conn.close()
+
+@app.get("/api/community/songs/{song_id}/cover")
+def get_community_cover(song_id: int):
+    conn = sqlite3.connect("shared_songs.db")
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT cover_image FROM shared_songs WHERE id = ?", (song_id,))
+        row = cursor.fetchone()
+        if not row or not row[0]:
+            raise HTTPException(status_code=404, detail="Cover not found.")
+        return Response(content=row[0], media_type="image/jpeg")
     finally:
         conn.close()
 
@@ -498,32 +691,19 @@ def delete_shared_song(song_id: int, sharer_name: str = Query(...)):
     conn = sqlite3.connect("shared_songs.db")
     cursor = conn.cursor()
     try:
-        # Check ownership
         cursor.execute("SELECT sharer_name FROM shared_songs WHERE id = ?", (song_id,))
         row = cursor.fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="Shared song not found.")
-            
-        if row[0] != sharer_name:
-            raise HTTPException(status_code=403, detail="You do not have permission to delete this song.")
-            
+        if not row or row[0] != sharer_name: raise HTTPException(status_code=403, detail="Permission denied.")
         cursor.execute("DELETE FROM shared_songs WHERE id = ?", (song_id,))
         conn.commit()
-        return {"message": "Shared song deleted successfully."}
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"message": "Deleted successfully."}
     finally:
         conn.close()
-
-# --- Admin Endpoints ---
 
 def get_dir_size(path='.'):
     total_size = 0
     file_count = 0
-    if not os.path.exists(path):
-        return 0, 0
+    if not os.path.exists(path): return 0, 0
     for entry in os.scandir(path):
         if entry.is_file():
             total_size += entry.stat().st_size
@@ -539,90 +719,63 @@ def get_cache_info():
     media_cache_size, media_cache_files = get_dir_size(CACHE_DIR)
     token_cache_size, token_cache_files = get_dir_size(TEMP_DATA_DIR)
     transcription_cache_size, transcription_cache_files = get_dir_size(TRANSCRIPTION_CACHE_DIR)
-    
-    community_db_size = 0
-    if os.path.exists("shared_songs.db"):
-        community_db_size = os.path.getsize("shared_songs.db")
-        
+    community_db_size = os.path.getsize("shared_songs.db") if os.path.exists("shared_songs.db") else 0
     return {
-        "media_cache": {
-            "size_bytes": media_cache_size,
-            "file_count": media_cache_files
-        },
-        "token_cache": {
-            "size_bytes": token_cache_size,
-            "file_count": token_cache_files
-        },
-        "transcription_cache": {
-            "size_bytes": transcription_cache_size,
-            "file_count": transcription_cache_files
-        },
-        "community_db": {
-            "size_bytes": community_db_size
-        }
+        "media_cache": {"size_bytes": media_cache_size, "file_count": media_cache_files},
+        "token_cache": {"size_bytes": token_cache_size, "file_count": token_cache_files},
+        "transcription_cache": {"size_bytes": transcription_cache_size, "file_count": transcription_cache_files},
+        "community_db": {"size_bytes": community_db_size}
     }
 
 @app.post("/api/admin/clear-cache", dependencies=[Depends(get_admin_user)])
 def clear_cache(request: ClearCacheRequest):
-    if request.cache_name == "media":
-        dir_to_clear = CACHE_DIR
-    elif request.cache_name == "tokens":
-        dir_to_clear = TEMP_DATA_DIR
-    elif request.cache_name == "transcriptions":
-        dir_to_clear = TRANSCRIPTION_CACHE_DIR
-        TRANSCRIPTION_TASKS.clear() # Also clear active tasks from memory
-    else:
-        raise HTTPException(status_code=400, detail="Invalid cache name specified.")
-
+    dir_to_clear = {"media": CACHE_DIR, "tokens": TEMP_DATA_DIR, "transcriptions": TRANSCRIPTION_CACHE_DIR}.get(request.cache_name)
+    if not dir_to_clear: raise HTTPException(status_code=400, detail="Invalid cache name.")
     try:
+        if request.cache_name == "transcriptions": TRANSCRIPTION_TASKS.clear()
         for filename in os.listdir(dir_to_clear):
             file_path = os.path.join(dir_to_clear, filename)
-            if os.path.isfile(file_path) or os.path.islink(file_path):
-                os.unlink(file_path)
-            elif os.path.isdir(file_path):
-                shutil.rmtree(file_path)
-        return {"message": f"Successfully cleared the {request.cache_name} cache."}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to clear cache: {e}")
+            if os.path.isfile(file_path) or os.path.islink(file_path): os.unlink(file_path)
+            elif os.path.isdir(file_path): shutil.rmtree(file_path)
+        return {"message": "Cleared successfully."}
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/admin/config", dependencies=[Depends(get_admin_user)])
 def get_config():
-    return {
-        "media_cache_policy": ADMIN_CONFIG.get("media_cache_policy"),
-        "token_cache_policy": ADMIN_CONFIG.get("token_cache_policy"),
-        "transcription_cache_policy": ADMIN_CONFIG.get("transcription_cache_policy"),
-        "community_policy": ADMIN_CONFIG.get("community_policy"),
-    }
+    return {k: ADMIN_CONFIG.get(k) for k in ["admin_token", "proxy", "media_cache_policy", "token_cache_policy", "transcription_cache_policy", "community_policy"]}
 
 @app.post("/api/admin/config", dependencies=[Depends(get_admin_user)])
 def update_config(request: UpdateConfigRequest):
-    if request.media_cache_policy:
-        ADMIN_CONFIG["media_cache_policy"].update(request.media_cache_policy.dict(exclude_unset=True))
-    if request.token_cache_policy:
-        ADMIN_CONFIG["token_cache_policy"].update(request.token_cache_policy.dict(exclude_unset=True))
-    if request.transcription_cache_policy:
-        ADMIN_CONFIG.setdefault("transcription_cache_policy", {}).update(request.transcription_cache_policy.dict(exclude_unset=True))
-    if request.community_policy:
-        ADMIN_CONFIG.setdefault("community_policy", {}).update(request.community_policy.dict(exclude_unset=True))
-    
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(ADMIN_CONFIG, f, indent=4)
-    
-    return {"message": "Configuration updated successfully."}
+    if request.admin_token: ADMIN_CONFIG["admin_token"] = request.admin_token
+    if request.proxy is not None: ADMIN_CONFIG["proxy"] = request.proxy if request.proxy.strip() else None
+    if request.media_cache_policy: ADMIN_CONFIG["media_cache_policy"].update(request.media_cache_policy.dict(exclude_unset=True))
+    if request.token_cache_policy: ADMIN_CONFIG["token_cache_policy"].update(request.token_cache_policy.dict(exclude_unset=True))
+    if request.transcription_cache_policy: ADMIN_CONFIG.setdefault("transcription_cache_policy", {}).update(request.transcription_cache_policy.dict(exclude_unset=True))
+    if request.community_policy: ADMIN_CONFIG.setdefault("community_policy", {}).update(request.community_policy.dict(exclude_unset=True))
+    with open(CONFIG_FILE, "w") as f: json.dump(ADMIN_CONFIG, f, indent=4)
+    return {"message": "Updated successfully."}
 
 @app.get("/api/admin/transcription-tasks", dependencies=[Depends(get_admin_user)])
 def admin_get_transcription_tasks():
-    # Return a filtered copy of tasks to avoid sending actual file paths
-    tasks = {}
-    for media_id, info in TRANSCRIPTION_TASKS.items():
-        tasks[media_id] = {
+    return {m_id: {"status": i.get("status"), "display_name": i.get("display_name"), "started_at": i.get("started_at"), "completed_at": i.get("completed_at"), "error": i.get("error")} for m_id, i in TRANSCRIPTION_TASKS.items()}
+
+@app.get("/api/public/transcription-tasks")
+def public_get_transcription_tasks():
+    """Public endpoint to view the status of all transcription tasks."""
+    tasks = []
+    # Sort tasks by start time to show a clear queue order
+    sorted_tasks = sorted(TRANSCRIPTION_TASKS.items(), key=lambda item: item[1].get('started_at', ''))
+    
+    for media_id, info in sorted_tasks:
+        tasks.append({
+            "id": media_id,
             "status": info.get("status"),
             "display_name": info.get("display_name"),
             "started_at": info.get("started_at"),
             "completed_at": info.get("completed_at"),
-            "error": info.get("error")
-        }
-    return tasks
+            "error": info.get("error"),
+        })
+    return {"tasks": tasks}
 
 @app.get("/api/admin/community/songs", dependencies=[Depends(get_admin_user)])
 def admin_list_shared_songs(limit: int = 100, offset: int = 0):
@@ -630,174 +783,66 @@ def admin_list_shared_songs(limit: int = 100, offset: int = 0):
     cursor = conn.cursor()
     try:
         cursor.execute("SELECT id, title, artist, sharer_name, created_at FROM shared_songs ORDER BY created_at DESC LIMIT ? OFFSET ?", (limit, offset))
-        rows = cursor.fetchall()
-        songs = []
-        for row in rows:
-            songs.append({
-                "id": row[0],
-                "title": row[1],
-                "artist": row[2],
-                "sharer_name": row[3],
-                "created_at": row[4]
-            })
-        
+        songs = [{"id": r[0], "title": r[1], "artist": r[2], "sharer_name": r[3], "created_at": r[4]} for r in cursor.fetchall()]
         cursor.execute("SELECT COUNT(id) FROM shared_songs")
-        total = cursor.fetchone()[0]
-        
-        return {"songs": songs, "total": total}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"songs": songs, "total": cursor.fetchone()[0]}
     finally:
         conn.close()
 
-@app.delete("/api/admin/community/songs/{song_id}", dependencies=[Depends(get_admin_user)])
+@app.delete("/api/admin/community/songs/{song_id}")
 def admin_delete_shared_song(song_id: int):
     conn = sqlite3.connect("shared_songs.db")
     cursor = conn.cursor()
     try:
         cursor.execute("DELETE FROM shared_songs WHERE id = ?", (song_id,))
         conn.commit()
-        if cursor.rowcount == 0:
-             raise HTTPException(status_code=404, detail="Song not found")
-        return {"message": "Shared song deleted successfully by admin."}
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"message": "Deleted by admin."}
     finally:
         conn.close()
 
-# --- Background Tasks ---
-
 async def background_cleanup_task():
     while True:
-        await asyncio.sleep(3600)  # Run every hour
-        print("Running background cleanup task...")
-
-        now = datetime.utcnow()
-        
-        # 1. Clean expired temp tokens (in-memory list)
-        expired_tokens = [token for token, info in token_storage.items() if now > info["expiry_time"]]
-        for token in expired_tokens:
-            info = token_storage.pop(token, None)
-            if info and os.path.exists(info["file_path"]):
-                print(f"Cleaning up expired data file: {info['file_path']}")
-                os.remove(info["file_path"])
-
-        # 2. Clean token cache directory based on file age and directory size
-        token_policy = ADMIN_CONFIG["token_cache_policy"]
-        max_age_hours = token_policy.get("max_age_hours")
-        max_size_mb = token_policy.get("max_size_mb")
-
-        files = sorted(Path(TEMP_DATA_DIR).iterdir(), key=os.path.getmtime)
-        
-        # Age-based cleaning
-        if max_age_hours is not None:
-            for file_path in files:
-                if file_path.is_file():
-                    file_mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
-                    if (now - file_mtime) > timedelta(hours=max_age_hours):
-                        print(f"Token file {file_path} is older than {max_age_hours} hours, deleting.")
-                        os.remove(file_path)
-                    else:
-                        break # Files are sorted by time, so we can stop
-
-        # Size-based cleaning
-        if max_size_mb is not None:
-            total_size_bytes, _ = get_dir_size(TEMP_DATA_DIR)
-            max_size_bytes = max_size_mb * 1024 * 1024
-            files = sorted(Path(TEMP_DATA_DIR).iterdir(), key=os.path.getmtime) # Re-fetch sorted files
-            while total_size_bytes > max_size_bytes and files:
-                oldest_file = files.pop(0)
-                if oldest_file.is_file():
-                    file_size = oldest_file.stat().st_size
-                    print(f"Token cache size ({total_size_bytes / 1024 / 1024:.2f} MB) exceeds limit ({max_size_mb} MB). Deleting oldest file: {oldest_file}")
-                    os.remove(oldest_file)
-                    total_size_bytes -= file_size
-
-        # 3. Clean media cache directory based on file age and directory size
-        media_policy = ADMIN_CONFIG["media_cache_policy"]
-        max_age_days = media_policy.get("max_age_days")
-        max_size_gb = media_policy.get("max_size_gb")
-
-        files = sorted(Path(CACHE_DIR).iterdir(), key=os.path.getmtime)
-
-        # Age-based cleaning
-        if max_age_days is not None:
-            for file_path in files:
-                if file_path.is_file():
-                    file_mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
-                    if (now - file_mtime) > timedelta(days=max_age_days):
-                        print(f"Media file {file_path} is older than {max_age_days} days, deleting.")
-                        os.remove(file_path)
-                    else:
-                        break # Files are sorted by time
-
-        # Size-based cleaning
-        if max_size_gb is not None:
-            total_size_bytes, _ = get_dir_size(CACHE_DIR)
-            max_size_bytes = max_size_gb * 1024 * 1024 * 1024
-            files = sorted(Path(CACHE_DIR).iterdir(), key=os.path.getmtime)
-            while total_size_bytes > max_size_bytes and files:
-                oldest_file = files.pop(0)
-                if oldest_file.is_file():
-                    file_size = oldest_file.stat().st_size
-                    print(f"Media cache size ({total_size_bytes / 1024**3:.2f} GB) exceeds limit ({max_size_gb} GB). Deleting oldest file: {oldest_file}")
-                    os.remove(oldest_file)
-                    total_size_bytes -= file_size
-
-        # 4. Clean transcription cache directory
-        transcription_policy = ADMIN_CONFIG.get("transcription_cache_policy", {})
-        max_age_days_trans = transcription_policy.get("max_age_days")
-        max_size_mb_trans = transcription_policy.get("max_size_mb")
-
-        files = sorted(Path(TRANSCRIPTION_CACHE_DIR).iterdir(), key=os.path.getmtime)
-
-        # Age-based cleaning
-        if max_age_days_trans is not None:
-            for file_path in files:
-                if file_path.is_file():
-                    file_mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
-                    if (now - file_mtime) > timedelta(days=max_age_days_trans):
-                        print(f"Transcription file {file_path} is older than {max_age_days_trans} days, deleting.")
-                        os.remove(file_path)
-                    else:
-                        break
-
-        # Size-based cleaning
-        if max_size_mb_trans is not None:
-            total_size_bytes, _ = get_dir_size(TRANSCRIPTION_CACHE_DIR)
-            max_size_bytes = max_size_mb_trans * 1024 * 1024
-            files = sorted(Path(TRANSCRIPTION_CACHE_DIR).iterdir(), key=os.path.getmtime)
-            while total_size_bytes > max_size_bytes and files:
-                oldest_file = files.pop(0)
-                if oldest_file.is_file():
-                    file_size = oldest_file.stat().st_size
-                    print(f"Transcription cache size ({total_size_bytes / 1024 / 1024:.2f} MB) exceeds limit ({max_size_mb_trans} MB). Deleting oldest file: {oldest_file}")
-                    os.remove(oldest_file)
-                    total_size_bytes -= file_size
+        try:
+            await asyncio.sleep(3600)
+            now = datetime.utcnow()
+            for token, info in list(token_storage.items()):
+                if now > info["expiry_time"]:
+                    if os.path.exists(info["file_path"]): os.remove(info["file_path"])
+                    del token_storage[token]
+            for dir_path, policy, unit in [(CACHE_DIR, ADMIN_CONFIG["media_cache_policy"], "days"), (TEMP_DATA_DIR, ADMIN_CONFIG["token_cache_policy"], "hours"), (TRANSCRIPTION_CACHE_DIR, ADMIN_CONFIG.get("transcription_cache_policy", {}), "days")]:
+                max_age = policy.get(f"max_age_{unit}")
+                max_size = policy.get("max_size_gb") if unit == "days" else policy.get("max_size_mb")
+                if not os.path.exists(dir_path): continue
+                files = sorted(Path(dir_path).iterdir(), key=os.path.getmtime)
+                if max_age:
+                    for f in files:
+                        if (now - datetime.fromtimestamp(f.stat().st_mtime)) > (timedelta(days=max_age) if unit == "days" else timedelta(hours=max_age)): os.remove(f)
+                        else: break
+                if max_size:
+                    curr_size, _ = get_dir_size(dir_path)
+                    limit = max_size * 1024**3 if unit == "days" else max_size * 1024**2
+                    files = sorted(Path(dir_path).iterdir(), key=os.path.getmtime)
+                    while curr_size > limit and files:
+                        f = files.pop(0)
+                        curr_size -= f.stat().st_size
+                        os.remove(f)
+        except asyncio.CancelledError: break
+        except Exception as e: print(f"Cleanup error: {e}")
 
 @app.on_event("startup")
 async def startup_event():
-    # Initialize SQLite DB for community shared songs
     conn = sqlite3.connect("shared_songs.db")
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS shared_songs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            artist TEXT,
-            cover_url TEXT,
-            sharer_name TEXT NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            song_data TEXT NOT NULL,
-            words_data TEXT NOT NULL
-        )
-    ''')
-    conn.commit()
+    # Added cover_image column as BLOB
+    conn.execute("CREATE TABLE IF NOT EXISTS shared_songs (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, artist TEXT, cover_url TEXT, sharer_name TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, song_data TEXT NOT NULL, words_data TEXT NOT NULL, cover_image BLOB)")
     conn.close()
-    
-    asyncio.create_task(background_cleanup_task())
+    task = asyncio.create_task(background_cleanup_task())
+    BACKGROUND_TASKS.append(task)
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    for task in BACKGROUND_TASKS:
+        task.cancel()
+    await asyncio.gather(*BACKGROUND_TASKS, return_exceptions=True)
 
 if __name__ == "__main__":
     import uvicorn

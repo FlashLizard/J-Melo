@@ -1,6 +1,7 @@
 import '@/styles/globals.css';
 import '@/lib/immer'; // Import to enable Immer plugins
 import type { AppProps } from 'next/app';
+import Head from 'next/head';
 import { useEffect } from 'react';
 import useSettingsStore from '@/stores/useSettingsStore';
 import useTranslation from '@/hooks/useTranslation';
@@ -26,6 +27,9 @@ function MyApp({ Component, pageProps }: AppProps) {
 
   return (
     <>
+      <Head>
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+      </Head>
       {isLoading && <LoadingSpinner />}
       <Component {...pageProps} />
     </>

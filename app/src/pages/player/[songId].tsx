@@ -169,7 +169,10 @@ const PlayerPage = () => {
       </Head>
       <main className="bg-gray-900 h-screen flex flex-col overflow-hidden">
         <div className="p-2 bg-gray-800 flex justify-between items-center z-30">
-          <h1 className="text-white text-lg font-bold">J-Melo Player</h1>
+          <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+            <img src="/logo.svg" alt="J-Melo Logo" className="w-8 h-8 drop-shadow-md" />
+            <h1 className="text-white text-lg font-bold">J-Melo Player</h1>
+          </Link>
           <div className="flex gap-2">
             <Link href="/" className="px-3 py-1 text-sm bg-gray-600 rounded-lg hover:bg-gray-500 text-white">
               &larr; {t('player.backToHome')}

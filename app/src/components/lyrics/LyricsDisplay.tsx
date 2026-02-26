@@ -215,75 +215,98 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
       </div>
 
       {/* Fixed button bar at the bottom */}
-      <div className="absolute bottom-0 right-0 p-4 flex space-x-2 z-20 bg-gray-800/80 backdrop-blur-sm w-full justify-between sm:justify-end items-center">
-          <div className="flex space-x-2 bg-gray-700/50 rounded-full p-1">
-             <button
-                onClick={(e) => { e.stopPropagation(); setLyricsFontSize(Math.max(0.5, fontSizeMultiplier - 0.1)); }}
-                className="p-1.5 rounded-full text-gray-300 hover:text-white hover:bg-gray-600 transition-colors"
-                title={t('lyricsDisplay.decreaseFontSize') || "Decrease Font Size"}
-             >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-                </svg>
-             </button>
-             <span className="text-xs text-gray-400 px-2 flex items-center font-mono">{Math.round(fontSizeMultiplier * 100)}%</span>
-             <button
-                onClick={(e) => { e.stopPropagation(); setLyricsFontSize(Math.min(2.5, fontSizeMultiplier + 0.1)); }}
-                className="p-1.5 rounded-full text-gray-300 hover:text-white hover:bg-gray-600 transition-colors"
-                title={t('lyricsDisplay.increaseFontSize') || "Increase Font Size"}
-             >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-             </button>
-          </div>
+      <div className="absolute bottom-0 right-0 left-0 bg-gray-800/90 backdrop-blur-sm z-20 border-t border-gray-700">
+        {/* Progress Bar */}
+        <div 
+            className="w-full h-1.5 bg-gray-600 cursor-pointer group"
+            onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const percentage = x / rect.width;
+                const songDuration = usePlayerStore.getState().duration;
+                if (songDuration) {
+                    playerStoreActions.seek(percentage * songDuration);
+                }
+            }}
+        >
+            <div 
+                className="h-full bg-green-500 relative"
+                style={{ width: `${(currentTime / (usePlayerStore.getState().duration || 1)) * 100}%` }}
+            >
+                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity transform translate-x-1/2"></div>
+            </div>
+        </div>
 
-          <div className="flex space-x-2">
-            <button
-                onClick={(e) => { 
-                    e.stopPropagation(); 
-                    if (isPlaying) playerStoreActions.pause();
-                    else playerStoreActions.play();
-                }}
-                className="lyric-toggle-button p-2 rounded-full text-white bg-blue-600 hover:bg-blue-500"
-                title={isPlaying ? "Pause" : "Play"}
-            >
-                {isPlaying ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 002 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                    </svg>
-                ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-                    </svg>
-                )}
-            </button>
-            <button
-                onClick={(e) => { e.stopPropagation(); toggleShowReadings(); }}
-                className={cn(
-                    "lyric-toggle-button p-2 rounded-full text-white",
-                    settings.showReadings ? "bg-green-600 hover:bg-green-500" : "bg-gray-600 hover:bg-gray-500"
-                )}
-                title={settings.showReadings ? "Hide Readings" : "Show Readings"}
-            >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                    <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
-                    <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
-                </svg>
-            </button>
-            <button
-                onClick={(e) => { e.stopPropagation(); toggleShowTranslations(); }}
-                className={cn(
-                    "lyric-toggle-button p-2 rounded-full text-white",
-                    settings.showTranslations ? "bg-green-600 hover:bg-green-500" : "bg-gray-600 hover:bg-gray-500"
-                )}
-                title={settings.showTranslations ? "Hide Translations" : "Show Translations"}
-            >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0113 3.414L16.586 7A2 2 0 0118 8.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm0 3a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1z" clipRule="evenodd" />
-                </svg>
-            </button>
-          </div>
+        <div className="p-3 flex space-x-2 w-full justify-between sm:justify-end items-center">
+            <div className="flex space-x-2 bg-gray-700/50 rounded-full p-1">
+               <button
+                  onClick={(e) => { e.stopPropagation(); setLyricsFontSize(Math.max(0.5, fontSizeMultiplier - 0.1)); }}
+                  className="p-1.5 rounded-full text-gray-300 hover:text-white hover:bg-gray-600 transition-colors"
+                  title={t('lyricsDisplay.decreaseFontSize') || "Decrease Font Size"}
+               >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                  </svg>
+               </button>
+               <span className="text-xs text-gray-400 px-2 flex items-center font-mono">{Math.round(fontSizeMultiplier * 100)}%</span>
+               <button
+                  onClick={(e) => { e.stopPropagation(); setLyricsFontSize(Math.min(2.5, fontSizeMultiplier + 0.1)); }}
+                  className="p-1.5 rounded-full text-gray-300 hover:text-white hover:bg-gray-600 transition-colors"
+                  title={t('lyricsDisplay.increaseFontSize') || "Increase Font Size"}
+               >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+               </button>
+            </div>
+
+            <div className="flex space-x-2">
+              <button
+                  onClick={(e) => { 
+                      e.stopPropagation(); 
+                      if (isPlaying) playerStoreActions.pause();
+                      else playerStoreActions.play();
+                  }}
+                  className="lyric-toggle-button p-2 rounded-full text-white bg-blue-600 hover:bg-blue-500"
+                  title={isPlaying ? "Pause" : "Play"}
+              >
+                  {isPlaying ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 002 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                  ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                      </svg>
+                  )}
+              </button>
+              <button
+                  onClick={(e) => { e.stopPropagation(); toggleShowReadings(); }}
+                  className={cn(
+                      "lyric-toggle-button p-2 rounded-full text-white",
+                      settings.showReadings ? "bg-green-600 hover:bg-green-500" : "bg-gray-600 hover:bg-gray-500"
+                  )}
+                  title={settings.showReadings ? "Hide Readings" : "Show Readings"}
+              >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                      <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+                      <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
+                  </svg>
+              </button>
+              <button
+                  onClick={(e) => { e.stopPropagation(); toggleShowTranslations(); }}
+                  className={cn(
+                      "lyric-toggle-button p-2 rounded-full text-white",
+                      settings.showTranslations ? "bg-green-600 hover:bg-green-500" : "bg-gray-600 hover:bg-gray-500"
+                  )}
+                  title={settings.showTranslations ? "Hide Translations" : "Show Translations"}
+              >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0113 3.414L16.586 7A2 2 0 0118 8.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm0 3a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1z" clipRule="evenodd" />
+                  </svg>
+              </button>
+            </div>
+        </div>
       </div>
 
       {contextMenu && (

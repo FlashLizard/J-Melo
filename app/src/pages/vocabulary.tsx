@@ -84,7 +84,10 @@ const VocabularyPage = () => {
       <main className="bg-gray-900 min-h-screen text-white p-4 lg:p-8">
         <div className="max-w-4xl mx-auto">
           <div className="flex justify-between items-center mb-6">
-            <h1 className="text-3xl font-bold">{t('vocabularyPage.title')}</h1>
+            <div className="flex items-center gap-3">
+              <img src="/logo.svg" alt="J-Melo Logo" className="w-10 h-10 drop-shadow-lg" />
+              <h1 className="text-3xl font-bold">{t('vocabularyPage.title')}</h1>
+            </div>
             <Link href="/" className="px-4 py-2 bg-green-600 rounded-lg hover:bg-green-500">
               {t('vocabularyPage.backToPlayer')}
             </Link>

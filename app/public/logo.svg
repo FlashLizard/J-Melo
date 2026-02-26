@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Outer record edge -->
+  <circle cx="50" cy="50" r="45" fill="#1f2937" stroke="#374151" stroke-width="2"/>
+  <!-- Record grooves -->
+  <circle cx="50" cy="50" r="35" fill="none" stroke="#4b5563" stroke-width="1.5" opacity="0.5"/>
+  <circle cx="50" cy="50" r="25" fill="none" stroke="#4b5563" stroke-width="1.5" opacity="0.5"/>
+  <!-- Center label -->
+  <circle cx="50" cy="50" r="15" fill="#10b981"/>
+  <!-- Center hole -->
+  <circle cx="50" cy="50" r="4" fill="#111827"/>
+  <!-- Play triangle / Letter J abstract -->
+  <path d="M46 42 L58 50 L46 58 Z" fill="#111827"/>
+</svg>

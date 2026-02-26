@@ -81,9 +81,12 @@ const MySharedPage: React.FC = () => {
             <main className="bg-gray-900 min-h-screen text-white p-4 sm:p-6 lg:p-8">
                 <div className="max-w-4xl mx-auto">
                     <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
-                        <div>
-                            <h1 className="text-3xl font-bold">{t('home.mySharedButton')}</h1>
-                            <p className="text-gray-400 mt-2">{t('myShared.sharerLabel')}: <span className="font-semibold text-teal-400">{sharerNickname || t('common.na')}</span></p>
+                        <div className="flex items-center gap-3">
+                            <img src="/logo.svg" alt="J-Melo Logo" className="w-10 h-10 drop-shadow-lg" />
+                            <div>
+                                <h1 className="text-3xl font-bold">{t('home.mySharedButton')}</h1>
+                                <p className="text-gray-400 mt-2">{t('myShared.sharerLabel')}: <span className="font-semibold text-teal-400">{sharerNickname || t('common.na')}</span></p>
+                            </div>
                         </div>
                         <Link href="/" className="px-4 py-2 bg-gray-600 rounded-lg hover:bg-gray-500 text-white w-full sm:w-auto text-center">
                             {t('settings.backToPlayer')}

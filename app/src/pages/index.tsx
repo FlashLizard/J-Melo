@@ -255,7 +255,10 @@ const HomePage = () => {
 
       <main className="bg-gray-900 min-h-screen text-white p-4">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4 relative">
-          <h1 className="text-3xl font-bold">{t('home.title')}</h1>
+          <div className="flex items-center gap-3">
+            <img src="/logo.svg" alt="J-Melo Logo" className="w-10 h-10 drop-shadow-lg" />
+            <h1 className="text-3xl font-bold">{t('home.title')}</h1>
+          </div>
           <div className="flex flex-wrap gap-2 items-center w-full sm:w-auto">
             {!isSelectMode && (
                 <>

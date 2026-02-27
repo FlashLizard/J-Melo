@@ -1,13 +1,36 @@
-# J-Melo：日语学习助手
+# J-Melo
+<p align="center">
+  <img src="https://raw.githubusercontent.com/FlashLizard/J-Melo/main/app/public/logo.svg" alt="J-Melo Logo" width="120">
+</p>
+
+<h1 align="center">J-Melo：日语歌学习助手</h1>
+
+<p align="center">
+  <strong>一款智能的日语歌学习辅助工具，学唱日语歌的同时帮助你记录词汇。</strong>
+</p>
+
+<p align="center">
+  <a href="https://j-melo.flashlizard.com">
+    <img src="https://img.shields.io/badge/立即使用-Web_App-blue?style=for-the-badge&logo=vercel" alt="Web App">
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/开源协议-MIT-green?style=for-the-badge" alt="License">
+  </a>
+</p>
+
+<p align="center">
+  <a href="#项目简介">项目简介</a> •
+  <a href="#核心功能">核心功能</a> •
+  <a href="#快速上手">使用指南</a> •
+  <a href="#快速上手">部署指南</a> •
+  <a href="https://github.com/FlashLizard/J-Melo/issues">反馈建议</a>
+</p>
 
 ## 项目简介
-[J-Melo] 是一个专为日语学习者设计的沉浸式学习平台。它通过结合音乐、歌词编辑、AI辅助工具和词汇管理系统，旨在提供一个多功能、引人入胜的日语学习体验。
+[J-Melo] 是一个专为日语歌学习者设计的沉浸式学习平台。它通过结合音乐、歌词编辑、AI辅助工具和词汇管理系统，旨在提供一个多功能、引人入胜的日语歌学习体验。
 该项目全部使用gemini cli编写。
 
-## 项目目的
-本项目旨在解决日语学习过程中，尤其是通过音乐学习时，歌词理解、生词记忆和发音校正等方面的痛点。我们致力于提供一个高度可定制和互动，且结合了最前沿AI技术和语言学习理论的学习环境，帮助用户更高效、更愉快地提升日语水平。
-
-## 主要功能
+## 核心功能
 J-Melo 提供以下核心功能：
 
 *   **沉浸式播放器**：
@@ -46,7 +69,7 @@ J-Melo 提供以下核心功能：
 *   **可定制的后端服务**：
     *   在应用设置中可灵活配置后端API地址，方便部署者根据自己的服务器环境进行调整。
 
-## 用户手册
+## 使用指南
 
 ### 准备工作
 
@@ -67,7 +90,7 @@ J-Melo 提供以下核心功能：
 2. 导入无时间轴歌词：
     对于不需要歌词时间轴的用户，可以直接输入歌曲文本后调用AI来生成歌词的json文本。不过这里更推荐使用网页提供的Utaten搜索直接获取歌词文本，再点击解析文本来生成。这样快速、准确、无需ai。
 若你觉得当前歌词不合适，可随时通过工具面板的“重新转录”与“导入无时间轴歌词”来重新生成歌词。
-![1](images\image.png)
+![1](https://raw.githubusercontent.com/FlashLizard/J-Melo/main/images/image.png)
 
 
 ### **3. 优化歌词**
@@ -76,7 +99,7 @@ J-Melo 提供以下核心功能：
     由于Prompt过长，这种方式耗时极长。推荐复制Prompt后在网页版LLM中运行，获取其回复。
 2. 手动调整：
     在歌词面板中点击单句歌词的空白地方后会出现“编辑句子”按钮（电脑端右键词语也可以），可以对这句歌词的各种信息进行手动修改，包括开始时间、结束时间、文本内容、注音等。也可直接编辑JSON文本。
-![2](images\1APMQvWopT.png)
+![2](https://raw.githubusercontent.com/FlashLizard/J-Melo/main/images/1APMQvWopT.png)
 
 ### **4. 翻译歌词**
 提供两种翻译方式：
@@ -86,20 +109,20 @@ J-Melo 提供以下核心功能：
 ### **5. 歌词释义与卡片生成**
 点击单句歌词的空白地方后会出现“解释词语”按钮（电脑端右键词语也可以），点击后可以从句子中选择一个词语，进行AI释义。提示模板支持自定义。AI释义后（不进行这步也可以），可以将结果记录为词汇卡片保存到词汇表。
 词汇卡片的模板也支持自定义。
-![3](images\chrome_BEtblS8UYy.png)
-![4](images\chrome_YAsWEI39YH.png)
+![3](https://raw.githubusercontent.com/FlashLizard/J-Melo/main/images/chrome_BEtblS8UYy.png)
+![4](https://raw.githubusercontent.com/FlashLizard/J-Melo/main/images/chrome_YAsWEI39YH.png)
 
 ### **6. 词汇管理与复习**
 在最上面的导航栏点击“词汇”可以进入词汇管理界面，在这里可以查看所有的词汇卡片，支持按歌曲分组查看或搜索特定词汇。点击每个词汇卡片可以编辑其内容或删除它。也可以多选词汇卡片来批量删除或导出为Anki兼容的CSV文件。
 在词汇面板点击复习单词可以进行复习。
 在歌曲的工具面板中点击“复习词汇”会直接对从属于该首歌的词汇进行复习。
-![5](images\chrome_SOn4ASpWNY.png)
+![5](https://raw.githubusercontent.com/FlashLizard/J-Melo/main/images/chrome_SOn4ASpWNY.png)
 
 ### **7. 社区分享与探索**
 点击最上面的导航栏的探索可以查看他人分享的歌曲，点击后可以导入到自己的歌曲库，包括歌词和词汇卡片等信息。
 在“我的歌曲”界面多选歌曲可以分享到社区中。在分享前请在设置中配置好“分享昵称”。
 点击“更多-我的分享”可以删除之前分享的歌曲。
-![6](images\chrome_8DFIC3LJOF.png)
+![6](https://raw.githubusercontent.com/FlashLizard/J-Melo/main/images/chrome_8DFIC3LJOF.png)
 
 ### **8. 其他功能**
 歌曲的工具面板提供缓存歌曲音频文件到本地的功能。在设置中缓存设置中可以删除缓存的歌曲。
@@ -107,7 +130,7 @@ J-Melo 提供以下核心功能：
 如果你自己部署了后端服务器，请修改设置中的后端URL为你的后端服务器地址。
 同时你可以在设置中的后台管理面板中方便的管理后台服务器缓存。
 
-## 如何部署
+## 部署指南
 
 J-Melo 项目分为前端（`app` 目录）和后端（`backend` 目录）两部分。请确保两者都能正确运行以获得完整功能。
 

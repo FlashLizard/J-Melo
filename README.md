@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://j-melo.flashlizard.com">
+  <a href="https://j-melo.flashlizard.top">
     <img src="https://img.shields.io/badge/立即使用-Web_App-blue?style=for-the-badge&logo=vercel" alt="Web App">
   </a>
   <a href="LICENSE">

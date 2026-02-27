@@ -1,6 +1,5 @@
 // src/components/lyrics/ProgressHighlighter.tsx
 import React, { useMemo } from 'react';
-import usePlayerStore from '@/stores/usePlayerStore';
 import cn from 'classnames';
 
 interface Props {
@@ -10,10 +9,10 @@ interface Props {
   isActive: boolean;
   isHovered: boolean;
   fontSizeMultiplier?: number;
+  currentTime: number; // Receive currentTime explicitly
 }
 
-const ProgressHighlighter: React.FC<Props> = ({ surface, startTime, endTime, isActive, isHovered, fontSizeMultiplier = 1.0 }) => {
-  const { currentTime } = usePlayerStore();
+const ProgressHighlighter: React.FC<Props> = ({ surface, startTime, endTime, isActive, isHovered, fontSizeMultiplier = 1.0, currentTime }) => {
 
   const progress = useMemo(() => {
     if (!isActive) return 0;

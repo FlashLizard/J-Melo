@@ -31,8 +31,123 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
   const { settings, toggleShowReadings, toggleShowTranslations, setLyricsFontSize } = useSettingsStore();
   const { t } = useTranslation();
   const { song, generateTranscriptionPreview, previewLyrics, commitPreviewLyrics, clearPreviewLyrics } = useSongStore();
+  
+  // Track the currently active line ID to trigger scrolls only on change
+  const lastActiveLineId = useRef<string | null>(null);
+
+  // Custom smooth scroll function with duration
+  const smoothScrollTo = (element: HTMLElement, target: number, duration: number) => {
+    const start = element.scrollTop;
+    const change = target - start;
+    let startTime: number | null = null;
+
+    const animateScroll = (timestamp: number) => {
+      if (startTime === null) startTime = timestamp;
+      const timeElapsed = timestamp - startTime;
+      const progress = Math.min(timeElapsed / duration, 1);
+      
+      // Easing: easeOutQuad
+      const ease = progress * (2 - progress);
+      
+      element.scrollTop = start + change * ease;
+
+      if (timeElapsed < duration) {
+        requestAnimationFrame(animateScroll);
+      }
+    };
+
+    requestAnimationFrame(animateScroll);
+  };
+
+  // Dragging state for the progress bar
+  const progressBarRef = useRef<HTMLDivElement>(null);
+  const [isDraggingProgress, setIsDraggingProgress] = useState(false);
+  const [dragProgressTime, setDragProgressTime] = useState(0);
+  
+  // User manual scrolling state
+  const [isUserScrolling, setIsUserScrolling] = useState(false);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const displayTime = isDraggingProgress ? dragProgressTime : currentTime;
+  const songDuration = usePlayerStore.getState().duration || 1;
+
+  // Handle manual scroll to pause auto-scrolling
+  const handleScroll = () => {
+    setIsUserScrolling(true);
+    if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+    }
+    scrollTimeoutRef.current = setTimeout(() => {
+        setIsUserScrolling(false);
+    }, 3000); // Resume auto-scroll after 3 seconds of inactivity
+  };
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+      return () => {
+          if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+      };
+  }, []);
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!progressBarRef.current) return;
+    setIsDraggingProgress(true);
+    updateProgressFromEvent(e);
+    progressBarRef.current.setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingProgress) return;
+    updateProgressFromEvent(e);
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingProgress || !progressBarRef.current) return;
+    setIsDraggingProgress(false);
+    playerStoreActions.seek(dragProgressTime);
+    progressBarRef.current.releasePointerCapture(e.pointerId);
+  };
+
+  const updateProgressFromEvent = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!progressBarRef.current) return;
+    const rect = progressBarRef.current.getBoundingClientRect();
+    let x = e.clientX - rect.left;
+    x = Math.max(0, Math.min(x, rect.width)); // Clamp between 0 and width
+    const percentage = x / rect.width;
+    setDragProgressTime(percentage * songDuration);
+  };
 
   const fontSizeMultiplier = settings.lyricsFontSize || 1.0;
+
+  useEffect(() => {
+    // Determine which line is currently active based on displayTime
+    const activeLine = lyrics?.find(l => displayTime >= l.startTime && displayTime < l.endTime);
+    const activeId = activeLine?.id || null;
+
+    // Only proceed if the active line has actually changed
+    if (activeId !== lastActiveLineId.current) {
+        lastActiveLineId.current = activeId;
+
+        // Only auto-scroll if the user hasn't manually scrolled recently, OR if we are actively dragging the progress bar
+        if (!isUserScrolling || isDraggingProgress) {
+            if (activeLineRef.current && scrollContainerRef.current) {
+              const activeLineTop = activeLineRef.current.offsetTop;
+              const activeLineHeight = activeLineRef.current.offsetHeight;
+              const containerHeight = scrollContainerRef.current.offsetHeight;
+
+              const scrollTo = activeLineTop - containerHeight / 2 + activeLineHeight / 2;
+              
+              if (isDraggingProgress) {
+                  // Instant snap when dragging
+                  scrollContainerRef.current.scrollTo({ top: scrollTo, behavior: 'auto' });
+              } else {
+                  // Custom 300ms swift smooth scroll
+                  smoothScrollTo(scrollContainerRef.current, scrollTo, 300);
+              }
+            }
+        }
+    }
+  }, [displayTime, lyrics, isDraggingProgress, isUserScrolling]);
 
   if (!lyrics || lyrics.length === 0) {
     return (
@@ -58,18 +173,6 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
         </div>
     );
   }
-  
-  useEffect(() => {
-    if (activeLineRef.current && scrollContainerRef.current) {
-      const activeLineTop = activeLineRef.current.offsetTop;
-      const activeLineHeight = activeLineRef.current.offsetHeight;
-      const containerScrollTop = scrollContainerRef.current.scrollTop;
-      const containerHeight = scrollContainerRef.current.offsetHeight;
-
-      const scrollTo = activeLineTop - containerHeight / 2 + activeLineHeight / 2;
-      scrollContainerRef.current.scrollTo({ top: scrollTo, behavior: 'smooth' });
-    }
-  }, [activeLineRef, currentTime, lyrics]);
 
   const handleContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (contextMenu) {
@@ -109,6 +212,10 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
     },
   ];
 
+  const katakanaToHiragana = (text: string) => {
+      return text.replace(/[\u30A1-\u30F6]/g, match => String.fromCharCode(match.charCodeAt(0) - 0x60));
+  };
+
   return (
     <div className="h-full bg-gray-800 text-white relative flex flex-col" onClick={handleContainerClick}>
         {previewLyrics && (
@@ -119,9 +226,14 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
             </div>
         )}
       {/* Scrollable lyrics content */}
-      <div ref={scrollContainerRef} className="flex-grow overflow-y-auto overflow-x-hidden pt-4 pb-16 select-none">
+      <div 
+        ref={scrollContainerRef} 
+        className="flex-grow overflow-y-auto overflow-x-hidden pt-4 pb-16 select-none"
+        onWheel={handleScroll}
+        onTouchMove={handleScroll}
+      >
         {lyrics.map((line) => {
-          const isLineActive = currentTime >= line.startTime && currentTime < line.endTime;
+          const isLineActive = displayTime >= line.startTime && displayTime < line.endTime;
           const isLineSelected = selectedLineId === line.id;
           return (
             <div
@@ -132,8 +244,8 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
             >
               <p className="font-semibold tracking-wider mb-2" style={{ fontSize: `${1.5 * fontSizeMultiplier}rem`, lineHeight: 1.2 }}>
                 {line.tokens.map((token, index) => {
-                  const isTokenActive = isLineActive && currentTime >= token.startTime && currentTime < token.endTime;
-                  const hasTokenPassed = isLineActive && currentTime >= token.endTime;
+                  const isTokenActive = isLineActive && displayTime >= token.startTime && displayTime < token.endTime;
+                  const hasTokenPassed = isLineActive && displayTime >= token.endTime;
                   const isHovered = hoveredToken === token;
 
                   return (
@@ -152,7 +264,7 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
                     >
                       <span className={cn(
                         "text-gray-400 block w-full text-center whitespace-nowrap",
-                        settings.showReadings ? "visible" : "invisible"
+                        (settings.showReadings && token.reading && token.reading !== katakanaToHiragana(token.surface)) ? "visible" : "invisible"
                       )} style={{ fontSize: `${0.75 * fontSizeMultiplier}rem`, height: `${1 * fontSizeMultiplier}rem`, lineHeight: 1 }}>
                         {token.reading}
                       </span>
@@ -165,6 +277,7 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
                           isActive={isTokenActive}
                           isHovered={isHovered}
                           fontSizeMultiplier={fontSizeMultiplier}
+                          currentTime={displayTime}
                         />
                       ) : (
                         <span className={cn('block whitespace-pre text-center leading-tight', {
@@ -218,22 +331,21 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
       <div className="absolute bottom-0 right-0 left-0 bg-gray-800/90 backdrop-blur-sm z-20 border-t border-gray-700">
         {/* Progress Bar */}
         <div 
-            className="w-full h-1.5 bg-gray-600 cursor-pointer group"
-            onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const percentage = x / rect.width;
-                const songDuration = usePlayerStore.getState().duration;
-                if (songDuration) {
-                    playerStoreActions.seek(percentage * songDuration);
-                }
-            }}
+            ref={progressBarRef}
+            className="w-full h-2 bg-gray-600 cursor-pointer group touch-none"
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
         >
             <div 
-                className="h-full bg-green-500 relative"
-                style={{ width: `${(currentTime / (usePlayerStore.getState().duration || 1)) * 100}%` }}
+                className="h-full bg-green-500 relative transition-none"
+                style={{ width: `${(displayTime / songDuration) * 100}%` }}
             >
-                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity transform translate-x-1/2"></div>
+                <div className={cn(
+                    "absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-md transform translate-x-1/2 transition-opacity",
+                    isDraggingProgress ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                )}></div>
             </div>
         </div>
 

@@ -291,6 +291,8 @@
   "timelessLyricsImporter.generateButton": "Generate Timeless Lyrics",
   "timelessLyricsImporter.generateMode": "Generate Mode",
   "timelessLyricsImporter.importMode": "Import JSON Mode",
+  "timelessLyricsImporter.parseDirectButton": "Parse Direct",
+  "timelessLyricsImporter.directParsePreview": "Directly parsed from text without AI.",
   "timelessLyricsImporter.pasteJson": "Paste JSON Array",
   "timelessLyricsImporter.jsonPlaceholder": "Paste the parsed JSON lyrics array here...",
   "timelessLyricsImporter.importJsonButton": "Import JSON",

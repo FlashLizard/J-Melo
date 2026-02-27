@@ -291,6 +291,8 @@
   "timelessLyricsImporter.generateButton": "生成无时间轴歌词",
   "timelessLyricsImporter.generateMode": "生成模式",
   "timelessLyricsImporter.importMode": "导入 JSON 模式",
+  "timelessLyricsImporter.parseDirectButton": "解析文本",
+  "timelessLyricsImporter.directParsePreview": "已直接从文本解析完成。",
   "timelessLyricsImporter.pasteJson": "粘贴 JSON 数组",
   "timelessLyricsImporter.jsonPlaceholder": "在此处粘贴解析后的 JSON 歌词数组...",
   "timelessLyricsImporter.importJsonButton": "导入 JSON",

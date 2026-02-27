@@ -5,9 +5,10 @@ import useMobileViewStore from '@/stores/useMobileViewStore';
 import useSongStore from '@/stores/useSongStore';
 import useTranslation from '@/hooks/useTranslation';
 import { db } from '@/lib/db';
-import { LyricLine } from '@/interfaces/lyrics';
+import { LyricLine, LyricToken } from '@/interfaces/lyrics';
 import cn from 'classnames';
 import { copyToClipboard } from '@/utils/copyToClipboard';
+import { v4 as uuidv4 } from 'uuid';
 
 const Modal: React.FC<{ 
   title: string; 
@@ -337,6 +338,139 @@ const TimelessLyricsImporter: React.FC = () => {
     }
   };
 
+  const handleParseDirectText = () => {
+    if (!rawLyrics.trim()) {
+        setError(t('timelessLyricsImporter.pasteLyrics'));
+        return;
+    }
+    
+    try {
+        const lines = rawLyrics.split('\n');
+        const parsedLyrics: LyricLine[] = [];
+
+        const getScriptType = (char: string) => {
+            const code = char.charCodeAt(0);
+            if (code >= 0x3040 && code <= 0x309F) return 'hiragana';
+            if (code >= 0x30A0 && code <= 0x30FF) return 'katakana';
+            if (/\s/.test(char)) return 'space';
+            // Basic latin and ascii punctuation
+            if (code <= 0x007F) return 'alphanumeric_or_punct';
+            // If it's not hiragana, katakana, space, or basic ASCII, treat it as kanji.
+            // This covers actual Kanji, iteration marks (々), CJK punctuation, fullwidth letters, etc.
+            // We want things that can potentially take furigana to be grouped together.
+            return 'kanji';
+        };
+
+        const katakanaToHiragana = (text: string) => {
+            return text.replace(/[\u30A1-\u30F6]/g, match => String.fromCharCode(match.charCodeAt(0) - 0x60));
+        };
+
+        const splitMixedText = (text: string) => {
+            const res: LyricToken[] = [];
+            let currentType: string | null = null;
+            let currentChunk = "";
+            
+            for (const char of text) {
+                const charType = getScriptType(char);
+                if (charType === 'space') {
+                    if (currentChunk) {
+                        res.push({ surface: currentChunk, reading: katakanaToHiragana(currentChunk), startTime: 0, endTime: 0 });
+                        currentChunk = "";
+                    }
+                    currentType = null;
+                    continue;
+                }
+                
+                if (currentType !== null && charType !== currentType && currentChunk) {
+                    res.push({ surface: currentChunk, reading: katakanaToHiragana(currentChunk), startTime: 0, endTime: 0 });
+                    currentChunk = char;
+                    currentType = charType;
+                } else {
+                    currentChunk += char;
+                    currentType = charType;
+                }
+            }
+            
+            if (currentChunk) {
+                res.push({ surface: currentChunk, reading: katakanaToHiragana(currentChunk), startTime: 0, endTime: 0 });
+            }
+            return res;
+        };
+
+        lines.forEach(lineText => {
+            const trimmedLine = lineText.trim();
+            if (!trimmedLine) return; // Skip empty lines
+
+            const tokens: LyricToken[] = [];
+            // Regex breakdown: (capturing group for surface text)(escaped bracket)(capturing group for reading)(escaped bracket)
+            const regex = /([^\s\[\]]+)\[([^\[\]]+)\]/g;
+            
+            let lastIndex = 0;
+            let match;
+            
+            const iterRegex = new RegExp(regex);
+            
+            while ((match = iterRegex.exec(trimmedLine)) !== null) {
+                if (match.index > lastIndex) {
+                    const plainText = trimmedLine.substring(lastIndex, match.index);
+                    tokens.push(...splitMixedText(plainText));
+                }
+                
+                const surface = match[1];
+                const reading = match[2];
+                
+                // Backtrack to separate hiragana/katakana prefixes from the kanji part that the reading actually applies to.
+                // e.g. "あと一[ひと]" -> prefix: "あと", kanji: "一"
+                let idx = surface.length - 1;
+                while (idx >= 0) {
+                    if (['hiragana', 'katakana', 'punctuation'].includes(getScriptType(surface[idx]))) {
+                        break;
+                    }
+                    idx--;
+                }
+                
+                if (idx === surface.length - 1 || idx === -1) {
+                    // Whole thing is one type or no prefix found
+                    tokens.push({ surface, reading, startTime: 0, endTime: 0 });
+                } else {
+                    const prefix = surface.substring(0, idx + 1);
+                    const targetKanji = surface.substring(idx + 1);
+                    tokens.push(...splitMixedText(prefix));
+                    tokens.push({ surface: targetKanji, reading, startTime: 0, endTime: 0 });
+                }
+                
+                lastIndex = iterRegex.lastIndex;
+            }
+            
+            if (lastIndex < trimmedLine.length) {
+                const plainText = trimmedLine.substring(lastIndex);
+                tokens.push(...splitMixedText(plainText));
+            }
+            
+            if (tokens.length === 0) {
+                 tokens.push(...splitMixedText(trimmedLine));
+            }
+
+            parsedLyrics.push({
+                id: uuidv4(),
+                startTime: 0,
+                endTime: 0,
+                text: tokens.map(t => t.surface).join(''), // Reconstruct clean text from tokens
+                translation: '',
+                tokens: tokens
+            });
+        });
+
+        setPreviewData({ 
+            newLyrics: parsedLyrics, 
+            rawLLMOutput: t('timelessLyricsImporter.directParsePreview') 
+        });
+        setError(null);
+    } catch (e) {
+        setError((e as Error).message);
+    }
+  };
+
   const handleConfirm = () => {
     if (previewData) {
       setProcessedLyrics(previewData.newLyrics);
@@ -434,7 +568,10 @@ const TimelessLyricsImporter: React.FC = () => {
               {t('aiLyricCorrector.promptTemplateTagsHint')}
             </div>
           </div>
-          <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            <button onClick={handleParseDirectText} disabled={isLoading || !rawLyrics.trim()} className="px-4 py-2 bg-teal-600 rounded-lg hover:bg-teal-500 disabled:opacity-50 font-bold">
+                {t('timelessLyricsImporter.parseDirectButton') || 'Parse Text'}
+            </button>
             <button onClick={() => setPromptPreview(promptTemplate.replace('{raw_lyrics}', rawLyrics))} className="px-4 py-2 bg-indigo-600 rounded-lg hover:bg-indigo-500 disabled:opacity-50" disabled={isLoading}>
                 {t('aiLyricCorrector.previewPromptButton')}
             </button>

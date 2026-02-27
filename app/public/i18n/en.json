@@ -68,6 +68,7 @@
   "fullLyricsEditor.jsonSaveError": "Cannot save due to invalid JSON: {{error}}",
   "fullLyricsEditor.lyricsSavedSuccess": "Lyrics saved successfully!",
   "fullLyricsEditor.title": "Edit Full Lyrics (JSON)",
+  "fullLyricsEditor.selectAllButton": "Select All",
   "fullLyricsEditor.jsonErrorHeader": "JSON Error",
   "fullLyricsEditor.cancelButton": "Cancel",
   "fullLyricsEditor.saveButton": "Save",
@@ -400,5 +401,6 @@
   "transcriptionStatus.pending": "Pending",
   "transcriptionStatus.processing": "Processing",
   "transcriptionStatus.completed": "Completed",
-  "transcriptionStatus.error": "Error"
+  "transcriptionStatus.error": "Error",
+  "common.copy": "Copy"
 }

@@ -1,16 +1,18 @@
 // src/components/editor/FullLyricsEditor.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import useUIPanelStore from '@/stores/useUIPanelStore';
 import useSongStore from '@/stores/useSongStore';
 import useMobileViewStore from '@/stores/useMobileViewStore'; // Import useMobileViewStore
 import useTranslation from '@/hooks/useTranslation'; // Import useTranslation
 import { LyricLine } from '@/interfaces/lyrics';
+import { copyToClipboard } from '@/utils/copyToClipboard';
 
 const FullLyricsEditor: React.FC = () => {
   const { lyrics, setPreviewLyrics, clearPreviewLyrics, commitPreviewLyrics } = useSongStore();
   const { setActivePanel } = useUIPanelStore();
   const { setActiveView } = useMobileViewStore(); // Get setActiveView
   const { t } = useTranslation(); // Initialize useTranslation
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   
   const [jsonString, setJsonString] = useState('');
   const [jsonError, setJsonError] = useState<string | null>(null);
@@ -33,6 +35,18 @@ const FullLyricsEditor: React.FC = () => {
     }
   };
 
+  const handleSelectAll = () => {
+    if (textareaRef.current) {
+      textareaRef.current.select();
+    }
+  };
+
+  const handleCopy = () => {
+    copyToClipboard(jsonString)
+      .then(() => alert(t('settings.tokenCopied')))
+      .catch(err => console.error('Failed to copy JSON: ', err));
+  };
+
   const handleSave = () => {
     if (jsonError) {
       alert(t('fullLyricsEditor.jsonSaveError', { error: jsonError }));
@@ -52,10 +66,31 @@ const FullLyricsEditor: React.FC = () => {
 
   return (
     <div className="bg-gray-800 p-4 rounded-lg h-full flex flex-col text-white">
-      <h2 className="text-white text-xl font-bold mb-4">{t('fullLyricsEditor.title')}</h2>
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-white text-xl font-bold">{t('fullLyricsEditor.title')}</h2>
+        <div className="flex gap-2">
+          <button 
+            onClick={handleSelectAll}
+            className="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded text-gray-300 transition"
+          >
+            {t('fullLyricsEditor.selectAllButton') || 'Select All'}
+          </button>
+          <button 
+            onClick={handleCopy}
+            className="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded text-gray-300 transition flex items-center gap-1"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M7 3a1 1 0 011-1h3a1 1 0 011 1v1h1a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h1V3z" />
+              <path d="M9 2a2 2 0 00-2 2v1h4V4a2 2 0 00-2-2z" />
+            </svg>
+            {t('common.copy') || 'Copy'}
+          </button>
+        </div>
+      </div>
       
       <div className="flex-grow flex flex-col min-h-0">
         <textarea
+          ref={textareaRef}
           className="w-full h-full flex-grow bg-gray-900 text-white p-2 rounded border border-gray-700 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
           value={jsonString}
           onChange={handleJsonChange}

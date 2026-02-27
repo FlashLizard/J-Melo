@@ -10,6 +10,7 @@ interface PlayerState {
 
 let mediaElement: HTMLAudioElement | HTMLVideoElement | null = null;
 let rafId: number | null = null;
+let isSeeking = false; // Add a flag to block rAF updates during seek
 
 const usePlayerStore = create<PlayerState>(() => ({
   isPlaying: false,
@@ -22,18 +23,23 @@ const usePlayerStore = create<PlayerState>(() => ({
 const updateTimeLoop = () => {
     if (!mediaElement) return;
     
-    const { loopA, loopB, isPlaying } = usePlayerStore.getState();
-    const newTime = mediaElement.currentTime;
+    // Do not update from mediaElement if we are in the middle of a seek operation,
+    // to avoid Safari reporting old/wrong times while buffering.
+    if (!isSeeking) {
+        const { loopA, loopB, isPlaying } = usePlayerStore.getState();
+        const newTime = mediaElement.currentTime;
 
-    // Check for looping
-    if (loopA !== null && loopB !== null && newTime >= loopB) {
-        mediaElement.currentTime = loopA;
-        usePlayerStore.setState({ currentTime: loopA });
-    } else {
-        usePlayerStore.setState({ currentTime: newTime });
+        // Check for looping
+        if (loopA !== null && loopB !== null && newTime >= loopB) {
+            mediaElement.currentTime = loopA;
+            usePlayerStore.setState({ currentTime: loopA });
+        } else {
+            usePlayerStore.setState({ currentTime: newTime });
+        }
     }
 
-    if (isPlaying) {
+    // Always keep the loop running if we are supposed to be playing
+    if (usePlayerStore.getState().isPlaying) {
         rafId = requestAnimationFrame(updateTimeLoop);
     }
 };
@@ -47,14 +53,17 @@ const handlePlay = () => {
 const handlePause = () => {
     usePlayerStore.setState({ isPlaying: false });
     if (rafId) cancelAnimationFrame(rafId);
-    // Force one last update on pause to ensure absolute precision
-    if (mediaElement) usePlayerStore.setState({ currentTime: mediaElement.currentTime });
+    if (mediaElement && !isSeeking) usePlayerStore.setState({ currentTime: mediaElement.currentTime });
 };
 const handleEnded = () => {
     usePlayerStore.setState({ isPlaying: false });
     if (rafId) cancelAnimationFrame(rafId);
 };
+const handleSeeking = () => {
+    isSeeking = true;
+};
 const handleSeeked = () => {
+    isSeeking = false;
     if (mediaElement) usePlayerStore.setState({ currentTime: mediaElement.currentTime });
 };
 
@@ -66,34 +75,33 @@ export const playerStoreActions = {
         mediaElement.removeEventListener('play', handlePlay);
         mediaElement.removeEventListener('pause', handlePause);
         mediaElement.removeEventListener('ended', handleEnded);
+        mediaElement.removeEventListener('seeking', handleSeeking);
         mediaElement.removeEventListener('seeked', handleSeeked);
         if (rafId) cancelAnimationFrame(rafId);
     }
     mediaElement = element;
+    isSeeking = false;
     usePlayerStore.setState({ isPlaying: false, currentTime: 0, duration: 0 });
     if (element) {
         element.addEventListener('loadedmetadata', handleLoadedMetadata);
         element.addEventListener('play', handlePlay);
         element.addEventListener('pause', handlePause);
         element.addEventListener('ended', handleEnded);
+        element.addEventListener('seeking', handleSeeking);
         element.addEventListener('seeked', handleSeeked);
-        // If element is somehow already playing when attached
         if (!element.paused) {
             handlePlay();
         }
     }
   },
   play: () => {
-    console.log("play action. Current mediaElement:", mediaElement);
     mediaElement?.play();
   },
   pause: () => {
-    console.log("pause action. Current mediaElement:", mediaElement);
     mediaElement?.pause();
   },
   togglePlay: () => {
     const { isPlaying } = usePlayerStore.getState();
-    console.log(`togglePlay action. isPlaying: ${isPlaying}. Current mediaElement:`, mediaElement);
     if (isPlaying) {
       mediaElement?.pause();
     } else {
@@ -102,8 +110,9 @@ export const playerStoreActions = {
   },
   seek: (time: number) => { 
     if (mediaElement) {
+        isSeeking = true; // Instantly lock updates
         mediaElement.currentTime = time; 
-        usePlayerStore.setState({ currentTime: time }); // Force instant state update
+        usePlayerStore.setState({ currentTime: time }); // Optimistic UI update
     }
   },
   setLoopA: () => usePlayerStore.setState({ loopA: usePlayerStore.getState().currentTime, loopB: null }),

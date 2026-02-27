@@ -68,6 +68,7 @@
   "fullLyricsEditor.jsonSaveError": "由于无效的 JSON 无法保存：{{error}}",
   "fullLyricsEditor.lyricsSavedSuccess": "歌词保存成功！",
   "fullLyricsEditor.title": "编辑完整歌词 (JSON)",
+  "fullLyricsEditor.selectAllButton": "全选",
   "fullLyricsEditor.jsonErrorHeader": "JSON 错误",
   "fullLyricsEditor.cancelButton": "取消",
   "fullLyricsEditor.saveButton": "保存",
@@ -400,5 +401,6 @@
   "transcriptionStatus.pending": "排队中",
   "transcriptionStatus.processing": "处理中",
   "transcriptionStatus.completed": "已完成",
-  "transcriptionStatus.error": "错误"
+  "transcriptionStatus.error": "错误",
+  "common.copy": "复制"
 }

@@ -147,7 +147,18 @@ def fetch_media_info(url: str) -> dict:
 
 def download_media(info: dict, destination: str) -> None:
     url = info.get("webpage_url")
-    command = ["yt-dlp", "-f", "bestaudio/best", "--extract-audio", "--audio-format", "mp3", "-o", destination, url]
+    # To fix mobile browser seeking desync (where audio plays slower than the reported currentTime),
+    # we must force a Constant Bitrate (CBR) re-encoding. VBR or direct extraction often leads to 
+    # corrupt seeking tables in HTML5 <audio> elements.
+    command = [
+        "yt-dlp", 
+        "-f", "bestaudio", 
+        "--extract-audio", 
+        "--audio-format", "mp3", 
+        "--audio-quality", "128K", # Forces CBR 128kbps in yt-dlp's ffmpeg call
+        "-o", destination, 
+        url
+    ]
     proxy = ADMIN_CONFIG.get("proxy")
     if proxy:
         command.extend(["--proxy", proxy])

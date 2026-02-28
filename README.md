@@ -13,6 +13,9 @@
   <a href="https://j-melo.flashlizard.top">
     <img src="https://img.shields.io/badge/立即使用-Web_App-blue?style=for-the-badge&logo=vercel" alt="Web App">
   </a>
+  <a href="https://www.bilibili.com/video/BV16AADzPExn">
+    <img src="https://img.shields.io/badge/视频介绍-bilibili-red?style=for-the-badge" alt="License">
+  </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/开源协议-MIT-green?style=for-the-badge" alt="License">
   </a>

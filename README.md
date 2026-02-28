@@ -21,8 +21,8 @@
 <p align="center">
   <a href="#项目简介">项目简介</a> •
   <a href="#核心功能">核心功能</a> •
-  <a href="#快速上手">使用指南</a> •
-  <a href="#快速上手">部署指南</a> •
+  <a href="#使用指南">使用指南</a> •
+  <a href="#部署指南">部署指南</a> •
   <a href="https://github.com/FlashLizard/J-Melo/issues">反馈建议</a>
 </p>
 

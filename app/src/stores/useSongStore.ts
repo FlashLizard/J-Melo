@@ -20,18 +20,20 @@ interface SongState {
   fetchAllSongs: () => Promise<SongData[]>;
   generateTranscriptionPreview: (song: SongData, t: (key: string) => string) => Promise<void>;
   setProcessedLyrics: (lyrics: LyricLine[]) => void;
-  updateLyricLine: (updatedLine: LyricLine) => void;
+  updateLyricLine: (index: number, updatedLine: LyricLine) => void;
   updateSongInfo: (info: { title: string; artist: string }) => void;
   setPreviewLyrics: (lyrics: LyricLine[]) => void;
   clearPreviewLyrics: () => void;
   commitPreviewLyrics: () => void;
   cacheCurrentSongAudio: () => Promise<void>;
-  updateLyricTranslations: (newTranslatedLyrics: LyricLine[]) => Promise<void>;
+  updateLyricTranslations: (newTranslatedLyrics: { index: number; translation: string }[]) => Promise<void>;
   deleteSongs: (songIds: number[]) => Promise<void>;
   // New granular import methods
   addManySongs: (songs: SongRecord[], words: WordRecord[]) => Promise<void>;
   overwriteSong: (existingSongId: number, importedSong: SongRecord, importedWords: WordRecord[]) => Promise<void>;
   mergeWordsIntoSong: (existingSongId: number, importedWords: WordRecord[]) => Promise<void>;
+  clearAllTimestamps: () => void;
+  updateLineTime: (lineIndex: number, timeType: 'start' | 'end', time: number) => void;
 }
 
 const useSongStore = create<SongState>()(
@@ -276,10 +278,11 @@ const useSongStore = create<SongState>()(
         db.songs.update(song.id, { lyrics: processedLyrics });
         set({ lyrics: processedLyrics });
     },
-    updateLyricLine: (updatedLine) => {
+    updateLyricLine: (index, updatedLine) => {
         const { lyrics, song } = get();
         if (!lyrics || !song?.id) return;
-        const newLyrics = lyrics.map(line => (line.id === updatedLine.id ? updatedLine : line));
+        const newLyrics = [...lyrics];
+        newLyrics[index] = updatedLine;
         db.songs.update(song.id, { lyrics: newLyrics });
         set({ lyrics: newLyrics });
     },
@@ -328,12 +331,94 @@ const useSongStore = create<SongState>()(
     updateLyricTranslations: async (newTranslatedLyrics) => {
         const { song, lyrics } = get();
         if (!song?.id || !lyrics) return;
-        const updatedLyrics = lyrics.map(line => {
-            const match = newTranslatedLyrics.find(t => t.id === line.id);
+        const updatedLyrics = lyrics.map((line, index) => {
+            const match = newTranslatedLyrics.find(t => t.index === index);
             return match ? { ...line, translation: match.translation } : line;
         });
         await db.songs.update(song.id, { lyrics: updatedLyrics });
         set({ lyrics: updatedLyrics });
+    },
+    clearAllTimestamps: () => {
+        const { song, lyrics } = get();
+        if (!song?.id || !lyrics) return;
+        const newLyrics = lyrics.map(line => ({
+            ...line,
+            startTime: 0,
+            endTime: 0,
+            tokens: line.tokens.map(t => ({ ...t, startTime: 0, endTime: 0 }))
+        }));
+        db.songs.update(song.id, { lyrics: newLyrics });
+        set({ lyrics: newLyrics });
+    },
+    updateLineTime: (lineIndex, timeType, time) => {
+        set(state => {
+            const lyrics = state.lyrics;
+            if (!lyrics) return;
+
+            if (lineIndex < 0 || lineIndex >= lyrics.length) return;
+
+            if (timeType === 'start') {
+                lyrics[lineIndex].startTime = time;
+                
+                // Explicitly auto-fill the end time of the *previous* valid line if it's missing
+                // This ensures the DB has concrete numbers instead of 0 for UI editors.
+                for (let i = lineIndex - 1; i >= 0; i--) {
+                    if (lyrics[i].startTime > 0) {
+                        if (lyrics[i].endTime === 0 || lyrics[i].endTime > time) {
+                            lyrics[i].endTime = time;
+                        }
+                        break;
+                    }
+                }
+            } else {
+                lyrics[lineIndex].endTime = time;
+            }
+
+            // Recalculate timings for all lines. 
+            for (let i = 0; i < lyrics.length; i++) {
+                const line = lyrics[i];
+                if (line.startTime === 0) continue; // Unset line
+
+                let effectiveStart = line.startTime;
+                let effectiveEnd = line.endTime;
+
+                // If end time is missing, infer it temporarily for token distribution
+                if (effectiveEnd <= effectiveStart) {
+                    let nextValidStart = effectiveStart + 2; // Fallback 2 seconds
+                    for (let j = i + 1; j < lyrics.length; j++) {
+                        if (lyrics[j].startTime > effectiveStart) {
+                            nextValidStart = lyrics[j].startTime;
+                            break;
+                        }
+                    }
+                    effectiveEnd = nextValidStart;
+                    // We ALSO explicitly save this inferred end time back to the line
+                    // so the SentenceEditor doesn't get a duration of 0.
+                    line.endTime = effectiveEnd;
+                }
+
+                // Distribute time across tokens based on character length
+                const totalChars = line.tokens.reduce((sum, t) => sum + t.surface.length, 0);
+                let currentTokenTime = effectiveStart;
+
+                line.tokens.forEach(token => {
+                    const charRatio = totalChars > 0 ? token.surface.length / totalChars : 0;
+                    const duration = (effectiveEnd - effectiveStart) * charRatio;
+                    token.startTime = currentTokenTime;
+                    token.endTime = currentTokenTime + duration;
+                    currentTokenTime = token.endTime;
+                });
+            }
+
+            // In Zustand with Immer, state is a Proxy draft. We must convert it back to a plain object before sending it to IndexedDB to avoid DataCloneError or silent drops.
+            if (state.song?.id) {
+                // JSON stringify/parse is a safe way to strip Immer proxies
+                const rawLyrics = JSON.parse(JSON.stringify(state.lyrics));
+                db.songs.update(state.song.id, { lyrics: rawLyrics }).catch(err => {
+                    console.error("Failed to save lyrics to DB:", err);
+                });
+            }
+        });
     },
     deleteSongs: async (songIds) => {
         await db.words.where('sourceSongId').anyOf(songIds).delete();

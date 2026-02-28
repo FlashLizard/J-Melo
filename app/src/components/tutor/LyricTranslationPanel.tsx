@@ -106,7 +106,6 @@ const ErrorEditing: React.FC<{
 // Helper function to create a simplified JSON for LLM prompts
 const getSimplifiedLyricsJson = (lyrics: LyricLine[]) => {
   return lyrics.map(line => ({
-    id: line.id,
     startTime: line.startTime,
     endTime: line.endTime,
     text: line.text,
@@ -114,28 +113,30 @@ const getSimplifiedLyricsJson = (lyrics: LyricLine[]) => {
   }));
 };
 
-const DEFAULT_PROVIDED_LYRICS_PROMPT = `You are an expert in Japanese and Chinese translation. A user has provided Chinese lyrics and the corresponding simplified JSON lyrics with timing information. Your task is to map each provided Chinese sentence to the 'translation' field of the corresponding 'LyricLine' object in the simplified JSON structure.
+const DEFAULT_PROVIDED_LYRICS_PROMPT = `You are an expert in Japanese translation. A user has provided translated lyrics and the corresponding simplified JSON lyrics. Your task is to map each provided translated sentence to the 'translation' field of the corresponding 'LyricLine' object in the simplified JSON structure.
 
-The user-provided Chinese lyrics to map are:
+The user-provided translated lyrics to map are:
 ---
 {provided_lyrics}
 ---
 
-The simplified JSON lyrics with timing information are (id, startTime, endTime, text, translation):
+The simplified JSON lyrics are:
 ---
 {original_lyrics_json}
 ---
 
-Please output a JSON object that strictly follows the simplified JSON structure, but with the 'translation' field of each 'LyricLine' object updated with the Chinese translation from the provided lyrics. Assume the number of lines in provided_lyrics matches the number of lines in original_lyrics_json, and map them in order. The JSON should be enclosed in a single markdown code block. Ensure the other fields (id, startTime, endTime, text) remain unchanged.`;
+Please output a JSON array that strictly follows the simplified JSON structure, but with the 'translation' field of each 'LyricLine' object updated with the translation from the provided lyrics. Assume the number of lines in provided_lyrics matches the number of lines in original_lyrics_json, and map them in order. The JSON should be enclosed in a single markdown code block. Ensure the other fields (startTime, endTime, text) remain unchanged.`;
 
-const DEFAULT_CURRENT_LYRICS_PROMPT = `You are an expert in Japanese and Chinese translation. A user has provided simplified JSON Japanese song lyrics with timing information. Your task is to translate the Japanese text of each 'LyricLine' object into Chinese and update the 'translation' field for each corresponding 'LyricLine' object.
+const DEFAULT_CURRENT_LYRICS_PROMPT = `You are an expert in Japanese translation. A user has provided simplified JSON Japanese song lyrics. Your task is to translate the Japanese text of each 'LyricLine' object into the target language and update the 'translation' field for each corresponding 'LyricLine' object.
 
-The simplified JSON lyrics with timing information are (id, startTime, endTime, text, translation):
+The target language is: {target_language}
+
+The simplified JSON lyrics are:
 ---
 {original_lyrics_json}
 ---
 
-Please output a JSON object that strictly follows the simplified JSON structure, but with the 'translation' field of each 'LyricLine' object updated with the Chinese translation. The JSON should be enclosed in a single markdown code block. Ensure the other fields (id, startTime, endTime, text) remain unchanged.`;
+Please output a JSON array that strictly follows the simplified JSON structure, but with the 'translation' field of each 'LyricLine' object updated with the translation. The JSON should be enclosed in a single markdown code block. Ensure the other fields (startTime, endTime, text) remain unchanged.`;
 
 
 const LyricTranslationPanel: React.FC = () => {
@@ -270,7 +271,14 @@ const LyricTranslationPanel: React.FC = () => {
   const handleDirectImport = async () => {
     try {
         const parsedLyrics = JSON.parse(jsonInput);
-        await updateLyricTranslations(parsedLyrics);
+        
+        // Ensure it's formatted with index for the store update
+        const formattedForStore = parsedLyrics.map((line: any, idx: number) => ({
+            index: idx,
+            translation: line.translation || ''
+        }));
+        
+        await updateLyricTranslations(formattedForStore);
         alert(t('lyricTranslationPanel.translationAppliedSuccess'));
         setActivePanel('TOOL_PANEL');
         setActiveView('lyrics');
@@ -281,7 +289,11 @@ const LyricTranslationPanel: React.FC = () => {
   
   const handleConfirmTranslation = async () => {
     if (previewData) {
-      await updateLyricTranslations(previewData.translatedLyrics); // Use updateLyricTranslations
+      const formattedForStore = previewData.translatedLyrics.map((line, idx) => ({
+          index: idx,
+          translation: line.translation || ''
+      }));
+      await updateLyricTranslations(formattedForStore);
       alert(t('lyricTranslationPanel.translationAppliedSuccess'));
     }
     setPreviewData(null);

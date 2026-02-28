@@ -452,7 +452,6 @@ const TimelessLyricsImporter: React.FC = () => {
             }
 
             parsedLyrics.push({
-                id: uuidv4(),
                 startTime: 0,
                 endTime: 0,
                 text: tokens.map(t => t.surface).join(''), // Reconstruct clean text from tokens

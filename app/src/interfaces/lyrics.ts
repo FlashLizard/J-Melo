@@ -10,7 +10,6 @@ export interface LyricToken {
 }
   
 export interface LyricLine {
-    id: string;
     startTime: number;
     endTime: number;
     text: string;

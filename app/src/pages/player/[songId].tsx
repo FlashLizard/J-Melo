@@ -16,7 +16,7 @@ import SongInfoEditor from '@/components/editor/SongInfoEditor';
 import AILyricCorrector from '@/components/tutor/AILyricCorrector';
 import LyricTranslationPanel from '@/components/tutor/LyricTranslationPanel';
 import useSongStore from '@/stores/useSongStore';
-import usePlayerStore from '@/stores/usePlayerStore';
+import usePlayerStore, { playerStoreActions } from '@/stores/usePlayerStore';
 import useLyricsProcessor from '@/hooks/useLyricsProcessor';
 import useEditorStore, { editorStoreActions } from '@/stores/useEditorStore';
 import useUIPanelStore from '@/stores/useUIPanelStore';
@@ -29,13 +29,14 @@ import TimelessLyricsImporter from '@/components/tutor/TimelessLyricsImporter';
 const RightHandPanel = () => {
   const { song, updateLyricLine } = useSongStore();
   const editingLine = useEditorStore((state) => state.editingLine);
+  const editingLineIndex = useEditorStore((state) => state.editingLineIndex);
   const { activePanel, setActivePanel } = useUIPanelStore();
 
   if (activePanel === 'AI_TUTOR') return <AIPanel />;
   
-  if (activePanel === 'SENTENCE_EDITOR' && editingLine && song?.media_url) {
-    const handleSaveSentenceEdit = (updatedLine: LyricLine) => {
-      updateLyricLine(updatedLine);
+  if (activePanel === 'SENTENCE_EDITOR' && editingLine && editingLineIndex !== null && song?.media_url) {
+    const handleSaveSentenceEdit = (index: number, updatedLine: LyricLine) => {
+      updateLyricLine(index, updatedLine);
       editorStoreActions.clearEditingLine();
       setActivePanel('TOOL_PANEL');
     };
@@ -46,6 +47,7 @@ const RightHandPanel = () => {
     return (
       <SentenceEditor
         line={editingLine}
+        lineIndex={editingLineIndex}
         onSave={handleSaveSentenceEdit}
         onCancel={handleCancelSentenceEdit}
         relativeAudioUrl={song.media_url}
@@ -160,6 +162,63 @@ const PlayerPage = () => {
     }
   }, [fetchSong, song, songId]);
 
+  const { hasEnded, playMode } = usePlayerStore();
+
+  useEffect(() => {
+    if (hasEnded && song?.id) {
+        const playNext = async () => {
+            playerStoreActions.clearHasEnded();
+            try {
+                // We use Dexie directly to get the latest list
+                const { db } = await import('@/lib/db');
+                const allSongs = await db.songs.toArray();
+                if (allSongs.length === 0) return;
+
+                let nextSongId = song.id;
+
+                if (playMode === 'sequential') {
+                    const currentIndex = allSongs.findIndex(s => s.id === song.id);
+                    if (currentIndex !== -1) {
+                        const nextIndex = (currentIndex + 1) % allSongs.length;
+                        nextSongId = allSongs[nextIndex].id!;
+                    }
+                } else if (playMode === 'shuffle') {
+                    if (allSongs.length > 1) {
+                        let randomIndex;
+                        do {
+                            randomIndex = Math.floor(Math.random() * allSongs.length);
+                        } while (allSongs[randomIndex].id === song.id);
+                        nextSongId = allSongs[randomIndex].id!;
+                    }
+                }
+                // 'loop-single' just stays on the same song
+                if (nextSongId) {
+                    // Use a query parameter to instruct the next page load to auto-play
+                    router.push(`/player/${nextSongId}?autoplay=1`);
+                }
+            } catch (error) {
+                console.error("Auto-play next failed", error);
+            }
+        };
+        playNext();
+    }
+  }, [hasEnded, song, playMode, router]);
+
+  // Handle the autoplay query parameter
+  useEffect(() => {
+    // Only attempt autoplay if we have a song, it's not currently playing, and we have an audio element ready.
+    // The actual play() might need to happen slightly after the audio element is mounted.
+    if (router.isReady && router.query.autoplay === '1' && song && !isLoading) {
+        // We set a small timeout to let the <audio> element register its 'canplay' or just mount.
+        const playTimer = setTimeout(() => {
+            playerStoreActions.play();
+            // Clean up the URL so it doesn't auto-play again on accidental refresh
+            router.replace(`/player/${song.id}`, undefined, { shallow: true });
+        }, 500);
+        return () => clearTimeout(playTimer);
+    }
+  }, [router.isReady, router.query.autoplay, song, isLoading, router]);
+
   const displayLyrics = previewLyrics || lyrics || [];
 
   return (
@@ -168,22 +227,15 @@ const PlayerPage = () => {
         <title>{`J-Melo Player${song ? ` - ${song.title}` : ''}`}</title>
       </Head>
       <main className="bg-gray-900 h-screen flex flex-col overflow-hidden">
-        <div className="p-2 bg-gray-800 flex justify-between items-center z-30">
+        <div className="p-3 bg-gray-800/80 backdrop-blur-md border-b border-gray-700/50 flex justify-between items-center z-30">
           <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <img src="/logo.svg" alt="J-Melo Logo" className="w-8 h-8 drop-shadow-md" />
-            <h1 className="text-white text-lg font-bold">J-Melo Player</h1>
+            <h1 className="text-white text-lg font-bold tracking-tight">J-Melo Player</h1>
           </Link>
-          <div className="flex gap-2">
-            <Link href="/" className="px-3 py-1 text-sm bg-gray-600 rounded-lg hover:bg-gray-500 text-white">
-              &larr; {t('player.backToHome')}
-            </Link>
-            <Link href="/vocabulary" className="px-3 py-1 text-sm bg-blue-600 rounded-lg hover:bg-blue-500 text-white">
-              {t('index.vocabularyButton')}
-            </Link>
-            <Link href="/settings" className="px-3 py-1 text-sm bg-gray-600 rounded-lg hover:bg-gray-500 text-white">
-              {t('index.settingsButton')}
-            </Link>
-          </div>
+          <Link href="/" className="px-4 py-1.5 text-sm bg-gray-700/80 rounded-xl hover:bg-gray-600 text-white font-medium transition-colors flex items-center gap-2 border border-gray-600/50">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+            <span className="hidden sm:inline">{t('player.backToHome')}</span>
+          </Link>
         </div>
 
         <div {...swipeHandlers} className="flex-grow relative overflow-hidden">

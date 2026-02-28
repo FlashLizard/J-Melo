@@ -5,7 +5,6 @@ import { LyricToken, LyricLine } from '@/interfaces/lyrics';
 
 export const mockLyrics: LyricLine[] = [
   {
-    id: 'line-1',
     startTime: 10.5,
     endTime: 16.2,
     text: '夢ならばどれほどよかったでしょう',
@@ -19,7 +18,6 @@ export const mockLyrics: LyricLine[] = [
     ],
   },
   {
-    id: 'line-2',
     startTime: 16.3,
     endTime: 21.8,
     text: '未だにあなたのことを夢にみる',
@@ -35,7 +33,6 @@ export const mockLyrics: LyricLine[] = [
     ],
   },
   {
-    id: 'line-3',
     startTime: 21.9,
     endTime: 27.5,
     text: '忘れた物を取りに帰るように',

@@ -2,14 +2,47 @@ import React, { useRef, useEffect, RefObject } from 'react';
 import usePlayerStore from '@/stores/usePlayerStore'; // Ensure usePlayerStore is imported
 import { playerStoreActions } from '@/stores/usePlayerStore';
 import cn from 'classnames';
+import Marquee from 'react-fast-marquee';
 
 interface Props {
   mediaType: string;
   mediaUrl?: string;
   coverUrl: string; // Cover URL is always provided, even if placeholder
+  title?: string;
+  artist?: string | null;
 }
 
-const MediaDisplay: React.FC<Props> = ({ mediaType, mediaUrl, coverUrl }) => {
+const ScrollingText: React.FC<{ text: string, className?: string }> = ({ text, className }) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const textRef = useRef<HTMLSpanElement>(null);
+    const [isOverflowing, setIsOverflowing] = React.useState(false);
+
+    useEffect(() => {
+        const checkOverflow = () => {
+            if (containerRef.current && textRef.current) {
+                setIsOverflowing(textRef.current.scrollWidth > containerRef.current.clientWidth);
+            }
+        };
+
+        checkOverflow();
+        window.addEventListener('resize', checkOverflow);
+        return () => window.removeEventListener('resize', checkOverflow);
+    }, [text]);
+
+    return (
+        <div ref={containerRef} className={cn("overflow-hidden whitespace-nowrap w-full", className)}>
+            {isOverflowing ? (
+                <Marquee speed={30} gradient={false} pauseOnHover>
+                    <span className="pr-8">{text}</span>
+                </Marquee>
+            ) : (
+                <span ref={textRef} className="inline-block truncate w-full">{text}</span>
+            )}
+        </div>
+    );
+};
+
+const MediaDisplay: React.FC<Props> = ({ mediaType, mediaUrl, coverUrl, title, artist }) => {
   const mediaRef = useRef<HTMLVideoElement | HTMLAudioElement | null>(null);
   const { isPlaying } = usePlayerStore(); // Get isPlaying state
 
@@ -73,6 +106,20 @@ const MediaDisplay: React.FC<Props> = ({ mediaType, mediaUrl, coverUrl }) => {
           {mediaUrl && (
             <audio {...commonProps} ref={mediaRef as RefObject<HTMLAudioElement>} />
           )}
+        </div>
+      )}
+
+      {/* Song Info Overlay - Visible in both modes */}
+      {mediaUrl && (
+        <div className="absolute bottom-8 left-0 right-0 text-center px-4 pointer-events-none z-10 w-full max-w-sm mx-auto flex flex-col items-center">
+          <ScrollingText 
+             text={title || "Unknown Title"} 
+             className="text-xl font-bold text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]" 
+          />
+          <ScrollingText 
+             text={artist || "Unknown Artist"} 
+             className="text-sm text-gray-300 mt-1 drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]" 
+          />
         </div>
       )}
 

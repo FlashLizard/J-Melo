@@ -1,11 +1,16 @@
 import { create } from 'zustand';
 
+export type PlayMode = 'sequential' | 'shuffle' | 'loop-single';
+
 interface PlayerState {
   isPlaying: boolean;
   currentTime: number;
   duration: number;
   loopA: number | null;
   loopB: number | null;
+  playbackRate: number;
+  playMode: PlayMode;
+  hasEnded: boolean;
 }
 
 let mediaElement: HTMLAudioElement | HTMLVideoElement | null = null;
@@ -18,6 +23,9 @@ const usePlayerStore = create<PlayerState>(() => ({
   duration: 0,
   loopA: null,
   loopB: null,
+  playbackRate: 1.0,
+  playMode: 'sequential',
+  hasEnded: false,
 }));
 
 const updateTimeLoop = () => {
@@ -56,7 +64,7 @@ const handlePause = () => {
     if (mediaElement && !isSeeking) usePlayerStore.setState({ currentTime: mediaElement.currentTime });
 };
 const handleEnded = () => {
-    usePlayerStore.setState({ isPlaying: false });
+    usePlayerStore.setState({ isPlaying: false, hasEnded: true });
     if (rafId) cancelAnimationFrame(rafId);
 };
 const handleSeeking = () => {
@@ -81,8 +89,10 @@ export const playerStoreActions = {
     }
     mediaElement = element;
     isSeeking = false;
-    usePlayerStore.setState({ isPlaying: false, currentTime: 0, duration: 0 });
+    // Keep playbackRate and playMode but reset other playback state
+    usePlayerStore.setState({ isPlaying: false, currentTime: 0, duration: 0, hasEnded: false });
     if (element) {
+        element.playbackRate = usePlayerStore.getState().playbackRate; // Apply current rate to new element
         element.addEventListener('loadedmetadata', handleLoadedMetadata);
         element.addEventListener('play', handlePlay);
         element.addEventListener('pause', handlePause);
@@ -108,6 +118,12 @@ export const playerStoreActions = {
       mediaElement?.play();
     }
   },
+  setPlaybackRate: (rate: number) => {
+    if (mediaElement) {
+        mediaElement.playbackRate = rate;
+    }
+    usePlayerStore.setState({ playbackRate: rate });
+  },
   seek: (time: number) => { 
     if (mediaElement) {
         isSeeking = true; // Instantly lock updates
@@ -121,6 +137,13 @@ export const playerStoreActions = {
     if (loopA !== null && currentTime > loopA) usePlayerStore.setState({ loopB: currentTime });
   },
   clearLoop: () => usePlayerStore.setState({ loopA: null, loopB: null }),
+  togglePlayMode: () => {
+    const modes: PlayMode[] = ['sequential', 'shuffle', 'loop-single'];
+    const currentMode = usePlayerStore.getState().playMode;
+    const nextMode = modes[(modes.indexOf(currentMode) + 1) % modes.length];
+    usePlayerStore.setState({ playMode: nextMode });
+  },
+  clearHasEnded: () => usePlayerStore.setState({ hasEnded: false }),
 };
 
 export default usePlayerStore;

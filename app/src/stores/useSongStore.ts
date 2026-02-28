@@ -364,8 +364,10 @@ const useSongStore = create<SongState>()(
                 // This ensures the DB has concrete numbers instead of 0 for UI editors.
                 for (let i = lineIndex - 1; i >= 0; i--) {
                     if (lyrics[i].startTime > 0) {
-                        if (lyrics[i].endTime === 0 || lyrics[i].endTime > time) {
-                            lyrics[i].endTime = time;
+                        // Set to next start time - 0.1s, but don't go before its own start
+                        const newEnd = Math.max(lyrics[i].startTime + 0.05, time - 0.1);
+                        if (lyrics[i].endTime === 0 || lyrics[i].endTime > newEnd) {
+                            lyrics[i].endTime = newEnd;
                         }
                         break;
                     }
@@ -385,13 +387,17 @@ const useSongStore = create<SongState>()(
                 // If end time is missing, infer it temporarily for token distribution
                 if (effectiveEnd <= effectiveStart) {
                     let nextValidStart = effectiveStart + 2; // Fallback 2 seconds
+                    let foundNext = false;
                     for (let j = i + 1; j < lyrics.length; j++) {
                         if (lyrics[j].startTime > effectiveStart) {
                             nextValidStart = lyrics[j].startTime;
+                            foundNext = true;
                             break;
                         }
                     }
-                    effectiveEnd = nextValidStart;
+                    // If we found the next line, subtract 0.1s gap
+                    effectiveEnd = foundNext ? Math.max(effectiveStart + 0.05, nextValidStart - 0.1) : nextValidStart;
+                    
                     // We ALSO explicitly save this inferred end time back to the line
                     // so the SentenceEditor doesn't get a duration of 0.
                     line.endTime = effectiveEnd;

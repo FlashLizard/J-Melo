@@ -360,13 +360,11 @@ const useSongStore = create<SongState>()(
             if (timeType === 'start') {
                 lyrics[lineIndex].startTime = time;
                 
-                // Explicitly auto-fill the end time of the *previous* valid line if it's missing
-                // This ensures the DB has concrete numbers instead of 0 for UI editors.
+                // Requirement: If previous line's end time is 0 or overlaps with new start, fix it.
                 for (let i = lineIndex - 1; i >= 0; i--) {
                     if (lyrics[i].startTime > 0) {
-                        // Set to next start time - 0.1s, but don't go before its own start
                         const newEnd = Math.max(lyrics[i].startTime + 0.05, time - 0.1);
-                        if (lyrics[i].endTime === 0 || lyrics[i].endTime > newEnd) {
+                        if (lyrics[i].endTime === 0 || lyrics[i].endTime > time) {
                             lyrics[i].endTime = newEnd;
                         }
                         break;
@@ -384,22 +382,27 @@ const useSongStore = create<SongState>()(
                 let effectiveStart = line.startTime;
                 let effectiveEnd = line.endTime;
 
-                // If end time is missing, infer it temporarily for token distribution
+                // If end time is missing or invalid, infer it.
                 if (effectiveEnd <= effectiveStart) {
-                    let nextValidStart = effectiveStart + 2; // Fallback 2 seconds
-                    let foundNext = false;
+                    let nextValidStart = -1;
                     for (let j = i + 1; j < lyrics.length; j++) {
                         if (lyrics[j].startTime > effectiveStart) {
                             nextValidStart = lyrics[j].startTime;
-                            foundNext = true;
                             break;
                         }
                     }
-                    // If we found the next line, subtract 0.1s gap
-                    effectiveEnd = foundNext ? Math.max(effectiveStart + 0.05, nextValidStart - 0.1) : nextValidStart;
                     
-                    // We ALSO explicitly save this inferred end time back to the line
-                    // so the SentenceEditor doesn't get a duration of 0.
+                    if (nextValidStart !== -1) {
+                        // Infer from next line with 0.1s gap
+                        effectiveEnd = Math.max(effectiveStart + 0.05, nextValidStart - 0.1);
+                    } else {
+                        // Requirement: Default to song duration if no next line
+                        effectiveEnd = state.song?.duration && state.song.duration > effectiveStart 
+                            ? state.song.duration 
+                            : effectiveStart + 2;
+                    }
+                    
+                    // Save inferred end time back to the line
                     line.endTime = effectiveEnd;
                 }
 

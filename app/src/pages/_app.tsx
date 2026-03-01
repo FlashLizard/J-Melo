@@ -7,6 +7,7 @@ import useSettingsStore from '@/stores/useSettingsStore';
 import useTranslation from '@/hooks/useTranslation';
 import useSongStore from '@/stores/useSongStore'; // Import useSongStore
 import LoadingSpinner from '@/components/common/LoadingSpinner'; // Import LoadingSpinner
+import PWAInstallPrompt from '@/components/common/PWAInstallPrompt';
 
 function MyApp({ Component, pageProps }: AppProps) {
   const loadSettings = useSettingsStore((state) => state.loadSettings);
@@ -15,6 +16,15 @@ function MyApp({ Component, pageProps }: AppProps) {
 
   useEffect(() => {
     loadSettings();
+    
+    // Register Service Worker for PWA
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js').catch(err => {
+                console.log('Service Worker registration failed: ', err);
+            });
+        });
+    }
   }, [loadSettings]);
 
   if (!i18nInitialized) {
@@ -28,10 +38,13 @@ function MyApp({ Component, pageProps }: AppProps) {
   return (
     <>
       <Head>
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#111827" />
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
       </Head>
       {isLoading && <LoadingSpinner />}
       <Component {...pageProps} />
+      <PWAInstallPrompt />
     </>
   );
 }

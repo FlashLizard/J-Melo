@@ -26,6 +26,7 @@ interface SongState {
   clearPreviewLyrics: () => void;
   commitPreviewLyrics: () => void;
   cacheCurrentSongAudio: () => Promise<void>;
+  uncacheCurrentSongAudio: () => Promise<void>;
   updateLyricTranslations: (newTranslatedLyrics: { index: number; translation: string }[]) => Promise<void>;
   deleteSongs: (songIds: number[]) => Promise<void>;
   // New granular import methods
@@ -322,10 +323,34 @@ const useSongStore = create<SongState>()(
                 state.song.media_url = objectUrl;
               }
             });
-            alert(`Successfully cached audio for "${song.title}"`);
-        } catch (err) {
+            } catch (err) {
             console.error("Failed to cache audio:", err);
             alert("Failed to cache audio.");
+        }
+    },
+    uncacheCurrentSongAudio: async () => {
+        const { song } = get();
+        if (!song || !song.is_cached || !song.id) return;
+        try {
+            const songRecord = await db.songs.get(song.id);
+            if (!songRecord) throw new Error("Song record not found in DB.");
+            
+            // Delete audioData blob from db
+            await db.songs.update(song.id, { audioData: undefined, is_cached: false });
+            
+            const { settings } = useSettingsStore.getState();
+            const backendMediaUrl = `${settings.backendUrl}${songRecord.media_url}`;
+            
+            // Update state
+            set(state => {
+              if (state.song) {
+                state.song.is_cached = false;
+                state.song.media_url = backendMediaUrl;
+              }
+            });
+            } catch (err) {
+            console.error("Failed to remove cache:", err);
+            alert("Failed to remove cached audio.");
         }
     },
     updateLyricTranslations: async (newTranslatedLyrics) => {

@@ -423,6 +423,7 @@ const VisualEditor = ({
                 style={{ marginLeft: `${THUMB_HALF_WIDTH_PX}px`, marginRight: `${THUMB_HALF_WIDTH_PX}px` }}
                 onPointerDown={(e) => {
                     setIsScrubbing(true);
+                    useMobileViewStore.getState().setSwipeDisabled(true);
                     updateProgressFromEvent(e);
                     e.currentTarget.setPointerCapture(e.pointerId);
                 }}
@@ -434,6 +435,7 @@ const VisualEditor = ({
                 onPointerUp={(e) => {
                     if (isScrubbing) {
                         setIsScrubbing(false);
+                        useMobileViewStore.getState().setSwipeDisabled(false);
                         e.currentTarget.releasePointerCapture(e.pointerId);
                         handleScrubberChange(dragProgressTime); 
                         if (handlePlay) handlePlay();
@@ -442,6 +444,7 @@ const VisualEditor = ({
                 onPointerCancel={(e) => {
                     if (isScrubbing) {
                         setIsScrubbing(false);
+                        useMobileViewStore.getState().setSwipeDisabled(false);
                         e.currentTarget.releasePointerCapture(e.pointerId);
                     }
                 }}
@@ -565,6 +568,7 @@ function ResizableWordBlock({ index, token, lineStartTime, lineDuration, timelin
         
         onSelect(); // Ensure it's selected when starting interaction
         isDraggingRef.current = true;
+        useMobileViewStore.getState().setSwipeDisabled(true);
         
         const startX = e.clientX;
         const initialDragState = { ...dragState };
@@ -620,6 +624,7 @@ function ResizableWordBlock({ index, token, lineStartTime, lineDuration, timelin
             target.removeEventListener('pointercancel', onPointerUp);
             
             isDraggingRef.current = false;
+            useMobileViewStore.getState().setSwipeDisabled(false);
             
             const deltaX = upEvent.clientX - startX;
             let finalX = initialDragState.x;

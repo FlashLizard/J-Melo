@@ -65,19 +65,41 @@ const RightHandPanel = () => {
 };
 
 const MobileNavDots = () => {
-    const { activeView, setActiveView } = useMobileViewStore();
+    const { activeView, setActiveView, goToNextView, goToPrevView } = useMobileViewStore();
+    const currentIndex = MOBILE_VIEWS.indexOf(activeView);
+    
     return (
-      <div className="lg:hidden flex justify-center items-center p-2 space-x-2 z-30">
-        {MOBILE_VIEWS.map(view => (
-          <button
-            key={view}
-            onClick={() => setActiveView(view as any)}
-            className={cn("w-2 h-2 rounded-full transition-colors", {
-              "bg-green-500": activeView === view,
-              "bg-gray-600": activeView !== view,
-            })}
-          />
-        ))}
+      <div className="lg:hidden flex justify-between items-center px-6 py-3 bg-gray-900/90 backdrop-blur-md border-t border-gray-800 z-30 flex-shrink-0">
+        <button 
+          onClick={goToPrevView}
+          disabled={currentIndex === 0}
+          className="p-2 text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors rounded-full hover:bg-gray-800"
+          aria-label="Previous View"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" /></svg>
+        </button>
+        
+        <div className="flex space-x-3">
+          {MOBILE_VIEWS.map(view => (
+            <button
+              key={view}
+              onClick={() => setActiveView(view as any)}
+              className={cn("w-2.5 h-2.5 rounded-full transition-all duration-300", {
+                "bg-green-500 scale-125": activeView === view,
+                "bg-gray-600 hover:bg-gray-500": activeView !== view,
+              })}
+            />
+          ))}
+        </div>
+
+        <button 
+          onClick={goToNextView}
+          disabled={currentIndex === MOBILE_VIEWS.length - 1}
+          className="p-2 text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors rounded-full hover:bg-gray-800"
+          aria-label="Next View"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" /></svg>
+        </button>
       </div>
     );
 };
@@ -85,13 +107,20 @@ const MobileNavDots = () => {
 const PlayerPage = () => {
   const { song, lyrics, previewLyrics, whisperData, isLoading, fetchSong, setProcessedLyrics, loadSongById } = useSongStore();
   const currentTime = usePlayerStore((state) => state.currentTime);
-  const { activeView, dragOffset, setDragOffset, goToNextView, goToPrevView } = useMobileViewStore();
+  const { activeView, dragOffset, setDragOffset, goToNextView, goToPrevView, isSwipeDisabled, setActiveView } = useMobileViewStore();
+  const { setActivePanel } = useUIPanelStore();
   const { t } = useTranslation();
   const router = useRouter();
   const { songId } = router.query;
 
   const [isMobile, setIsMobile] = useState(false);
   const [isSwiping, setIsSwiping] = useState(false);
+
+  // Reset view on initial mount of the player page
+  useEffect(() => {
+      setActiveView('player');
+      setActivePanel('TOOL_PANEL');
+  }, [setActiveView, setActivePanel]);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 1024);
@@ -104,7 +133,7 @@ const PlayerPage = () => {
 
   const swipeHandlers = useSwipeable({
     onSwiping: (e) => {
-      if (!isMobile) return;
+      if (!isMobile || isSwipeDisabled) return;
       const startX = e.initial[0];
       const edgeWidth = window.innerWidth * 0.15; // 15% edge zone
       if (startX > edgeWidth && startX < window.innerWidth - edgeWidth) return;
@@ -118,7 +147,7 @@ const PlayerPage = () => {
       }
     },
     onSwiped: (e) => {
-      if (!isMobile) return;
+      if (!isMobile || isSwipeDisabled) return;
       setIsSwiping(false);
       const startX = e.initial[0];
       const edgeWidth = window.innerWidth * 0.15;

@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 import useVocabularyStore, { VocabDisplayMode } from '@/stores/useVocabularyStore';
 import { WordRecord, SongRecord } from '@/lib/db';
 import cn from 'classnames';
@@ -20,7 +21,17 @@ const VocabularyPage = () => {
   } = useVocabularyStore();
 
   const [isReviewSetupOpen, setIsReviewSetupOpen] = useState(false);
+  const router = useRouter();
   const { t } = useTranslation();
+
+  // Handle return to player logic
+  useEffect(() => {
+    if (!isReviewing && router.query.returnToPlayer) {
+        const songId = router.query.returnToPlayer;
+        // Clear the query param and go back to player
+        router.replace(`/player/${songId}`);
+    }
+  }, [isReviewing, router.query.returnToPlayer, router]);
 
   useEffect(() => {
     loadWordsAndSongs();

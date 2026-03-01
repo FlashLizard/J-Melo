@@ -1,10 +1,11 @@
 // src/components/player/PlayerControls.tsx
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import usePlayerStore, { playerStoreActions } from '@/stores/usePlayerStore';
 import cn from 'classnames';
 import { useRouter } from 'next/router';
 import { SongRecord } from '@/lib/db';
+import useSongStore from '@/stores/useSongStore';
 
 // A simple set of SVG icons for the controls
 const PauseIcon = () => (
@@ -13,9 +14,14 @@ const PauseIcon = () => (
 const PlayIcon = () => (
     <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20"><path d="M15.84 8.747a1.5 1.5 0 0 1 0 2.506l-8.25 4.95A1.5 1.5 0 0 1 5.25 15V5a1.5 1.5 0 0 1 2.34-1.253l8.25 4.95z"></path></svg>
 );
+const PrevIcon = () => (
+    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M8.445 14.832A1 1 0 0010 14v-2.798l5.445 3.63A1 1 0 0017 14V6a1 1 0 00-1.555-.832L10 8.798V6a1 1 0 00-1.555-.832l-6 4a1 1 0 000 1.664l6 4z" /></svg>
+);
+const NextIcon = () => (
+    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M4.555 5.168A1 1 0 003 6v8a1 1 0 001.555.832L10 11.202V14a1 1 0 001.555.832l6-4a1 1 0 000-1.664l-6-4A1 1 0 0010 6v2.798L4.555 5.168z" /></svg>
+);
 
 const SequentialIcon = () => <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 21l3-3-3-3" /></svg>;
-const ShuffleIcon = () => <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 16l4-4-4-4M8 8l-4 4 4 4" /></svg>; // Actually a cross/shuffle icon is better, let's use a simpler one
 const RealShuffleIcon = () => <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>;
 const LoopIcon = () => <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>;
 
@@ -47,12 +53,50 @@ const PlayerControls: React.FC = () => {
   const progressBarRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragTime, setDragTime] = useState(0);
+  const currentSong = useSongStore(state => state.song);
 
   const displayTime = isDragging ? dragTime : currentTime;
   const progressPercent = duration > 0 ? (displayTime / duration) * 100 : 0;
   
   const loopAPercent = duration > 0 && loopA !== null ? (loopA / duration) * 100 : null;
   const loopBPercent = duration > 0 && loopB !== null ? (loopB / duration) * 100 : null;
+
+  const navigateToSong = useCallback(async (direction: 'next' | 'prev') => {
+      if (!currentSong?.id) return;
+      try {
+          const { db } = await import('@/lib/db');
+          const songs = await db.songs.toArray();
+          if (songs.length <= 1) return;
+
+          let targetId = currentSong.id;
+          
+          if (playMode === 'shuffle') {
+              let randomIndex;
+              do {
+                  randomIndex = Math.floor(Math.random() * songs.length);
+              } while (songs[randomIndex].id === currentSong.id);
+              targetId = songs[randomIndex].id!;
+          } else {
+              // Both sequential and loop-single behave sequentially when manually skipping
+              const currentIndex = songs.findIndex(s => s.id === currentSong.id);
+              if (currentIndex !== -1) {
+                  if (direction === 'next') {
+                      const nextIndex = (currentIndex + 1) % songs.length;
+                      targetId = songs[nextIndex].id!;
+                  } else {
+                      const prevIndex = (currentIndex - 1 + songs.length) % songs.length;
+                      targetId = songs[prevIndex].id!;
+                  }
+              }
+          }
+
+          if (targetId !== currentSong.id) {
+              router.push(`/player/${targetId}?autoplay=1`);
+          }
+      } catch (error) {
+          console.error(`Failed to navigate to ${direction} song:`, error);
+      }
+  }, [currentSong, playMode, router]);
 
   const updateProgressFromEvent = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!progressBarRef.current) return;
@@ -151,11 +195,11 @@ const PlayerControls: React.FC = () => {
         </button>
 
         {/* Playback Actions */}
-        <div className="flex items-center space-x-4">
-            <div className="w-12 flex justify-end">
+        <div className="flex items-center space-x-2 sm:space-x-3">
+            <div className="w-10 sm:w-12 flex justify-end">
                 <button
                 onClick={playerStoreActions.setLoopA}
-                className={cn('text-[10px] font-bold px-3 py-1.5 rounded-full transition-colors border', {
+                className={cn('text-[10px] font-bold px-2.5 sm:px-3 py-1.5 rounded-full transition-colors border', {
                     'bg-blue-600 border-blue-500 text-white shadow-[0_0_10px_rgba(37,99,235,0.5)]': loopA !== null,
                     'bg-transparent border-gray-600 text-gray-400 hover:text-white hover:border-gray-400': loopA === null,
                 })}
@@ -164,19 +208,35 @@ const PlayerControls: React.FC = () => {
                 </button>
             </div>
             
+            <button 
+                onClick={() => navigateToSong('prev')}
+                className="p-2 text-gray-300 hover:text-white transition-colors active:scale-95"
+                title="Previous Song"
+            >
+                <PrevIcon />
+            </button>
+            
             <button
             onClick={playerStoreActions.togglePlay}
-            className="p-4 rounded-full bg-white hover:bg-gray-200 text-indigo-600 shadow-lg transform hover:scale-105 active:scale-95 transition-all flex-shrink-0"
+            className="p-3.5 sm:p-4 rounded-full bg-white hover:bg-gray-200 text-indigo-600 shadow-lg transform hover:scale-105 active:scale-95 transition-all flex-shrink-0"
             aria-label={isPlaying ? 'Pause' : 'Play'}
             >
             {isPlaying ? <PauseIcon /> : <PlayIcon />}
             </button>
 
-            <div className="w-12 flex justify-start">
+            <button 
+                onClick={() => navigateToSong('next')}
+                className="p-2 text-gray-300 hover:text-white transition-colors active:scale-95"
+                title="Next Song"
+            >
+                <NextIcon />
+            </button>
+
+            <div className="w-10 sm:w-12 flex justify-start">
                 <button
                 onClick={loopA !== null && loopB !== null ? playerStoreActions.clearLoop : playerStoreActions.setLoopB}
                 disabled={loopA === null}
-                className={cn('text-[10px] font-bold px-3 py-1.5 rounded-full transition-all border', {
+                className={cn('text-[10px] font-bold px-2.5 sm:px-3 py-1.5 rounded-full transition-all border', {
                     'bg-blue-600 border-blue-500 text-white shadow-[0_0_10px_rgba(37,99,235,0.5)]': loopB !== null && loopA !== null,
                     'bg-transparent border-gray-600 text-gray-400 hover:text-white hover:border-gray-400': loopB === null && loopA !== null,
                     'bg-transparent border-gray-700 text-gray-600 cursor-not-allowed': loopA === null,

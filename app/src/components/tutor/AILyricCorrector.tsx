@@ -1,4 +1,4 @@
-// src/components/tutor/AILyricCorrector.tsx
+﻿// src/components/tutor/AILyricCorrector.tsx
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import useUIPanelStore from '@/stores/useUIPanelStore';
@@ -321,11 +321,10 @@ const AILyricCorrector: React.FC = () => {
   const handleConfirm = () => {
     if (previewData) {
       setProcessedLyrics(previewData.newLyrics); // Use setProcessedLyrics directly
-      
     }
     setPreviewData(null);
+     // Navigate to lyrics view on mobile after confirm
     setActivePanel('TOOL_PANEL');
-    setActiveView('lyrics'); // Navigate to lyrics view on mobile after confirm
   };
 
   const handleDirectImport = () => {
@@ -334,10 +333,14 @@ const AILyricCorrector: React.FC = () => {
         setProcessedLyrics(parsedLyrics);
         
         setActivePanel('TOOL_PANEL');
-        setActiveView('lyrics');
     } catch (e) {
-        alert(t('home.importError', { message: (e as Error).message }));
+        toast.error(t('home.importError', { message: (e as Error).message }));
     }
+  };
+
+  const handleBack = () => {
+      
+      setActivePanel('TOOL_PANEL');
   };
   
   return (
@@ -366,20 +369,20 @@ const AILyricCorrector: React.FC = () => {
           t={t}
         />
       )}
-      <div className="bg-gray-800 p-4 rounded-lg h-full flex flex-col text-white">
-        <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold">{t('aiLyricCorrector.title')}</h2>
+      <div className="bg-gray-800 p-4 sm:p-5 rounded-2xl h-full flex flex-col text-white border border-gray-700/50 shadow-xl overflow-hidden">
+        <div className="flex justify-between items-center mb-5 pb-4 border-b border-gray-700/50 flex-shrink-0">
+            <h2 className="text-xl font-bold tracking-wide">{t('aiLyricCorrector.title')}</h2>
             <button
-                className="px-3 py-1 bg-gray-600 rounded-lg hover:bg-gray-500 text-sm"
-                onClick={() => { setActivePanel('TOOL_PANEL'); setActiveView('lyrics'); }}
+                className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-xl text-sm font-medium transition-colors flex items-center gap-2"
+                onClick={() => {  setActivePanel('TOOL_PANEL');  }}
                 disabled={isLoading}
             >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
                 {t('aiLyricCorrector.backButton')}
             </button>
         </div>
 
-        <div className="flex border-b border-gray-700 mb-4">
-          <button onClick={() => setMainMode('generate')} className={cn('px-4 py-2 text-sm font-medium', { 'border-b-2 border-green-500 text-white': mainMode === 'generate', 'text-gray-400': mainMode !== 'generate' })}>
+        <div className="flex border-b border-gray-700 mb-4 flex-shrink-0">          <button onClick={() => setMainMode('generate')} className={cn('px-4 py-2 text-sm font-medium', { 'border-b-2 border-green-500 text-white': mainMode === 'generate', 'text-gray-400': mainMode !== 'generate' })}>
               {t('timelessLyricsImporter.generateMode')}
           </button>
           <button onClick={() => setMainMode('import')} className={cn('px-4 py-2 text-sm font-medium', { 'border-b-2 border-green-500 text-white': mainMode === 'import', 'text-gray-400': mainMode !== 'import' })}>

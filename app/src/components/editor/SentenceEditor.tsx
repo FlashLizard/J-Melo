@@ -1,10 +1,11 @@
-// app/src/components/editor/SentenceEditor.tsx
+﻿// app/src/components/editor/SentenceEditor.tsx
 import EditableWordRow from './EditableWordRow';
 import { LyricLine, LyricToken } from '@/interfaces/lyrics';
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import useTranslation from '@/hooks/useTranslation'; // Import useTranslation
 import useMobileViewStore from '@/stores/useMobileViewStore'; // Import useMobileViewStore
 import cn from 'classnames';
+import toast from 'react-hot-toast';
 
 const MemoizedResizableWordBlock = React.memo(ResizableWordBlock);
 const MemoizedEditableWordRow = React.memo(EditableWordRow);
@@ -240,16 +241,16 @@ const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, lineIndex, onSave
 
   const handleSaveClick = () => {
     if (jsonError) {
-      alert(t('sentenceEditor.jsonSaveError', { error: jsonError }));
+      toast.error(t('sentenceEditor.jsonSaveError', { error: jsonError }));
       return;
     }
-    onSave(lineIndex, currentLine);
     setActiveView('lyrics'); // Navigate to lyrics view on mobile after save
+    onSave(lineIndex, currentLine);
   };
   
   const handleCancelClick = () => {
-    onCancel();
     setActiveView('lyrics'); // Navigate to lyrics view on mobile after cancel
+    onCancel();
   };
 
   return (
@@ -257,28 +258,28 @@ const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, lineIndex, onSave
       {/* Header Area */}
       <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-700/50">
         <h2 className="text-xl font-bold text-white tracking-wide">{t('sentenceEditor.title')}</h2>
-        
-        {/* Modern Segmented Control for Mode */}
-        <div className="flex bg-gray-900/80 p-1 rounded-lg border border-gray-700/50 shadow-inner">
-          <button 
-            onClick={() => setEditorMode('visual')} 
-            className={cn("px-4 py-1.5 rounded-md text-xs font-semibold transition-all duration-200", 
-              editorMode === 'visual' ? "bg-gray-700 text-white shadow-sm" : "text-gray-400 hover:text-gray-200"
-            )}
-          >
-            {t('sentenceEditor.visualMode')}
-          </button>
-          <button 
-            onClick={() => setEditorMode('json')} 
-            className={cn("px-4 py-1.5 rounded-md text-xs font-semibold transition-all duration-200", 
-              editorMode === 'json' ? "bg-gray-700 text-white shadow-sm" : "text-gray-400 hover:text-gray-200"
-            )}
-          >
-            {t('sentenceEditor.jsonMode')}
-          </button>
+        <div className="flex items-center gap-4">
+          {/* Modern Segmented Control for Mode */}
+          <div className="flex bg-gray-900/80 p-1 rounded-lg border border-gray-700/50 shadow-inner">
+            <button
+              onClick={() => setEditorMode('visual')}
+              className={cn("px-4 py-1.5 rounded-md text-xs font-semibold transition-all duration-200",
+                editorMode === 'visual' ? "bg-gray-700 text-white shadow-sm" : "text-gray-400 hover:text-gray-200"
+              )}
+            >
+              {t('sentenceEditor.visualMode')}
+            </button>
+            <button
+              onClick={() => setEditorMode('json')}
+              className={cn("px-4 py-1.5 rounded-md text-xs font-semibold transition-all duration-200",
+                editorMode === 'json' ? "bg-gray-700 text-white shadow-sm" : "text-gray-400 hover:text-gray-200"
+              )}
+            >
+              {t('sentenceEditor.jsonMode')}
+            </button>
+          </div>
         </div>
-      </div>
-      
+      </div>      
       <div className="flex-grow flex flex-col min-h-0 custom-scrollbar">
         {editorMode === 'visual' ? 
           <VisualEditor 

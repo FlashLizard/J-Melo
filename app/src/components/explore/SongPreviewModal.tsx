@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { SongRecord, WordRecord, db } from '@/lib/db';
 import useTranslation from '@/hooks/useTranslation';
 import cn from 'classnames';
@@ -18,7 +19,7 @@ interface SongPreviewModalProps {
     onClose: () => void;
     onImport: (songData: SongRecord, wordsData: WordRecord[]) => void;
     onUpdateCommunity: (songData: SongRecord, wordsData: WordRecord[]) => void;
-    onDeleteCommunity: (songId: number) => void; // New prop
+    onDeleteCommunity: (songId: number) => void;
     myNickname: string;
 }
 
@@ -29,6 +30,12 @@ const SongPreviewModal: React.FC<SongPreviewModalProps> = ({ communitySong, back
     const [songData, setSongData] = useState<SongRecord | null>(null);
     const [wordsData, setWordsData] = useState<WordRecord[]>([]);
     const [activeTab, setActiveTab] = useState<'lyrics' | 'words'>('lyrics');
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+        return () => setMounted(false);
+    }, []);
 
     useEffect(() => {
         const fetchDetails = async () => {
@@ -38,7 +45,6 @@ const SongPreviewModal: React.FC<SongPreviewModalProps> = ({ communitySong, back
                 if (!res.ok) throw new Error('Failed to download song data');
                 const parsedData = await res.json();
                 
-                // Usually it returns { songs: [song], words: [...] }
                 const fetchedSong = (parsedData.songs || [])[0];
                 if (!fetchedSong) throw new Error("No song data found in this package.");
                 
@@ -61,8 +67,10 @@ const SongPreviewModal: React.FC<SongPreviewModalProps> = ({ communitySong, back
 
     const isMyShare = myNickname && communitySong.sharer_name === myNickname;
 
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 sm:p-6" onClick={onClose}>
+    if (!mounted) return null;
+
+    return createPortal(
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 sm:p-6" onClick={onClose}>
             <div className="bg-gray-800 border border-gray-700 w-full max-w-4xl h-[85vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
                 
                 {/* Header */}
@@ -195,7 +203,8 @@ const SongPreviewModal: React.FC<SongPreviewModalProps> = ({ communitySong, back
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
 

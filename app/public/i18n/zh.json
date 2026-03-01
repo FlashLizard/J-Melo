@@ -250,7 +250,7 @@
   "settings.sharerNicknameLabel": "分享者昵称",
   "settings.sharerNicknamePlaceholder": "输入您的昵称",
   "settings.sharerNicknameHint": "当您将歌曲分享到社区服务器时，将显示此名称。",
-  "home.title": "我的歌曲",
+  "home.title": "曲库",
   "home.loadingSongs": "加载歌曲中...",
   "home.noSongsFound": "您的库中没有找到歌曲。",
   "home.addSongsHint": "通过在播放器页面输入URL来添加歌曲。",

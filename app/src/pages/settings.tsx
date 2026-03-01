@@ -118,15 +118,15 @@ const SettingsPage: React.FC = () => {
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-10">
           
           {/* Header */}
-          <header className="flex justify-between items-center gap-4 mb-8 bg-gray-800/40 p-4 sm:p-6 rounded-3xl border border-gray-700/50 shadow-lg backdrop-blur-sm">
-              <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                  <div className="bg-gray-900/50 p-2 sm:p-2.5 rounded-2xl shadow-inner border border-gray-700/50 flex-shrink-0">
-                      <img src="/logo.svg" alt="J-Melo Logo" className="w-8 h-8 sm:w-10 sm:h-10 drop-shadow-md" />
+          <header className="relative z-[100] flex flex-row justify-between items-center gap-2 sm:gap-6 mb-8 bg-gray-800/40 p-3 sm:p-5 rounded-[2rem] border border-gray-700/50 shadow-lg backdrop-blur-sm">
+              <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+                  <div className="bg-gray-900/50 p-1.5 sm:p-2.5 rounded-2xl shadow-inner border border-gray-700/50 flex-shrink-0">
+                      <img src="/logo.svg" alt="J-Melo Logo" className="w-6 h-6 sm:w-8 sm:h-8 drop-shadow-md" />
                   </div>
-                  <h1 className="text-xl sm:text-3xl font-extrabold tracking-tight bg-gradient-to-br from-white to-gray-400 bg-clip-text text-transparent truncate">{t('settings.title')}</h1>
+                  <h1 className="text-lg sm:text-2xl font-extrabold tracking-tight bg-gradient-to-br from-white to-gray-400 bg-clip-text text-transparent truncate">{t('settings.title')}</h1>
               </div>
-              <NextLink href="/" className="p-2.5 sm:p-3 bg-gray-700/80 text-gray-200 rounded-2xl hover:bg-gray-600 hover:text-white transition-all flex items-center justify-center border border-gray-600/50 shadow-sm flex-shrink-0" title={t('settings.backToPlayer')}>
-                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <NextLink href="/" className="p-2 sm:p-2.5 bg-gray-700/80 text-gray-200 rounded-2xl hover:bg-gray-600 hover:text-white transition-all flex items-center justify-center border border-gray-600/50 shadow-sm flex-shrink-0" title={t('settings.backToPlayer')}>
+                  <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.75 19.5L8.25 12l7.5-7.5" />
                   </svg>
               </NextLink>

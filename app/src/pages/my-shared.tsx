@@ -72,18 +72,18 @@ const MySharedPage: React.FC = () => {
             <main className="bg-[#0f172a] min-h-screen text-white pb-12 selection:bg-indigo-500/30">
                 <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-10">
                     {/* Header */}
-                    <header className="flex justify-between items-center gap-4 mb-8 bg-gray-800/40 p-4 sm:p-6 rounded-3xl border border-gray-700/50 shadow-lg backdrop-blur-sm">
-                        <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                            <div className="bg-gray-900/50 p-2 sm:p-2.5 rounded-2xl shadow-inner border border-gray-700/50 flex-shrink-0">
-                                <svg className="w-8 h-8 sm:w-10 sm:h-10 text-emerald-400 drop-shadow-md" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
+                    <header className="relative z-[100] flex flex-row justify-between items-center gap-2 sm:gap-6 mb-8 bg-gray-800/40 p-3 sm:p-5 rounded-[2rem] border border-gray-700/50 shadow-lg backdrop-blur-sm flex-shrink-0">
+                        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+                            <div className="bg-gray-900/50 p-1.5 sm:p-2.5 rounded-2xl shadow-inner border border-gray-700/50 flex-shrink-0">
+                                <svg className="w-6 h-6 sm:w-8 sm:h-8 text-emerald-400 drop-shadow-md" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
                             </div>
                             <div className="truncate">
-                                <h1 className="text-xl sm:text-3xl font-extrabold tracking-tight bg-gradient-to-br from-white to-gray-400 bg-clip-text text-transparent truncate">{t('home.mySharedButton')}</h1>
-                                <p className="text-gray-400 mt-0.5 text-xs sm:text-sm truncate">{t('myShared.sharerLabel')}: <span className="font-semibold text-emerald-400 ml-1 px-2 py-0.5 bg-emerald-900/30 rounded-md border border-emerald-800/50">{sharerNickname || t('common.na')}</span></p>
+                                <h1 className="text-lg sm:text-2xl font-extrabold tracking-tight bg-gradient-to-br from-white to-gray-400 bg-clip-text text-transparent truncate">{t('home.mySharedButton')}</h1>
+                                <p className="text-gray-400 mt-0.5 text-[10px] sm:text-xs truncate">{t('myShared.sharerLabel')}: <span className="font-semibold text-emerald-400 ml-1 px-1.5 py-0.5 bg-emerald-900/30 rounded-md border border-emerald-800/50">{sharerNickname || t('common.na')}</span></p>
                             </div>
                         </div>
-                        <Link href="/" className="p-2.5 sm:p-3 bg-gray-700/80 text-gray-200 rounded-2xl hover:bg-gray-600 hover:text-white transition-all flex items-center justify-center border border-gray-600/50 shadow-sm flex-shrink-0" title={t('settings.backToPlayer')}>
-                            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <Link href="/" className="p-2 sm:p-2.5 bg-gray-700/80 text-gray-200 rounded-xl hover:bg-gray-600 hover:text-white transition-all flex items-center justify-center border border-gray-600/50 shadow-sm flex-shrink-0" title={t('settings.backToPlayer')}>
+                            <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.75 19.5L8.25 12l7.5-7.5" />
                             </svg>
                         </Link>
@@ -117,7 +117,11 @@ const MySharedPage: React.FC = () => {
                     ) : (
                         <div className="space-y-4">
                             {songs.map((song) => (
-                                <div key={song.id} className="bg-gray-800/60 backdrop-blur-sm p-4 rounded-2xl border border-gray-700/50 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-5 hover:border-gray-600 transition-colors group">
+                                <div 
+                                    key={song.id} 
+                                    className="bg-gray-800/60 backdrop-blur-sm p-4 rounded-2xl border border-gray-700/50 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-5 hover:border-gray-600 transition-colors group select-none"
+                                    style={{ WebkitTouchCallout: 'none' }}
+                                >
                                     <div className="flex items-center gap-5 w-full sm:w-auto">
                                         <div className="w-20 h-20 bg-gray-700 flex-shrink-0 rounded-xl overflow-hidden shadow-inner border border-gray-600/30">
                                             {song.cover_url ? (

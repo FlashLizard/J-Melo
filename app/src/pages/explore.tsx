@@ -204,15 +204,15 @@ const ExplorePage: React.FC = () => {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-10">
                     
                     {/* Header */}
-                    <header className="flex justify-between items-center gap-4 mb-8 bg-gray-800/40 p-4 sm:p-6 rounded-3xl border border-gray-700/50 shadow-lg backdrop-blur-sm">
-                        <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                            <div className="bg-gray-900/50 p-2 sm:p-2.5 rounded-2xl shadow-inner border border-gray-700/50 flex-shrink-0">
-                                <svg className="w-8 h-8 sm:w-10 sm:h-10 text-indigo-400 drop-shadow-md" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>
+                    <header className="relative z-[100] flex flex-row justify-between items-center gap-2 sm:gap-6 mb-8 bg-gray-800/40 p-3 sm:p-5 rounded-[2rem] border border-gray-700/50 shadow-lg backdrop-blur-sm">
+                        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+                            <div className="bg-gray-900/50 p-1.5 sm:p-2.5 rounded-2xl shadow-inner border border-gray-700/50 flex-shrink-0">
+                                <svg className="w-6 h-6 sm:w-8 sm:h-8 text-indigo-400 drop-shadow-md" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>
                             </div>
-                            <h1 className="text-xl sm:text-3xl font-extrabold tracking-tight bg-gradient-to-br from-white to-gray-400 bg-clip-text text-transparent truncate">{t('home.exploreButton')}</h1>
+                            <h1 className="text-lg sm:text-2xl font-extrabold tracking-tight bg-gradient-to-br from-white to-gray-400 bg-clip-text text-transparent truncate">{t('home.exploreButton')}</h1>
                         </div>
-                        <Link href="/" className="p-2.5 sm:p-3 bg-gray-700/80 text-gray-200 rounded-2xl hover:bg-gray-600 hover:text-white transition-all flex items-center justify-center border border-gray-600/50 shadow-sm flex-shrink-0" title={t('settings.backToPlayer')}>
-                            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <Link href="/" className="p-2 sm:p-2.5 bg-gray-700/80 text-gray-200 rounded-xl hover:bg-gray-600 hover:text-white transition-all flex items-center justify-center border border-gray-600/50 shadow-sm flex-shrink-0" title={t('settings.backToPlayer')}>
+                            <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.75 19.5L8.25 12l7.5-7.5" />
                             </svg>
                         </Link>
@@ -258,21 +258,26 @@ const ExplorePage: React.FC = () => {
                     ) : (
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 sm:gap-6">
                             {songs.map((song) => (
-                                <div key={song.id} className="group relative bg-gray-800 rounded-2xl overflow-hidden border border-gray-700/50 hover:border-gray-600 transition-all duration-300 hover:-translate-y-1.5 hover:shadow-[0_15px_30px_-10px_rgba(0,0,0,0.5)] cursor-pointer" onClick={() => setPreviewSong(song)}>
+                                <div 
+                                    key={song.id} 
+                                    className="group relative bg-gray-800 rounded-2xl overflow-hidden border border-gray-700/50 md:hover:border-gray-600 transition-all duration-300 md:hover:-translate-y-1.5 md:hover:shadow-[0_15px_30px_-10px_rgba(0,0,0,0.5)] cursor-pointer select-none" 
+                                    onClick={() => setPreviewSong(song)}
+                                    style={{ WebkitTouchCallout: 'none' }}
+                                >
                                     <div className="relative aspect-square bg-gray-700 overflow-hidden">
                                         {song.cover_url ? (
                                             <img 
-                                                src={song.cover_url.startsWith('/') ? `${backendUrl}${song.cover_url}` : song.cover_url} 
+                                                src={song.cover_url.startsWith('/') ? `${backendUrl}${song.cover_url}` : `${backendUrl}/api/media/proxy-image?url=${encodeURIComponent(song.cover_url)}`} 
                                                 alt={song.title} 
-                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out" 
+                                                className="w-full h-full object-cover md:group-hover:scale-105 transition-transform duration-500 ease-out" 
                                             />
                                         ) : (
                                             <div className="flex items-center justify-center w-full h-full bg-gradient-to-br from-gray-700 to-gray-800 text-gray-500">
                                                 <svg className="w-12 h-12 opacity-50 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>
                                             </div>
                                         )}
-                                        <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/40 to-transparent opacity-80 group-hover:opacity-90 transition-opacity duration-300"></div>
-                                        <div className="absolute bottom-0 left-0 right-0 p-4 transform translate-y-1 group-hover:translate-y-0 transition-transform duration-300 ease-out">
+                                        <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/40 to-transparent opacity-80 md:group-hover:opacity-90 transition-opacity duration-300"></div>
+                                        <div className="absolute bottom-0 left-0 right-0 p-4 transform sm:translate-y-1 md:group-hover:translate-y-0 transition-transform duration-300 ease-out">
                                             <h2 className="text-base font-bold text-white leading-tight mb-1 line-clamp-2 drop-shadow-md" title={song.title}>{song.title}</h2>
                                             <p className="text-xs text-gray-300 truncate drop-shadow mb-2" title={song.artist}>{song.artist || t('home.unknownArtist')}</p>
                                             <div className="flex justify-between items-center pt-2 border-t border-gray-600/50 text-[10px] text-gray-400 font-medium">

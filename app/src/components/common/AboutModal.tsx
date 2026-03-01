@@ -19,8 +19,7 @@ const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
   if (!isOpen || !mounted) return null;
 
   return createPortal(
-    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div 
+    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[200] p-4" onClick={onClose}>      <div 
         className="bg-gray-800 text-white rounded-xl shadow-2xl p-6 max-w-2xl w-full max-h-[90vh] flex flex-col relative"
         onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside
       >

@@ -1,8 +1,5 @@
-// src/pages/vocabulary.tsx
+// src/components/vocabulary/VocabularyView.tsx
 import React, { useEffect, useMemo, useState } from 'react';
-import Head from 'next/head';
-import Link from 'next/link';
-import { useRouter } from 'next/router';
 import useVocabularyStore, { VocabDisplayMode } from '@/stores/useVocabularyStore';
 import { WordRecord, SongRecord } from '@/lib/db';
 import cn from 'classnames';
@@ -11,26 +8,17 @@ import ReviewSetup from '@/components/vocabulary/ReviewSetup';
 import Reviewer from '@/components/vocabulary/Reviewer';
 import useTranslation from '@/hooks/useTranslation';
 
-const VocabularyPage = () => {
+const VocabularyView = () => {
   const { 
     words, songs, displayMode, searchQuery, selectedIds, isSelectionMode,
     isReviewing,
     loadWordsAndSongs, setDisplayMode, setSearchQuery, toggleSelectionMode, 
-    toggleIdSelection, selectBySongId, selectAll, deselectAll, deleteSelected,
+    selectedIds: selectedIdsSet, toggleIdSelection, selectBySongId, selectAll, deselectAll, deleteSelected,
     exportSelectedToAnki
   } = useVocabularyStore();
 
   const [isReviewSetupOpen, setIsReviewSetupOpen] = useState(false);
-  const router = useRouter();
   const { t } = useTranslation();
-
-  // Handle return to player logic
-  useEffect(() => {
-    if (!isReviewing && router.query.returnToPlayer) {
-        const songId = router.query.returnToPlayer;
-        router.replace(`/player/${songId}`);
-    }
-  }, [isReviewing, router.query.returnToPlayer, router]);
 
   useEffect(() => {
     loadWordsAndSongs();
@@ -65,9 +53,9 @@ const VocabularyPage = () => {
 
   if (isReviewing) {
     return (
-      <main className="bg-[#0f172a] h-screen text-white overflow-hidden">
+      <div className="fixed inset-0 z-[200] bg-[#0f172a] h-screen text-white overflow-hidden">
         <Reviewer />
-      </main>
+      </div>
     );
   }
 
@@ -76,101 +64,80 @@ const VocabularyPage = () => {
   };
 
   return (
-    <>
-      <Head>
-        <title>{`J-Melo - ${t('vocabularyPage.title')}`}</title>
-      </Head>
+    <div className="flex flex-col animate-in fade-in duration-500 h-full">
       {isReviewSetupOpen && <ReviewSetup onClose={() => setIsReviewSetupOpen(false)} />}
-      <main className="bg-[#0f172a] min-h-screen text-white pb-12 selection:bg-indigo-500/30">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-10 flex flex-col h-[calc(100vh-2rem)] lg:h-[calc(100vh-4rem)]">
-          {/* Header */}
-          <header className="relative z-[100] flex flex-row justify-between items-center gap-2 sm:gap-6 mb-8 bg-gray-800/40 p-3 sm:p-5 rounded-[2rem] border border-gray-700/50 shadow-lg backdrop-blur-sm flex-shrink-0">
-            <div className="flex items-center gap-2 sm:gap-4 min-w-0">
-              <div className="bg-gray-900/50 p-1.5 sm:p-2.5 rounded-2xl shadow-inner border border-gray-700/50 flex-shrink-0">
-                <img src="/logo.svg" alt="J-Melo Logo" className="w-6 h-6 sm:w-8 sm:h-8 drop-shadow-md" />
-              </div>
-              <h1 className="text-lg sm:text-2xl font-extrabold tracking-tight bg-gradient-to-br from-white to-gray-400 bg-clip-text text-transparent truncate">{t('vocabularyPage.title')}</h1>
-            </div>
-            <Link href="/" className="p-2 sm:p-2.5 bg-gray-700/80 text-gray-200 rounded-xl hover:bg-gray-600 hover:text-white transition-all flex items-center justify-center border border-gray-600/50 shadow-sm flex-shrink-0" title={t('vocabularyPage.backToPlayer')}>
-              <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.75 19.5L8.25 12l7.5-7.5" />
-              </svg>
-            </Link>
-          </header>
+      
+      {/* Controls Bar */}
+      <div className="bg-gray-800/60 backdrop-blur-md p-4 rounded-2xl mb-6 flex flex-col md:flex-row gap-4 items-center justify-between border border-gray-700/50 shadow-md flex-shrink-0">
+        {/* View Modes */}
+        <div className="flex bg-gray-900/80 p-1 rounded-xl w-full md:w-auto">
+          <DisplayModeButton mode="all" current={displayMode} set={setDisplayMode} label={t('vocabularyPage.allMode')} />
+          <DisplayModeButton mode="bySong" current={displayMode} set={setDisplayMode} label={t('vocabularyPage.bySongMode')} />
+          <DisplayModeButton mode="search" current={displayMode} set={setDisplayMode} label={t('vocabularyPage.searchMode')} />
+        </div>
 
-          {/* Controls Bar */}
-          <div className="bg-gray-800/60 backdrop-blur-md p-4 rounded-2xl mb-6 flex flex-col md:flex-row gap-4 items-center justify-between border border-gray-700/50 shadow-md flex-shrink-0">
-            {/* View Modes */}
-            <div className="flex bg-gray-900/80 p-1 rounded-xl w-full md:w-auto">
-              <DisplayModeButton mode="all" current={displayMode} set={setDisplayMode} label={t('vocabularyPage.allMode')} />
-              <DisplayModeButton mode="bySong" current={displayMode} set={setDisplayMode} label={t('vocabularyPage.bySongMode')} />
-              <DisplayModeButton mode="search" current={displayMode} set={setDisplayMode} label={t('vocabularyPage.searchMode')} />
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
-              {isSelectionMode ? (
-                <>
-                  <button onClick={selectAll} className="px-4 py-2 text-xs font-bold bg-gray-700 hover:bg-gray-600 rounded-xl transition-all border border-gray-600/50">{t('vocabularyPage.selectAllLabel')}</button>
-                  <button onClick={handleExport} disabled={selectedIds.size === 0} className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 rounded-xl transition-all disabled:opacity-50 border border-indigo-500/30 shadow-sm shadow-indigo-900/20">{t('vocabularyPage.exportButton')}</button>
-                  <button onClick={deleteSelected} disabled={selectedIds.size === 0} className="px-4 py-2 text-xs font-bold bg-red-900/40 text-red-300 hover:bg-red-600 hover:text-white rounded-xl transition-all disabled:opacity-50 border border-red-800/50">{t('vocabularyPage.deleteButton')}</button>
-                  <button onClick={toggleSelectionMode} className="px-4 py-2 text-xs font-bold bg-gray-700 hover:bg-gray-600 rounded-xl transition-all border border-gray-600/50">{t('vocabularyPage.cancelButton')}</button>
-                </>
-              ) : (
-                <>
-                  <button onClick={() => setIsReviewSetupOpen(true)} className="flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition-all shadow-md shadow-emerald-900/20 border border-emerald-500/30">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
-                    {t('vocabularyPage.reviewWordsButton')}
-                  </button>
-                  <button onClick={toggleSelectionMode} className="flex items-center gap-2 px-5 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-bold transition-all border border-gray-600/50">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                    {t('vocabularyPage.selectButton')}
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Search Input (Conditional) */}
-          {displayMode === 'search' && (
-            <div className="mb-6 animate-in slide-in-from-top-2 duration-200">
-              <input
-                type="text"
-                autoFocus
-                placeholder={t('vocabularyPage.searchWordsPlaceholder')}
-                className="w-full p-4 rounded-2xl bg-gray-800/40 border border-gray-700/50 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 backdrop-blur-sm shadow-inner"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
+        {/* Action Buttons */}
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
+          {isSelectionMode ? (
+            <>
+              <button onClick={selectAll} className="px-4 py-2 text-xs font-bold bg-gray-700 hover:bg-gray-600 rounded-xl transition-all border border-gray-600/50">{t('vocabularyPage.selectAllLabel')}</button>
+              <button onClick={handleExport} disabled={selectedIds.size === 0} className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 rounded-xl transition-all disabled:opacity-50 border border-indigo-500/30 shadow-sm shadow-indigo-900/20">{t('vocabularyPage.exportButton')}</button>
+              <button onClick={deleteSelected} disabled={selectedIds.size === 0} className="px-4 py-2 text-xs font-bold bg-red-900/40 text-red-300 hover:bg-red-600 hover:text-white rounded-xl transition-all disabled:opacity-50 border border-red-800/50">{t('vocabularyPage.deleteButton')}</button>
+              <button onClick={toggleSelectionMode} className="px-4 py-2 text-xs font-bold bg-gray-700 hover:bg-gray-600 rounded-xl transition-all border border-gray-600/50">{t('vocabularyPage.cancelButton')}</button>
+            </>
+          ) : (
+            <>
+              <button onClick={() => setIsReviewSetupOpen(true)} className="flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition-all shadow-md shadow-emerald-900/20 border border-emerald-500/30">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
+                {t('vocabularyPage.reviewWordsButton')}
+              </button>
+              <button onClick={toggleSelectionMode} className="flex items-center gap-2 px-5 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-bold transition-all border border-gray-600/50">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                {t('vocabularyPage.selectButton')}
+              </button>
+            </>
           )}
+        </div>
+      </div>
 
-          {/* Main Content List */}
-          <div className="flex-grow overflow-y-auto custom-scrollbar pr-2 pb-10">
-            {filteredWords.length === 0 ? (
-              <div className="text-center py-20 bg-gray-800/20 rounded-3xl border border-gray-700/30 border-dashed">
-                <svg className="w-16 h-16 text-gray-700 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
-                <p className="text-gray-500 font-medium">{t('reviewSetup.noWordsToReviewAlert')}</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {displayMode !== 'bySong' && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {filteredWords.map(word => (
-                      <WordCard key={word.id} word={word} song={songMap.get(word.sourceSongId)} t={t} />
-                    ))}
-                  </div>
-                )}
-                {displayMode === 'bySong' && wordsBySong?.map(({ song, words }) => (
-                  <SongGroup key={song?.id} song={song} words={words} t={t} />
+      {/* Search Input (Conditional) */}
+      {displayMode === 'search' && (
+        <div className="mb-6 animate-in slide-in-from-top-2 duration-200">
+          <input
+            type="text"
+            autoFocus
+            placeholder={t('vocabularyPage.searchWordsPlaceholder')}
+            className="w-full p-4 rounded-2xl bg-gray-800/40 border border-gray-700/50 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 backdrop-blur-sm shadow-inner"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+      )}
+
+      {/* Main Content List */}
+      <div className="flex-grow overflow-y-auto custom-scrollbar pr-2 pb-10">
+        {filteredWords.length === 0 ? (
+          <div className="text-center py-20 bg-gray-800/20 rounded-3xl border border-gray-700/30 border-dashed w-full">
+            <svg className="w-16 h-16 text-gray-700 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+            <p className="text-gray-500 font-medium">{t('reviewSetup.noWordsToReviewAlert')}</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {displayMode !== 'bySong' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredWords.map(word => (
+                  <WordCard key={word.id} word={word} song={songMap.get(word.sourceSongId)} t={t} />
                 ))}
               </div>
             )}
+            {displayMode === 'bySong' && wordsBySong?.map(({ song, words }) => (
+              <SongGroup key={song?.id} song={song} words={words} t={t} />
+            ))}
           </div>
-        </div>
-        <CardViewer />
-      </main>
-    </>
+        )}
+      </div>
+      <CardViewer />
+    </div>
   );
 };
 
@@ -296,4 +263,4 @@ const SongGroup = ({ song, words, t }: { song?: SongRecord, words: WordRecord[],
   )
 }
 
-export default VocabularyPage;
+export default VocabularyView;

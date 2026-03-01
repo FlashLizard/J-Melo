@@ -3,6 +3,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import useSongStore from '@/stores/useSongStore';
+import { useRouter } from 'next/router';
 import useTranslation from '@/hooks/useTranslation';
 import SongInput from '@/components/common/SongInput';
 import ImportConflictModal, { Conflict } from '@/components/common/ImportConflictModal';
@@ -12,6 +13,13 @@ import { db, blobToBase64, WordRecord, SongRecord } from '@/lib/db';
 import { saveAs } from 'file-saver';
 import toast from 'react-hot-toast';
 import cn from 'classnames';
+import { motion, AnimatePresence } from 'framer-motion';
+
+// Views
+import SongLibraryView from '@/components/library/SongLibraryView';
+import ExploreView from '@/components/explore/ExploreView';
+import VocabularyView from '@/components/vocabulary/VocabularyView';
+import MySharedPanel from '@/components/explore/MySharedPanel';
 
 interface DisplaySongData {
   id?: number;
@@ -27,10 +35,16 @@ interface ImportState {
   importedWords: WordRecord[];
 }
 
+type MainTab = 'library' | 'explore' | 'vocabulary';
+
 const HomePage = () => {
   const { fetchAllSongs, isLoading, deleteSongs } = useSongStore();
   const [songs, setSongs] = useState<DisplaySongData[]>([]);
   const { t } = useTranslation();
+  const router = useRouter();
+  
+  const [activeTab, setActiveTab] = useState<MainTab>('library');
+  
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedSongIds, setSelectedSongIds] = useState<number[]>([]);
   const [importState, setImportState] = useState<ImportState | null>(null);
@@ -38,7 +52,15 @@ const HomePage = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [isTranscriptionModalOpen, setTranscriptionModalOpen] = useState(false);
+  const [isMySharedOpen, setIsMySharedOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  
+  const [activeInputMode, setActiveInputMode] = useState<'none' | 'url' | 'search'>('none');
+  const [isFabOpen, setIsFabOpen] = useState(false);
+
+  const longPressTimer = useRef<NodeJS.Timeout | null>(null);
+  const [isLongPressTriggered, setIsLongPressTriggered] = useState(false);
+  const startPos = useRef<{ x: number, y: number } | null>(null);
 
   const loadSongs = async () => {
     const allSongs = await fetchAllSongs();
@@ -85,11 +107,7 @@ const HomePage = () => {
 
   const handleShareSelected = async () => {
     if (selectedSongIds.length === 0) return;
-    
-    // Fetch songs
     const songsToShare = await db.songs.where('id').anyOf(selectedSongIds).toArray();
-    
-    // Fetch words associated with these songs
     const wordsToShare = await db.words.where('sourceSongId').anyOf(selectedSongIds).toArray();
 
     const sanitizedSongs = await Promise.all(songsToShare.map(async (song) => {
@@ -129,9 +147,8 @@ const HomePage = () => {
         let successCount = 0;
         let updateCount = 0;
 
-        // Fetch user's existing shared songs to determine if we need to update/overwrite
         const existingRemoteSongsRes = await fetch(`${backendUrl}/api/community/songs?sharer=${encodeURIComponent(sharerNickname)}`);
-        let remoteSongsMap = new Map<string, number>(); // title -> remote id
+        let remoteSongsMap = new Map<string, number>();
         if (existingRemoteSongsRes.ok) {
             const remoteData = await existingRemoteSongsRes.json();
             remoteData.songs.forEach((s: any) => {
@@ -142,7 +159,6 @@ const HomePage = () => {
         for (const song of songsToShare) {
             const wordsToShare = await db.words.where('sourceSongId').equals(song.id!).toArray();       
 
-            // If a song with the same title already exists on the server under this nickname, delete it first to overwrite
             if (remoteSongsMap.has(song.title)) {
                 const remoteId = remoteSongsMap.get(song.title);
                 await fetch(`${backendUrl}/api/community/songs/${remoteId}?sharer_name=${encodeURIComponent(sharerNickname)}`, {
@@ -151,7 +167,6 @@ const HomePage = () => {
                 updateCount++;
             }
 
-            // Prepare song payload (remove binary data, reconstruct urls if needed)
             const { audioData, ...rest } = song;
             let coverImageBase64 = '';
             if (song.coverImageData) {
@@ -197,6 +212,7 @@ const HomePage = () => {
         setIsUploading(false);
     }
   };
+
   const handleImportClick = () => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -232,11 +248,9 @@ const HomePage = () => {
               importedWords: wordsData 
             });
           } else {
-            // No conflicts, proceed with simple import
             const { addManySongs } = useSongStore.getState();
             await addManySongs(newSongs, wordsData);
             loadSongs();
-            
           }
         } catch (error) {
           alert(t('home.importError', { message: (error as Error).message }));
@@ -254,6 +268,49 @@ const HomePage = () => {
   const isAllSelected = useMemo(() => {
     return songs.length > 0 && selectedSongIds.length === songs.length;
   }, [selectedSongIds, songs]);
+
+  // Long press handlers
+  const handlePointerDown = (e: React.PointerEvent, id: number) => {
+    if (isSelectMode || activeTab !== 'library') return;
+    setIsLongPressTriggered(false);
+    startPos.current = { x: e.clientX, y: e.clientY };
+    longPressTimer.current = setTimeout(() => {
+      setIsSelectMode(true);
+      handleSelectSong(id);
+      setIsLongPressTriggered(true);
+      if (typeof window !== 'undefined' && window.navigator.vibrate) {
+          window.navigator.vibrate(50);
+      }
+    }, 600);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!startPos.current || !longPressTimer.current) return;
+    const dist = Math.sqrt(
+      Math.pow(e.clientX - startPos.current.x, 2) + 
+      Math.pow(e.clientY - startPos.current.y, 2)
+    );
+    if (dist > 10) { // If moved more than 10px, cancel long press
+      handlePointerUpOrLeave();
+    }
+  };
+
+  const handlePointerUpOrLeave = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+    startPos.current = null;
+  };
+
+  const handleCardAction = (id: number) => {
+    if (isSelectMode) {
+        handleSelectSong(id);
+    } else if (!isLongPressTriggered) {
+        router.push(`/player/${id}`);
+    }
+    setIsLongPressTriggered(false);
+  };
   
   if (isLoading && songs.length === 0) {
     return (
@@ -265,6 +322,25 @@ const HomePage = () => {
       </div>
     );
   }
+
+  const TabButton = ({ isActive, onClick, label }: { isActive: boolean, onClick: () => void, label: string }) => (
+    <button 
+        onClick={onClick}
+        className={cn(
+            "relative px-5 py-2 text-sm font-bold transition-colors duration-300 flex-shrink-0",
+            isActive ? "text-white" : "text-gray-500 hover:text-gray-300"
+        )}
+    >
+        <span className="relative z-10 whitespace-nowrap">{label}</span>
+        {isActive && (
+            <motion.div 
+                layoutId="activeTabIndicator"
+                className="absolute inset-0 bg-indigo-600 rounded-xl shadow-lg shadow-indigo-900/40"
+                transition={{ type: "spring", stiffness: 380, damping: 30 }}
+            />
+        )}
+    </button>
+  );
 
   return (
     <>
@@ -287,78 +363,86 @@ const HomePage = () => {
 
       <TranscriptionStatusModal isOpen={isTranscriptionModalOpen} onClose={() => setTranscriptionModalOpen(false)} />
 
-      <main className="bg-[#0f172a] min-h-screen text-white pb-12 selection:bg-indigo-500/30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-10">
-            {/* Header */}
-            <header className="relative z-[100] flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10 bg-gray-800/40 p-4 sm:p-6 rounded-3xl border border-gray-700/50 shadow-lg backdrop-blur-sm">
-                <div className="flex items-center gap-4">
-                    <div className="bg-gray-900/50 p-2.5 rounded-2xl shadow-inner border border-gray-700/50">
-                        <img src="/logo.svg" alt="J-Melo Logo" className="w-10 h-10 drop-shadow-md" />
+      {isMySharedOpen && <MySharedPanel onClose={() => setIsMySharedOpen(false)} />}
+
+      <main className="bg-[#0f172a] min-h-screen text-white pb-24 selection:bg-indigo-500/30">
+        {/* Unified Fixed Navigation Bar */}
+        <div className="fixed top-0 left-0 right-0 z-[100] w-full bg-[#0f172a] border-b border-gray-700/50 shadow-2xl">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div className="flex flex-row justify-between items-center h-16 sm:h-20 gap-2 sm:gap-6">
+                    {/* Logo & Title */}
+                    <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+                        <div className="bg-gray-900/50 p-1.5 sm:p-2 rounded-xl border border-gray-700/50 flex-shrink-0 shadow-inner">
+                            <img src="/logo.svg" alt="J-Melo Logo" className="w-6 h-6 sm:w-7 sm:h-7 drop-shadow-md" />
+                        </div>
+                        <h1 className="hidden xs:block text-lg sm:text-2xl font-extrabold tracking-tight bg-gradient-to-br from-white to-gray-400 bg-clip-text text-transparent truncate">J-Melo</h1>
                     </div>
-                    <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight bg-gradient-to-br from-white to-gray-400 bg-clip-text text-transparent">{t('home.title')}</h1>
-                </div>
-                <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2.5 items-center w-full md:w-auto">
-                    {!isSelectMode && (
-                        <>
-                            <button onClick={() => setIsSelectMode(true)} className="flex items-center justify-center sm:justify-start gap-1.5 px-4 py-2.5 text-sm bg-gray-700/80 rounded-xl hover:bg-gray-600 text-white font-medium transition-colors border border-gray-600/50 whitespace-nowrap">
-                                <svg className="w-4 h-4 text-blue-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                                {t('home.selectButton')}
-                            </button>
-                            <Link href="/explore" className="flex items-center justify-center sm:justify-start gap-1.5 px-4 py-2.5 text-sm bg-indigo-600/90 rounded-xl hover:bg-indigo-500 text-white font-medium transition-colors border border-indigo-500/30 shadow-md shadow-indigo-900/20 whitespace-nowrap">
-                                <svg className="w-4 h-4 text-indigo-200 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>
-                                {t('home.exploreButton')}
-                            </Link>
-                            <Link href="/vocabulary" className="flex items-center justify-center sm:justify-start gap-1.5 px-4 py-2.5 text-sm bg-amber-600/90 rounded-xl hover:bg-amber-500 text-white font-medium transition-colors border border-amber-500/30 shadow-md shadow-amber-900/20 whitespace-nowrap">
-                                <svg className="w-4 h-4 text-amber-200 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
-                                {t('index.vocabularyButton')}
-                            </Link>
-                            
-                            <div className="relative" ref={menuRef}>
-                                <button 
-                                    onClick={() => setIsMenuOpen(!isMenuOpen)} 
-                                    className={cn("w-full sm:w-auto px-4 py-2.5 text-sm bg-gray-800 rounded-xl hover:bg-gray-700 text-white flex items-center justify-center gap-1.5 transition-colors border border-gray-700/50 whitespace-nowrap", isMenuOpen && "bg-gray-700")}
+
+                    {/* Tabs with Animated Indicator */}
+                    <nav className="flex items-center bg-gray-900/40 p-1 rounded-2xl border border-gray-700/30 relative flex-shrink-0">
+                        <TabButton 
+                            isActive={activeTab === 'library'}
+                            onClick={() => { setActiveTab('library'); setIsSelectMode(false); }}
+                            label="曲库"
+                        />
+                        <TabButton 
+                            isActive={activeTab === 'explore'}
+                            onClick={() => { setActiveTab('explore'); setIsSelectMode(false); }}
+                            label="探索"
+                        />
+                        <TabButton 
+                            isActive={activeTab === 'vocabulary'}
+                            onClick={() => { setActiveTab('vocabulary'); setIsSelectMode(false); }}
+                            label="词库"
+                        />
+                    </nav>
+                    
+                    {/* More Menu */}
+                    <div className="relative flex-shrink-0" ref={menuRef}>
+                        <button 
+                            onClick={() => setIsMenuOpen(!isMenuOpen)} 
+                            className={cn("p-2.5 sm:px-4 sm:py-2 bg-gray-800 rounded-xl hover:bg-gray-700 text-white flex items-center justify-center transition-colors border border-gray-700/50 shadow-sm", isMenuOpen && "bg-gray-700")}
+                        >
+                            <svg className="w-5 h-5 sm:w-4 sm:h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6h16M4 12h16M4 18h16" />
+                            </svg>
+                        </button>
+                        
+                        <AnimatePresence>
+                            {isMenuOpen && (
+                                <motion.div 
+                                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                    className="absolute right-0 mt-3 w-56 bg-gray-800 rounded-2xl shadow-2xl border border-gray-700/50 z-[110] overflow-hidden"
                                 >
-                                    <span>{t('home.moreMenu') || 'More'}</span>
-                                    <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 flex-shrink-0 transition-transform duration-300 ${isMenuOpen ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
-                                        <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                                    </svg>
-                                </button>
-                                
-                                {isMenuOpen && (
-                                    <div className="absolute right-0 mt-2 w-56 bg-gray-800 rounded-2xl shadow-2xl border border-gray-700/50 z-[110] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                                        <button onClick={() => { setIsAboutOpen(true); setIsMenuOpen(false); }} className="block w-full text-left px-5 py-3 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
-                                            {t('home.aboutButton')}
-                                        </button>
-                                        <div className="border-t border-gray-700/50"></div>
-                                        <button onClick={() => { handleImportClick(); setIsMenuOpen(false); }} className="block w-full text-left px-5 py-3 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
-                                            {t('home.importButton')}
-                                        </button>
-                                        <button onClick={() => { setTranscriptionModalOpen(true); setIsMenuOpen(false); }} className="block w-full text-left px-5 py-3 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
-                                            {t('index.transcriptionQueue')}
-                                        </button>
-                                        <Link href="/my-shared" onClick={() => setIsMenuOpen(false)} className="block w-full text-left px-5 py-3 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
-                                            {t('home.mySharedButton')}
-                                        </Link>
-                                        <div className="border-t border-gray-700/50"></div>
-                                        <Link href="/settings" onClick={() => setIsMenuOpen(false)} className="block w-full text-left px-5 py-3 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
-                                            {t('index.settingsButton')}
-                                        </Link>
-                                    </div>
-                                )}
-                            </div>
-                        </>
-                    )}
+                                    <button onClick={() => { setIsAboutOpen(true); setIsMenuOpen(false); }} className="block w-full text-left px-5 py-3 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
+                                        {t('home.aboutButton')}
+                                    </button>
+                                    <div className="border-t border-gray-700/50"></div>
+                                    <button onClick={() => { setTranscriptionModalOpen(true); setIsMenuOpen(false); }} className="block w-full text-left px-5 py-3 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
+                                        {t('index.transcriptionQueue')}
+                                    </button>
+                                    <button onClick={() => { setIsMySharedOpen(true); setIsMenuOpen(false); }} className="block w-full text-left px-5 py-3 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
+                                        {t('home.mySharedButton')}
+                                    </button>
+                                    <div className="border-t border-gray-700/50"></div>
+                                    <Link href="/settings" onClick={() => setIsMenuOpen(false)} className="block w-full text-left px-5 py-3 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
+                                        {t('index.settingsButton')}
+                                    </Link>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </div>
                 </div>
-            </header>
-
-            {/* Song Input Area */}
-            <div className="relative z-0 mb-10 max-w-3xl mx-auto">
-                <SongInput />
             </div>
+        </div>
 
-            {/* Select Mode Action Bar */}
-            {isSelectMode && (
-                <div className="bg-gray-800/80 backdrop-blur-md p-4 rounded-2xl mb-8 flex flex-col sm:flex-row justify-between items-center gap-4 border border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.15)] animate-in slide-in-from-top-4 fade-in duration-300 sticky top-4 z-40">
+        {/* Content Area with Top Padding for Fixed Header */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 sm:pt-28">
+            {/* Select Mode Action Bar (Only for Library) */}
+            {isSelectMode && activeTab === 'library' && (
+                <div className="bg-gray-800/80 backdrop-blur-md p-4 rounded-2xl mb-8 flex flex-col sm:flex-row justify-between items-center gap-4 border border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.15)] animate-in slide-in-from-top-4 fade-in duration-300 fixed top-[72px] sm:top-[88px] left-4 right-4 sm:left-auto sm:right-8 z-40">
                     <div className="flex items-center bg-gray-900/50 px-4 py-2 rounded-xl border border-gray-700/50 cursor-pointer hover:bg-gray-900 transition-colors" onClick={(e) => { const cb = document.getElementById('selectAllCb'); if(cb) cb.click(); }}>
                         <input id="selectAllCb" type="checkbox" checked={isAllSelected} onChange={handleSelectAll} className="form-checkbox h-5 w-5 text-indigo-500 bg-gray-700 border-gray-600 rounded focus:ring-indigo-500 focus:ring-offset-gray-900 cursor-pointer" onClick={(e) => e.stopPropagation()} />
                         <label htmlFor="selectAllCb" className="ml-3 text-sm font-medium text-gray-200 cursor-pointer">{t('home.selectAll')}</label>
@@ -380,70 +464,129 @@ const HomePage = () => {
                 </div>
             )}
 
-            {/* Song Grid */}
-            {songs.length === 0 ? (
-                <div className="text-center py-20 bg-gray-800/30 rounded-3xl border border-gray-700/30 border-dashed max-w-2xl mx-auto">
-                    <div className="bg-gray-900/50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
-                        <svg className="w-10 h-10 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>
-                    </div>
-                    <p className="text-xl text-gray-300 font-medium mb-2">{t('home.noSongsFound')}</p>
-                    <p className="text-gray-500 text-sm">{t('home.addSongsHint')}</p>
-                </div>
-            ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 sm:gap-6">
-                    {songs.map((song) => {
-                        const songId = song.id as number;
-                        const isSelected = selectedSongIds.includes(songId);
-                        
-                        const CardContent = () => (
-                            <div className="relative aspect-square bg-gray-700 overflow-hidden flex-shrink-0">
-                                {song.cover_url ? (
-                                    <img src={song.cover_url} alt={song.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out" />
-                                ) : (
-                                    <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-gray-700 to-gray-800 text-gray-500">
-                                        <svg className="w-12 h-12 opacity-50 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>
-                                    </div>
-                                )}
-                                {/* Gradient Overlay for text readability */}
-                                <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/40 to-transparent opacity-80 group-hover:opacity-90 transition-opacity duration-300"></div>
-                                
-                                {/* Cached Indicator */}
-                                {song.is_cached && (
-                                    <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-md p-1.5 rounded-lg border border-white/10 shadow-sm" title="Audio Cached Offline">
-                                        <svg className="w-3.5 h-3.5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
-                                    </div>
-                                )}
+            {/* Dynamic View Content */}
+            <div className="min-h-[60vh]">
+                <AnimatePresence mode="wait">
+                    <motion.div
+                        key={activeTab}
+                        initial={{ opacity: 0, x: 10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -10 }}
+                        transition={{ duration: 0.2 }}
+                    >
+                        {activeTab === 'library' && (
+                            <SongLibraryView 
+                                songs={songs}
+                                isSelectMode={isSelectMode}
+                                selectedSongIds={selectedSongIds}
+                                onPointerDown={handlePointerDown}
+                                onPointerMove={handlePointerMove}
+                                onPointerUpOrLeave={handlePointerUpOrLeave}
+                                handleCardAction={handleCardAction}
+                                t={t}
+                            />
+                        )}
+                        {activeTab === 'explore' && <ExploreView />}
+                        {activeTab === 'vocabulary' && <VocabularyView />}
+                    </motion.div>
+                </AnimatePresence>
+            </div>
+        </div>
 
-                                {/* Song Info overlaid on image */}
-                                <div className="absolute bottom-0 left-0 right-0 p-4 transform translate-y-1 group-hover:translate-y-0 transition-transform duration-300 ease-out">
-                                    <h2 className="text-base font-bold text-white leading-tight mb-1 line-clamp-2 drop-shadow-md">{song.title}</h2>
-                                    <p className="text-xs text-gray-300 truncate drop-shadow">{song.artist || t('home.unknownArtist')}</p>
+        {/* Floating Action Button and Fullscreen Input Panels */}
+        <div className="fixed bottom-6 right-6 z-[150] flex flex-col items-end gap-4">
+            <AnimatePresence>
+                {activeInputMode !== 'none' && (
+                    <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[160] flex items-start justify-center bg-black/60 backdrop-blur-md p-4 sm:p-6 pt-12 sm:pt-20"
+                        onClick={() => setActiveInputMode('none')}
+                    >
+                        <motion.div 
+                            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                            className="w-full max-w-2xl max-h-[90vh] flex flex-col"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="bg-gray-800 border border-gray-700 w-full flex flex-col rounded-[2.5rem] shadow-2xl overflow-hidden text-white">
+                                <div className="flex justify-between items-center p-6 border-b border-gray-700/30 bg-gray-900/30 flex-shrink-0">
+                                    <h3 className="font-bold text-xl text-indigo-300 flex items-center gap-3">
+                                        {activeInputMode === 'url' ? (
+                                            <><svg className="w-6 h-6 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.826L10.242 10.242m-4.242 4.242l4.242-4.242M9.828 5.172a4 4 0 015.656 0l4 4a4 4 0 01-5.656 5.656l-1.102 1.101m.758-4.826L13.758 13.758" /></svg>{t('index.loadFromUrl')}</>
+                                        ) : (
+                                            <><svg className="w-6 h-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>{t('index.platformYoutube')}</>
+                                        )}
+                                    </h3>
+                                    <button onClick={() => setActiveInputMode('none')} className="p-2.5 text-gray-400 hover:text-white bg-gray-700 hover:bg-gray-600 rounded-full transition-colors">
+                                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                    </button>
+                                </div>
+                                <div className="flex-grow overflow-y-auto custom-scrollbar">
+                                    <SongInput initialMode={activeInputMode} onComplete={() => { setActiveInputMode('none'); loadSongs(); }} />
                                 </div>
                             </div>
-                        );
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
-                        return (
-                            <div key={songId} className={cn(
-                                "group relative bg-gray-800 rounded-2xl overflow-hidden border transition-all duration-300",
-                                isSelectMode ? "cursor-pointer" : "hover:-translate-y-1.5 hover:shadow-[0_15px_30px_-10px_rgba(0,0,0,0.5)]",
-                                isSelected ? "border-indigo-500 shadow-[0_0_0_2px_rgba(99,102,241,0.5)] ring-2 ring-indigo-500 ring-offset-2 ring-offset-[#0f172a]" : "border-gray-700/50 hover:border-gray-600"
-                            )}>
-                                {isSelectMode ? (
-                                    <div onClick={() => handleSelectSong(songId)} className="h-full relative">
-                                        <div className={cn("transition-all duration-200 h-full", isSelected ? 'opacity-50 scale-95 rounded-2xl overflow-hidden' : '')}>
-                                            <CardContent />
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <Link href={`/player/${song.id}`} className="block h-full">
-                                        <CardContent />
-                                    </Link>
-                                )}
-                            </div>
-                        )
-                    })}
-                </div>
-            )}
+            <div className="relative flex flex-col items-end gap-3">
+                <AnimatePresence>
+                    {isFabOpen && activeInputMode === 'none' && (
+                        <motion.div 
+                            initial={{ opacity: 0, y: 10, scale: 0.8 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 10, scale: 0.8 }}
+                            className="flex flex-col items-end gap-3 mb-2"
+                        >
+                            <button 
+                                onClick={() => { handleImportClick(); setIsFabOpen(false); }}
+                                className="flex items-center gap-3 px-6 py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl shadow-xl font-bold transition-all border border-blue-500/30 whitespace-nowrap"
+                            >
+                                <span>{t('home.importButton')}</span>
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                            </button>
+                            <button 
+                                onClick={() => { setActiveInputMode('url'); setIsFabOpen(false); }}
+                                className="flex items-center gap-3 px-6 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl shadow-xl font-bold transition-all border border-emerald-500/30 whitespace-nowrap"
+                            >
+                                <span>{t('index.loadFromUrl')}</span>
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.826L10.242 10.242m-4.242 4.242l4.242-4.242M9.828 5.172a4 4 0 015.656 0l4 4a4 4 0 01-5.656 5.656l-1.102 1.101m.758-4.826L13.758 13.758" /></svg>
+                            </button>
+                            <button 
+                                onClick={() => { setActiveInputMode('search'); setIsFabOpen(false); }}
+                                className="flex items-center gap-3 px-6 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl shadow-xl font-bold transition-all border border-indigo-500/30 whitespace-nowrap"
+                            >
+                                <span>{t('index.platformYoutube')}</span>
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                            </button>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                <motion.button
+                    onClick={() => {
+                        if (activeInputMode !== 'none') {
+                            setActiveInputMode('none');
+                        } else {
+                            setIsFabOpen(!isFabOpen);
+                        }
+                    }}
+                    animate={{ rotate: isFabOpen || activeInputMode !== 'none' ? 135 : 0 }}
+                    transition={{ type: "spring", stiffness: 260, damping: 20 }}
+                    className={cn(
+                        "w-16 h-16 rounded-full flex items-center justify-center shadow-2xl transition-colors border-2 text-white",
+                        isFabOpen || activeInputMode !== 'none' ? "bg-red-600 border-red-500" : "bg-indigo-600 border-indigo-500 hover:bg-indigo-500"
+                    )}
+                >
+                    <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" />
+                    </svg>
+                </motion.button>
+            </div>
         </div>
       </main>
     </>

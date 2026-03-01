@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import useTranslation from '@/hooks/useTranslation';
 import { filesize } from 'filesize';
@@ -121,7 +121,7 @@ const AdminPage: React.FC = () => {
         });
         if (response.status === 403) throw new Error(t('admin.invalidToken'));
         if (!response.ok) throw new Error(t('admin.clearError'));
-        alert(t('admin.clearSuccess', { cacheName }));
+        
         fetchData();
     } catch (e) {
         setError((e as Error).message);
@@ -141,7 +141,7 @@ const AdminPage: React.FC = () => {
         });
         if (response.status === 403) throw new Error(t('admin.invalidToken'));
         if (!response.ok) throw new Error(t('admin.saveConfigError'));
-        alert(t('admin.saveConfigSuccess'));
+        
     } catch (e) {
         setError((e as Error).message);
         setIsAuthenticated(false);
@@ -186,7 +186,7 @@ const AdminPage: React.FC = () => {
           });
           if (!res.ok) throw new Error(t('admin.communityDeleteError'));
           setCommunitySongs(prev => prev.filter(s => s.id !== id));
-          alert(t('admin.communityDeleteSuccess'));
+          
           fetchData(); // refresh size
       } catch (e) {
           alert((e as Error).message);
@@ -406,7 +406,7 @@ const AdminPage: React.FC = () => {
                                     <div key={song.id} className="bg-gray-700 p-3 rounded-lg flex justify-between items-center">
                                         <div className="truncate pr-4 flex-grow">
                                             <p className="font-semibold truncate">{song.title}</p>
-                                            <p className="text-xs text-gray-400 truncate">{song.artist} • {song.sharer_name}</p>
+                                            <p className="text-xs text-gray-400 truncate">{song.artist} �?{song.sharer_name}</p>
                                         </div>
                                         <button onClick={() => handleAdminDeleteCommunitySong(song.id)} className="px-3 py-1 bg-red-600 hover:bg-red-500 rounded text-xs font-bold flex-shrink-0">
                                             {t('home.deleteButton')}

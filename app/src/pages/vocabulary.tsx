@@ -80,7 +80,7 @@ const VocabularyPage = () => {
 
   if (isReviewing) {
     return (
-      <main className="bg-gray-900 min-h-screen text-white">
+      <main className="bg-gray-900 h-screen text-white overflow-hidden">
         <Reviewer />
       </main>
     );

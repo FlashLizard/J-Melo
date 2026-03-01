@@ -10,6 +10,7 @@ import useVocabularyStore from '@/stores/useVocabularyStore';
 import { db, blobToBase64 } from '@/lib/db';
 import cn from 'classnames';
 import { saveAs } from 'file-saver';
+import toast from 'react-hot-toast';
 
 const ToolButton: React.FC<{
   onClick: () => void;
@@ -57,6 +58,7 @@ const ToolPanel: React.FC = () => {
   const router = useRouter();
 
   const [communityStatus, setCommunityStatus] = useState<'not-shared' | 'shared-by-me' | 'loading'>('loading');
+  const [communitySongId, setCommunitySongId] = useState<number | null>(null);
   const [backendUrl, setBackendUrl] = useState('');
   const [myNickname, setMyNickname] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -74,6 +76,7 @@ const ToolPanel: React.FC = () => {
       const checkCommunityStatus = async () => {
           if (!song || !backendUrl || !myNickname) {
               setCommunityStatus('not-shared');
+              setCommunitySongId(null);
               return;
           }
           setCommunityStatus('loading');
@@ -91,11 +94,14 @@ const ToolPanel: React.FC = () => {
               const match = data.songs.find((s: any) => s.title === song.title);
               if (match) {
                   setCommunityStatus('shared-by-me');
+                  setCommunitySongId(match.id);
               } else {
                   setCommunityStatus('not-shared');
+                  setCommunitySongId(null);
               }
           } catch (e) {
               setCommunityStatus('not-shared');
+              setCommunitySongId(null);
           }
       };
       checkCommunityStatus();
@@ -108,7 +114,7 @@ const ToolPanel: React.FC = () => {
         startReview(words);
         router.push(`/vocabulary?returnToPlayer=${song.id}`);
     } else {
-        alert(t('reviewSetup.noWordsToReviewAlert'));
+        toast.error(t('reviewSetup.noWordsToReviewAlert'));
     }
   };
 
@@ -138,8 +144,9 @@ const ToolPanel: React.FC = () => {
 
         const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
         saveAs(blob, `j-melo-${song.title}.json`);
+        toast.success(t('toolPanel.exportSongData') + ' Success');
       } catch (e) {
-          alert('Export failed: ' + (e as Error).message);
+          toast.error('Export failed: ' + (e as Error).message);
       }
   };
 
@@ -151,15 +158,25 @@ const ToolPanel: React.FC = () => {
       }
   };
 
-  const shareToCommunity = async () => {
+  const uploadToCommunity = async (isUpdate: boolean) => {
       if (!song || !song.id) return;
       if (!myNickname) {
-          alert(t('home.sharerNicknameRequiredAlert'));
+          toast.error(t('home.sharerNicknameRequiredAlert'));
           router.push('/settings');
           return;
       }
+      if (isUpdate && !communitySongId) return;
+
       setIsProcessing(true);
       try {
+        // If it's an update, delete the existing remote version first
+        if (isUpdate && communitySongId) {
+             const delRes = await fetch(`${backendUrl}/api/community/songs/${communitySongId}?sharer_name=${encodeURIComponent(myNickname)}`, {
+                 method: 'DELETE'
+             });
+             if (!delRes.ok) throw new Error("Failed to delete old community version.");
+        }
+
         const fullSong = await db.songs.get(song.id);
         if (!fullSong) throw new Error("Song not found in DB.");
 
@@ -187,34 +204,34 @@ const ToolPanel: React.FC = () => {
         });
 
         if (!response.ok) throw new Error(await response.text());
+        
+        const resData = await response.json();
         setCommunityStatus('shared-by-me');
+        if (resData && resData.id) {
+            setCommunitySongId(resData.id);
+        }
+        toast.success(isUpdate ? "Community data updated!" : "Shared to community!");
       } catch (e) {
-        alert("Failed to share: " + (e as Error).message);
+        toast.error(`Failed to ${isUpdate ? 'update' : 'share'}: ` + (e as Error).message);
       } finally {
           setIsProcessing(false);
       }
   };
 
   const deleteFromCommunity = async () => {
-      if (!song || !myNickname) return;
-      if (!window.confirm("Are you sure you want to delete this song from the community server?")) return;
+      if (!communitySongId || !myNickname) return;
+      if (!window.confirm(t('toolPanel.communityDeleteConfirm'))) return;
       setIsProcessing(true);
       try {
-          const url = new URL(`${backendUrl}/api/community/songs`);
-          url.searchParams.append('q', song.title);
-          url.searchParams.append('sharer', myNickname);
-          const res = await fetch(url.toString());
-          const data = await res.json();
-          const match = data.songs.find((s: any) => s.title === song.title);
-          if (!match) throw new Error("Could not find song on community server.");
-
-          const delRes = await fetch(`${backendUrl}/api/community/songs/${match.id}?sharer_name=${encodeURIComponent(myNickname)}`, {
+          const delRes = await fetch(`${backendUrl}/api/community/songs/${communitySongId}?sharer_name=${encodeURIComponent(myNickname)}`, {
               method: 'DELETE'
           });
           if (!delRes.ok) throw new Error("Failed to delete from community server.");
+          toast.success("Deleted from community.");
           setCommunityStatus('not-shared');
+          setCommunitySongId(null);
       } catch (e) {
-          alert("Delete failed: " + (e as Error).message);
+          toast.error("Delete failed: " + (e as Error).message);
       } finally {
           setIsProcessing(false);
       }
@@ -312,7 +329,7 @@ const ToolPanel: React.FC = () => {
           <SectionHeader title={t('toolPanel.sectionCommunity')} />
           {communityStatus === 'not-shared' && (
              <ToolButton 
-                 onClick={shareToCommunity}
+                 onClick={() => uploadToCommunity(false)}
                  disabled={!song || isProcessing}
                  variant="success"
                  label={isProcessing ? t('toolPanel.uploading') : t('toolPanel.shareToCommunity')}
@@ -322,7 +339,7 @@ const ToolPanel: React.FC = () => {
           {communityStatus === 'shared-by-me' && (
              <>
                  <ToolButton 
-                     onClick={shareToCommunity}
+                     onClick={() => uploadToCommunity(true)}
                      disabled={!song || isProcessing}
                      variant="warning"
                      label={isProcessing ? t('toolPanel.updating') : t('toolPanel.updateCommunityData')}

@@ -6,6 +6,7 @@ import useSettingsStore from '@/stores/useSettingsStore';
 import useTranslation from '@/hooks/useTranslation'; // Import useTranslation hook
 import { exportAllData, importAllData, blobToBase64 } from '@/lib/db';
 import { copyToClipboard } from '@/utils/copyToClipboard';
+import toast from 'react-hot-toast';
 
 const SettingsPage: React.FC = () => {
   const { settings, updateSetting, loadSettings } = useSettingsStore();
@@ -53,7 +54,7 @@ const SettingsPage: React.FC = () => {
       const result = await response.json();
       setExportToken(result);
     } catch (error) {
-      alert('Error exporting data: ' + error.message);
+      toast.error('Error exporting data: ' + (error as Error).message);
     } finally {
       setIsExporting(false);
     }
@@ -61,7 +62,7 @@ const SettingsPage: React.FC = () => {
 
   const handleImport = async () => {
     if (!importToken.trim()) {
-      alert('Please enter a token.');
+      toast.error('Please enter a token.');
       return;
     }
     setIsImporting(true);
@@ -73,10 +74,10 @@ const SettingsPage: React.FC = () => {
       }
       const data = await response.json();
       await importAllData(data, importMode);
-      alert('Import successful! The application will now reload.');
-      window.location.reload();
+      toast.success('Import successful! The application will now reload.');
+      setTimeout(() => window.location.reload(), 1500);
     } catch (error) {
-      alert('Error importing data: ' + error.message);
+      toast.error('Error importing data: ' + (error as Error).message);
     } finally {
       setIsImporting(false);
     }
@@ -167,10 +168,9 @@ const SettingsPage: React.FC = () => {
                                     <button 
                                         onClick={() => {
                                             copyToClipboard(exportToken.token).then(() => {
-                                                alert(t('settings.tokenCopied'));
+                                                toast.success(t('settings.tokenCopied') || 'Copied to clipboard');
                                             }).catch(err => {
-                                                console.error('Failed to copy token: ', err);
-                                                alert('Failed to copy token.');
+                                                toast.error('Failed to copy token.');
                                             });
                                         }}
                                         className="p-2 ml-2 bg-gray-600 rounded-lg hover:bg-gray-500"

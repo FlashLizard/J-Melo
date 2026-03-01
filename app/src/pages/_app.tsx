@@ -8,6 +8,7 @@ import useTranslation from '@/hooks/useTranslation';
 import useSongStore from '@/stores/useSongStore'; // Import useSongStore
 import LoadingSpinner from '@/components/common/LoadingSpinner'; // Import LoadingSpinner
 import PWAInstallPrompt from '@/components/common/PWAInstallPrompt';
+import { Toaster } from 'react-hot-toast'; // Import Toaster
 
 function MyApp({ Component, pageProps }: AppProps) {
   const loadSettings = useSettingsStore((state) => state.loadSettings);
@@ -45,6 +46,16 @@ function MyApp({ Component, pageProps }: AppProps) {
       {isLoading && <LoadingSpinner />}
       <Component {...pageProps} />
       <PWAInstallPrompt />
+      <Toaster 
+        position="bottom-center"
+        toastOptions={{
+          style: {
+            background: '#374151',
+            color: '#fff',
+            borderRadius: '12px',
+          },
+        }}
+      />
     </>
   );
 }

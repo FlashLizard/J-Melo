@@ -60,7 +60,7 @@ const ImportConflictModal: React.FC<ImportConflictModalProps> = ({
         }
         // If 'skip', do nothing
       }
-      alert(t('home.importSuccess'));
+      
       onImportComplete();
     } catch (error) {
       alert(t('home.importError', { message: (error as Error).message }));

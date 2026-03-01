@@ -7,6 +7,7 @@ import { db, SongRecord, WordRecord, base64ToBlob } from '@/lib/db';
 import useSettingsStore from './useSettingsStore';
 import { processWhisperXOutput } from '@/utils/lyricsProcessor';
 import KuroshiroManager from '@/lib/kuroshiro';
+import toast from 'react-hot-toast';
 
 interface SongState {
   song: SongData | null;
@@ -323,9 +324,10 @@ const useSongStore = create<SongState>()(
                 state.song.media_url = objectUrl;
               }
             });
+            toast.success(`Successfully cached audio for "${song.title}"`);
             } catch (err) {
             console.error("Failed to cache audio:", err);
-            alert("Failed to cache audio.");
+            toast.error("Failed to cache audio.");
         }
     },
     uncacheCurrentSongAudio: async () => {
@@ -334,13 +336,13 @@ const useSongStore = create<SongState>()(
         try {
             const songRecord = await db.songs.get(song.id);
             if (!songRecord) throw new Error("Song record not found in DB.");
-            
+
             // Delete audioData blob from db
             await db.songs.update(song.id, { audioData: undefined, is_cached: false });
-            
+
             const { settings } = useSettingsStore.getState();
             const backendMediaUrl = `${settings.backendUrl}${songRecord.media_url}`;
-            
+
             // Update state
             set(state => {
               if (state.song) {
@@ -348,12 +350,12 @@ const useSongStore = create<SongState>()(
                 state.song.media_url = backendMediaUrl;
               }
             });
+            toast.success(`Successfully removed cached audio for "${song.title}"`);
             } catch (err) {
             console.error("Failed to remove cache:", err);
-            alert("Failed to remove cached audio.");
+            toast.error("Failed to remove cached audio.");
         }
-    },
-    updateLyricTranslations: async (newTranslatedLyrics) => {
+    },    updateLyricTranslations: async (newTranslatedLyrics) => {
         const { song, lyrics } = get();
         if (!song?.id || !lyrics) return;
         const updatedLyrics = lyrics.map((line, index) => {

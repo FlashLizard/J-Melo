@@ -9,11 +9,12 @@ import { LyricLine } from '@/interfaces/lyrics';
 import useTranslation from '@/hooks/useTranslation'; // Import useTranslation
 import { copyToClipboard } from '@/utils/copyToClipboard';
 import cn from 'classnames';
+import toast from 'react-hot-toast';
 
 const Modal: React.FC<{ 
   title: string; 
-  content: string; 
-  onClose: () => void; 
+  content: string;
+  onClose: () => void;
   t: (key: string) => string;
   children?: React.ReactNode;
 }> = ({ title, content, onClose, t, children }) => {
@@ -36,19 +37,17 @@ const Modal: React.FC<{
         {children}
 
         <div className="flex justify-end gap-2 mt-4">
-          <button 
+          <button
               onClick={() => {
                   copyToClipboard(content).then(() => {
-                      alert(t('settings.tokenCopied'));
+                      toast.success(t('settings.tokenCopied') || 'Copied!');
                   }).catch(err => {
-                      console.error('Failed to copy content: ', err);
-                      alert('Failed to copy content.');
+                      toast.error('Failed to copy content.');
                   });
               }}
               className="p-2 bg-gray-600 rounded-lg hover:bg-gray-500"
               title={t('settings.copyButton')}
-          >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+          >              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                   <path d="M7 3a1 1 0 011-1h3a1 1 0 011 1v1h1a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h1V3z" />
                   <path d="M9 2a2 2 0 00-2 2v1h4V4a2 2 0 00-2-2z" />
               </svg>
@@ -231,7 +230,7 @@ const AILyricCorrector: React.FC = () => {
         const data = await response.json();
         // We use furigana_text as it's more comprehensive for the LLM
         setCorrectLyrics(data.furigana_text);
-        alert(t('aiLyricCorrector.fetchSuccess'));
+        
     } catch (err) {
         setError(t('aiLyricCorrector.fetchError', { error: (err as Error).message }));
     } finally {
@@ -322,7 +321,7 @@ const AILyricCorrector: React.FC = () => {
   const handleConfirm = () => {
     if (previewData) {
       setProcessedLyrics(previewData.newLyrics); // Use setProcessedLyrics directly
-      alert(t('aiLyricCorrector.lyricsUpdatedSuccess'));
+      
     }
     setPreviewData(null);
     setActivePanel('TOOL_PANEL');
@@ -333,7 +332,7 @@ const AILyricCorrector: React.FC = () => {
     try {
         const parsedLyrics = JSON.parse(jsonInput);
         setProcessedLyrics(parsedLyrics);
-        alert(t('aiLyricCorrector.lyricsUpdatedSuccess'));
+        
         setActivePanel('TOOL_PANEL');
         setActiveView('lyrics');
     } catch (e) {

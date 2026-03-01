@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import useUIPanelStore from '@/stores/useUIPanelStore';
 import useMobileViewStore from '@/stores/useMobileViewStore';
@@ -9,11 +9,12 @@ import { LyricLine, LyricToken } from '@/interfaces/lyrics';
 import cn from 'classnames';
 import { copyToClipboard } from '@/utils/copyToClipboard';
 import { v4 as uuidv4 } from 'uuid';
+import toast from 'react-hot-toast';
 
 const Modal: React.FC<{ 
-  title: string; 
-  content: string; 
-  onClose: () => void; 
+  title: string;
+  content: string;
+  onClose: () => void;
   t: (key: string) => string;
   children?: React.ReactNode;
 }> = ({ title, content, onClose, t, children }) => {
@@ -32,23 +33,22 @@ const Modal: React.FC<{
         <div className="flex-grow overflow-y-auto bg-gray-900 p-4 rounded-md border border-gray-700 mb-4">
           <pre className="text-sm whitespace-pre-wrap">{content}</pre>
         </div>
-        
+
         {children}
 
         <div className="flex justify-end gap-2 mt-4">
-          <button 
+          <button
               onClick={() => {
                   copyToClipboard(content).then(() => {
-                      alert(t('settings.tokenCopied'));
+                      toast.success(t('settings.tokenCopied') || 'Copied!');
                   }).catch(err => {
                       console.error('Failed to copy content: ', err);
-                      alert('Failed to copy content.');
+                      toast.error('Failed to copy content.');
                   });
               }}
               className="p-2 bg-gray-600 rounded-lg hover:bg-gray-500"
               title={t('settings.copyButton')}
-          >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+          >              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                   <path d="M7 3a1 1 0 011-1h3a1 1 0 011 1v1h1a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h1V3z" />
                   <path d="M9 2a2 2 0 00-2 2v1h4V4a2 2 0 00-2-2z" />
               </svg>
@@ -261,7 +261,7 @@ const TimelessLyricsImporter: React.FC = () => {
         }
         const data = await response.json();
         setRawLyrics(data.furigana_text);
-        alert(t('aiLyricCorrector.fetchSuccess'));
+        
     } catch (err) {
         setError(t('aiLyricCorrector.fetchError', { error: (err as Error).message }));
     } finally {
@@ -330,7 +330,7 @@ const TimelessLyricsImporter: React.FC = () => {
     try {
         const parsedLyrics = JSON.parse(jsonInput);
         setProcessedLyrics(parsedLyrics);
-        alert(t('aiLyricCorrector.lyricsUpdatedSuccess'));
+        
         setActivePanel('TOOL_PANEL');
         setActiveView('lyrics');
     } catch (e) {
@@ -356,7 +356,7 @@ const TimelessLyricsImporter: React.FC = () => {
             // Basic latin and ascii punctuation
             if (code <= 0x007F) return 'alphanumeric_or_punct';
             // If it's not hiragana, katakana, space, or basic ASCII, treat it as kanji.
-            // This covers actual Kanji, iteration marks (々), CJK punctuation, fullwidth letters, etc.
+            // This covers actual Kanji, iteration marks (�?, CJK punctuation, fullwidth letters, etc.
             // We want things that can potentially take furigana to be grouped together.
             return 'kanji';
         };
@@ -473,7 +473,7 @@ const TimelessLyricsImporter: React.FC = () => {
   const handleConfirm = () => {
     if (previewData) {
       setProcessedLyrics(previewData.newLyrics);
-      alert(t('aiLyricCorrector.lyricsUpdatedSuccess'));
+      
     }
     setPreviewData(null);
     setActivePanel('TOOL_PANEL');

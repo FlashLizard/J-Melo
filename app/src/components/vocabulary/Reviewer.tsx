@@ -53,37 +53,40 @@ const Reviewer: React.FC = () => {
       </div>
       
       {/* Card Area - Flex-grow ensures it takes available space */}
-      <div className="flex-grow flex items-center justify-center perspective-1000 w-full min-h-0 py-4">
+      <div className="flex-grow flex items-center justify-center perspective-1000 w-full min-h-[300px] py-4">
         <div 
             className={cn(
-                "relative w-full max-w-lg aspect-[3/4] sm:aspect-video transition-all duration-500 transform-style-3d cursor-pointer",
+                "relative w-full h-full min-h-[300px] max-w-lg md:max-w-3xl lg:max-w-4xl transition-all duration-500 transform-style-3d cursor-pointer group",
                 isFlipped ? "rotate-y-180" : ""
             )}
             onClick={() => !isFlipped && setIsFlipped(true)}
         >
             {/* Front of Card */}
             <div className={cn(
-                "absolute inset-0 backface-hidden bg-gray-800 rounded-2xl p-6 sm:p-10 flex flex-col justify-center items-center text-center shadow-xl border border-gray-700",
+                "absolute inset-0 backface-hidden bg-gray-800 rounded-[2rem] p-8 md:p-16 flex flex-col justify-center items-center text-center shadow-2xl border border-gray-700/50 hover:border-gray-600 transition-colors",
+                "before:absolute before:inset-0 before:bg-gradient-to-br before:from-white/5 before:to-transparent before:rounded-[2rem] before:pointer-events-none",
                 isFlipped ? "pointer-events-none" : "z-10"
             )}>
-              <div className="prose prose-invert prose-lg max-w-none">
+              <div className="prose prose-invert prose-2xl md:prose-3xl max-w-none font-medium tracking-wide">
                 <ReactMarkdown>{currentReviewCard.cardFront}</ReactMarkdown>
               </div>
-              <div className="absolute bottom-6 text-gray-500 text-xs font-medium uppercase tracking-tighter animate-pulse">
+              <div className="absolute bottom-8 text-gray-500 text-sm font-bold uppercase tracking-[0.2em] animate-pulse flex items-center gap-2 opacity-60 group-hover:opacity-100 transition-opacity">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" /></svg>
                   Tap to flip
               </div>
             </div>
 
             {/* Back of Card */}
             <div className={cn(
-                "absolute inset-0 backface-hidden rotate-y-180 bg-gray-700 rounded-2xl p-6 sm:p-10 flex flex-col shadow-xl border border-blue-500/30 overflow-y-auto custom-scrollbar",
+                "absolute inset-0 backface-hidden rotate-y-180 bg-gray-800 rounded-[2rem] p-8 md:p-16 flex flex-col shadow-2xl border border-blue-500/20 overflow-hidden",
+                "after:absolute after:inset-0 after:bg-gradient-to-b after:from-transparent after:to-blue-900/10 after:pointer-events-none",
                 !isFlipped ? "pointer-events-none" : "z-10"
             )}>
-               <div className="flex-grow flex flex-col justify-center py-4">
-                    <div className="prose prose-invert prose-sm opacity-50 text-center mb-6 pb-6 border-b border-gray-600/50">
+               <div className="flex-grow overflow-y-auto custom-scrollbar pr-4 flex flex-col items-center justify-center">
+                    <div className="prose prose-invert prose-lg md:prose-xl opacity-40 text-center mb-8 pb-8 border-b border-gray-600/30 w-full max-w-2xl">
                         <ReactMarkdown>{currentReviewCard.cardFront}</ReactMarkdown>
                     </div>
-                    <div className="text-white text-lg sm:text-2xl font-medium leading-relaxed text-center whitespace-pre-wrap">
+                    <div className="text-white text-xl md:text-3xl font-medium leading-relaxed md:leading-loose text-center whitespace-pre-wrap max-w-3xl">
                         {currentReviewCard.cardBack}
                     </div>
                </div>
@@ -92,62 +95,61 @@ const Reviewer: React.FC = () => {
       </div>
 
       {/* Controls Area - Fixed at bottom */}
-      <div className="mt-4 mb-2 flex-shrink-0 w-full max-w-2xl mx-auto min-h-[80px] flex items-center">
+      <div className="mt-6 mb-4 sm:mb-8 flex-shrink-0 w-full max-w-3xl mx-auto min-h-[80px] flex items-center">
         {!isFlipped ? (
           <button 
             onClick={() => setIsFlipped(true)} 
-            className="w-full py-4 bg-blue-600 rounded-xl hover:bg-blue-500 text-white text-lg font-bold shadow-lg transition-all active:scale-95"
+            className="w-full py-5 bg-blue-600 rounded-2xl hover:bg-blue-500 text-white text-xl font-bold shadow-[0_4px_14px_0_rgba(37,99,235,0.39)] hover:shadow-[0_6px_20px_rgba(37,99,235,0.23)] transition-all active:scale-95 tracking-wide"
           >
             {t('reviewer.showBackButton')}
           </button>
         ) : (
-          <div className="w-full grid grid-cols-3 sm:grid-cols-6 gap-2 animate-in slide-in-from-bottom-2 fade-in duration-300">
+          <div className="w-full grid grid-cols-3 sm:grid-cols-6 gap-3 sm:gap-4 animate-in slide-in-from-bottom-4 fade-in duration-300">
             <button 
                 onClick={() => handleProficiencyUpdate(-10)} 
-                className="p-3 bg-red-600 text-white rounded-lg hover:bg-red-500 transition-colors flex flex-col items-center justify-center active:scale-95"
+                className="p-4 bg-red-900/40 border-2 border-red-700/50 text-red-300 rounded-2xl hover:bg-red-600 hover:text-white hover:border-red-500 transition-all flex flex-col items-center justify-center active:scale-95 shadow-sm"
             >
-                <span className="font-bold text-xs">{t('reviewer.lowestButton')}</span>
-                <span className="text-[10px] opacity-70 font-mono">-10</span>
+                <span className="font-bold text-sm sm:text-base">{t('reviewer.lowestButton')}</span>
+                <span className="text-xs opacity-60 font-mono mt-1">-10</span>
             </button>
             <button 
                 onClick={() => handleProficiencyUpdate(-5)} 
-                className="p-3 bg-orange-600 text-white rounded-lg hover:bg-orange-500 transition-colors flex flex-col items-center justify-center active:scale-95"
+                className="p-4 bg-orange-900/40 border-2 border-orange-700/50 text-orange-300 rounded-2xl hover:bg-orange-600 hover:text-white hover:border-orange-500 transition-all flex flex-col items-center justify-center active:scale-95 shadow-sm"
             >
-                <span className="font-bold text-xs">Hard</span>
-                <span className="text-[10px] opacity-70 font-mono">-5</span>
+                <span className="font-bold text-sm sm:text-base">Hard</span>
+                <span className="text-xs opacity-60 font-mono mt-1">-5</span>
             </button>
             <button 
                 onClick={() => handleProficiencyUpdate(-1)} 
-                className="p-3 bg-yellow-600 text-black rounded-lg hover:bg-yellow-500 transition-colors flex flex-col items-center justify-center active:scale-95"
+                className="p-4 bg-yellow-900/40 border-2 border-yellow-700/50 text-yellow-300 rounded-2xl hover:bg-yellow-600 hover:text-white hover:border-yellow-500 transition-all flex flex-col items-center justify-center active:scale-95 shadow-sm"
             >
-                <span className="font-bold text-xs">Okay</span>
-                <span className="text-[10px] opacity-70 font-mono">-1</span>
+                <span className="font-bold text-sm sm:text-base">Okay</span>
+                <span className="text-xs opacity-60 font-mono mt-1">-1</span>
             </button>
             <button 
                 onClick={() => handleProficiencyUpdate(1)} 
-                className="p-3 bg-teal-600 text-white rounded-lg hover:bg-teal-500 transition-colors flex flex-col items-center justify-center active:scale-95"
+                className="p-4 bg-teal-900/40 border-2 border-teal-700/50 text-teal-300 rounded-2xl hover:bg-teal-600 hover:text-white hover:border-teal-500 transition-all flex flex-col items-center justify-center active:scale-95 shadow-sm"
             >
-                <span className="font-bold text-xs">Good</span>
-                <span className="text-[10px] opacity-70 font-mono">+1</span>
+                <span className="font-bold text-sm sm:text-base">Good</span>
+                <span className="text-xs opacity-60 font-mono mt-1">+1</span>
             </button>
             <button 
                 onClick={() => handleProficiencyUpdate(5)} 
-                className="p-3 bg-green-600 text-white rounded-lg hover:bg-green-500 transition-colors flex flex-col items-center justify-center active:scale-95"
+                className="p-4 bg-green-900/40 border-2 border-green-700/50 text-green-300 rounded-2xl hover:bg-green-600 hover:text-white hover:border-green-500 transition-all flex flex-col items-center justify-center active:scale-95 shadow-sm"
             >
-                <span className="font-bold text-xs">Easy</span>
-                <span className="text-[10px] opacity-70 font-mono">+5</span>
+                <span className="font-bold text-sm sm:text-base">Easy</span>
+                <span className="text-xs opacity-60 font-mono mt-1">+5</span>
             </button>
             <button 
                 onClick={() => handleProficiencyUpdate(10)} 
-                className="p-3 bg-sky-600 text-white rounded-lg hover:bg-sky-500 transition-colors flex flex-col items-center justify-center active:scale-95"
+                className="p-4 bg-sky-900/40 border-2 border-sky-700/50 text-sky-300 rounded-2xl hover:bg-sky-600 hover:text-white hover:border-sky-500 transition-all flex flex-col items-center justify-center active:scale-95 shadow-sm"
             >
-                <span className="font-bold text-xs">{t('reviewer.highestButton')}</span>
-                <span className="text-[10px] opacity-70 font-mono">+10</span>
+                <span className="font-bold text-sm sm:text-base">{t('reviewer.highestButton')}</span>
+                <span className="text-xs opacity-60 font-mono mt-1">+10</span>
             </button>
           </div>
         )}
-      </div>
-    </div>
+      </div>    </div>
   );
 };
 

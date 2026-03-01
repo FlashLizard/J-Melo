@@ -6,6 +6,7 @@ import useMobileViewStore from '@/stores/useMobileViewStore'; // Import useMobil
 import useTranslation from '@/hooks/useTranslation'; // Import useTranslation
 import { LyricLine } from '@/interfaces/lyrics';
 import { copyToClipboard } from '@/utils/copyToClipboard';
+import toast from 'react-hot-toast';
 
 const FullLyricsEditor: React.FC = () => {
   const { lyrics, setPreviewLyrics, clearPreviewLyrics, commitPreviewLyrics } = useSongStore();
@@ -13,7 +14,7 @@ const FullLyricsEditor: React.FC = () => {
   const { setActiveView } = useMobileViewStore(); // Get setActiveView
   const { t } = useTranslation(); // Initialize useTranslation
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  
+
   const [jsonString, setJsonString] = useState('');
   const [jsonError, setJsonError] = useState<string | null>(null);
 
@@ -43,17 +44,16 @@ const FullLyricsEditor: React.FC = () => {
 
   const handleCopy = () => {
     copyToClipboard(jsonString)
-      .then(() => alert(t('settings.tokenCopied')))
-      .catch(err => console.error('Failed to copy JSON: ', err));
+      .then(() => toast.success(t('settings.tokenCopied') || 'Copied!'))
+      .catch(err => toast.error('Failed to copy JSON.'));
   };
-
   const handleSave = () => {
     if (jsonError) {
       alert(t('fullLyricsEditor.jsonSaveError', { error: jsonError }));
       return;
     }
     commitPreviewLyrics();
-    alert(t('fullLyricsEditor.lyricsSavedSuccess'));
+    
     setActivePanel('TOOL_PANEL');
     setActiveView('lyrics'); // Navigate to lyrics view on mobile after save
   };

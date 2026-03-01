@@ -9,6 +9,7 @@ import useTemplateStore from './useTemplateStore';
 import useSettingsStore from './useSettingsStore';
 import useMobileViewStore from './useMobileViewStore'; // Import mobile view store
 import { LyricLine, LyricToken } from '@/interfaces/lyrics';
+import toast from 'react-hot-toast';
 
 interface TutorState {
   sentence: string;
@@ -111,7 +112,7 @@ const useTutorStore = create<TutorState>()(
           createdAt: new Date(),
           proficiency: 0,
         });
-        alert(`"${surface}" added to vocabulary!`);
+        toast.success(`"${surface}" added to vocabulary!`);
       },
 
       clearTutor: () => {

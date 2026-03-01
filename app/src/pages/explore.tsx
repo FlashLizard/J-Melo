@@ -98,7 +98,7 @@ const ExplorePage: React.FC = () => {
             } else {
                 const { addManySongs } = useSongStore.getState();
                 await addManySongs(newSongs, wordsData);
-                alert(t('home.importSuccess'));
+                
                 setPreviewSong(null);
             }
         } catch (e) {
@@ -147,7 +147,7 @@ const ExplorePage: React.FC = () => {
 
             if (!postRes.ok) throw new Error("Failed to upload new version.");
 
-            alert("Community data updated successfully!");
+            
             setPreviewSong(null);
             fetchSongs(searchQuery);
         } catch (e) {
@@ -163,7 +163,7 @@ const ExplorePage: React.FC = () => {
                 method: 'DELETE'
             });
             if (!delRes.ok) throw new Error("Failed to delete from community server.");
-            alert(t('myShared.deleteSuccess'));
+            
             setPreviewSong(null);
             fetchSongs(searchQuery);
         } catch (e) {

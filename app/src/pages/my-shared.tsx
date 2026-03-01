@@ -66,7 +66,7 @@ const MySharedPage: React.FC = () => {
             
             // Remove from state
             setSongs(prev => prev.filter(s => s.id !== songId));
-            alert(t('myShared.deleteSuccess'));
+            
         } catch (e) {
             alert(t('myShared.deleteError', { error: (e as Error).message }));
         }

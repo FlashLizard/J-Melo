@@ -10,6 +10,7 @@ import { db } from '@/lib/db'; // Import db for settings
 import { LyricLine } from '@/interfaces/lyrics'; // Import LyricLine interface
 import { copyToClipboard } from '@/utils/copyToClipboard';
 import cn from 'classnames';
+import toast from 'react-hot-toast';
 
 type TranslationMode = 'mapProvided' | 'current';
 type MainMode = 'generate' | 'import';
@@ -33,19 +34,18 @@ const Modal: React.FC<{ title: string; content: string; onClose: () => void; t: 
         </div>
         {children} {/* Render children here */}
         <div className="flex justify-end mt-4 gap-2"> {/* Added mt-4 for spacing */}
-          <button 
+          <button
               onClick={() => {
                   copyToClipboard(content).then(() => {
-                      alert(t('settings.tokenCopied'));
+                      toast.success(t('settings.tokenCopied') || 'Copied!');
                   }).catch(err => {
                       console.error('Failed to copy content: ', err);
-                      alert('Failed to copy content.');
+                      toast.error('Failed to copy content.');
                   });
               }}
               className="p-2 bg-gray-600 rounded-lg hover:bg-gray-500"
               title={t('settings.copyButton')}
-          >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+          >              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                   <path d="M7 3a1 1 0 011-1h3a1 1 0 011 1v1h1a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h1V3z" />
                   <path d="M9 2a2 2 0 00-2 2v1h4V4a2 2 0 00-2-2z" />
               </svg>
@@ -279,7 +279,7 @@ const LyricTranslationPanel: React.FC = () => {
         }));
         
         await updateLyricTranslations(formattedForStore);
-        alert(t('lyricTranslationPanel.translationAppliedSuccess'));
+        
         setActivePanel('TOOL_PANEL');
         setActiveView('lyrics');
     } catch (e) {
@@ -294,7 +294,7 @@ const LyricTranslationPanel: React.FC = () => {
           translation: line.translation || ''
       }));
       await updateLyricTranslations(formattedForStore);
-      alert(t('lyricTranslationPanel.translationAppliedSuccess'));
+      
     }
     setPreviewData(null);
     setActivePanel('TOOL_PANEL');

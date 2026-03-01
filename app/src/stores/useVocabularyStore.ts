@@ -166,7 +166,7 @@ const useVocabularyStore = create<VocabularyState>()(
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
 
-        alert(t('vocabularyPage.exportSuccessAlert', { count: selectedIds.size }));
+        
       },
       openViewer: (items, startIndex) => set({ isViewerOpen: true, viewerItems: items, currentViewerIndex: startIndex }),
       closeViewer: () => set({ isViewerOpen: false, viewerItems: [], currentViewerIndex: 0 }),

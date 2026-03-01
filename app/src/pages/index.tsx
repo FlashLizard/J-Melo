@@ -10,6 +10,7 @@ import AboutModal from '@/components/common/AboutModal';
 import TranscriptionStatusModal from '@/components/common/TranscriptionStatusModal';
 import { db, blobToBase64, WordRecord, SongRecord } from '@/lib/db';
 import { saveAs } from 'file-saver';
+import toast from 'react-hot-toast';
 
 interface DisplaySongData {
   id?: number;
@@ -114,18 +115,40 @@ const HomePage = () => {
     const sharerNickname = settings?.sharerNickname?.trim();
 
     if (!sharerNickname) {
-        alert(t('home.sharerNicknameRequiredAlert'));
+        toast.error(t('home.sharerNicknameRequiredAlert'));
         return;
     }
 
     setIsUploading(true);
+    const loadingToast = toast.loading(t('home.uploadingButton'));
+
     try {
         const songsToShare = await db.songs.where('id').anyOf(selectedSongIds).toArray();
         let successCount = 0;
-        
+        let updateCount = 0;
+
+        // Fetch user's existing shared songs to determine if we need to update/overwrite
+        const existingRemoteSongsRes = await fetch(`${backendUrl}/api/community/songs?sharer=${encodeURIComponent(sharerNickname)}`);
+        let remoteSongsMap = new Map<string, number>(); // title -> remote id
+        if (existingRemoteSongsRes.ok) {
+            const remoteData = await existingRemoteSongsRes.json();
+            remoteData.songs.forEach((s: any) => {
+                remoteSongsMap.set(s.title, s.id);
+            });
+        }
+
         for (const song of songsToShare) {
-            const wordsToShare = await db.words.where('sourceSongId').equals(song.id!).toArray();
-            
+            const wordsToShare = await db.words.where('sourceSongId').equals(song.id!).toArray();       
+
+            // If a song with the same title already exists on the server under this nickname, delete it first to overwrite
+            if (remoteSongsMap.has(song.title)) {
+                const remoteId = remoteSongsMap.get(song.title);
+                await fetch(`${backendUrl}/api/community/songs/${remoteId}?sharer_name=${encodeURIComponent(sharerNickname)}`, {
+                    method: 'DELETE'
+                });
+                updateCount++;
+            }
+
             // Prepare song payload (remove binary data, reconstruct urls if needed)
             const { audioData, ...rest } = song;
             let coverImageBase64 = '';
@@ -133,7 +156,7 @@ const HomePage = () => {
                 coverImageBase64 = await blobToBase64(song.coverImageData);
             }
             const songPayload = { ...rest, coverImageData: coverImageBase64 };
-            
+
             const payload = {
                 title: song.title,
                 artist: song.artist,
@@ -152,20 +175,26 @@ const HomePage = () => {
             if (!response.ok) {
                 console.error(`Failed to upload ${song.title}`);
             } else {
-                successCount++;
+                if (!remoteSongsMap.has(song.title)) {
+                    successCount++;
+                }
             }
         }
-        
-        alert(t('home.uploadSuccessAlert', { count: successCount, total: selectedSongIds.length }));
+
+        let msg = '';
+        if (successCount > 0) msg += `Shared ${successCount} new. `;
+        if (updateCount > 0) msg += `Updated ${updateCount} existing.`;
+        if (!msg) msg = "Operation completed.";
+
+        toast.success(msg, { id: loadingToast });
         setIsSelectMode(false);
         setSelectedSongIds([]);
     } catch (e) {
-        alert(t('home.uploadErrorAlert', { error: (e as Error).message }));
+        toast.error(t('home.uploadErrorAlert', { error: (e as Error).message }), { id: loadingToast });
     } finally {
         setIsUploading(false);
     }
   };
-
   const handleImportClick = () => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -205,7 +234,7 @@ const HomePage = () => {
             const { addManySongs } = useSongStore.getState();
             await addManySongs(newSongs, wordsData);
             loadSongs();
-            alert(t('home.importSuccess'));
+            
           }
         } catch (error) {
           alert(t('home.importError', { message: (error as Error).message }));

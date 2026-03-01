@@ -3,9 +3,10 @@ import Head from 'next/head';
 import Link from 'next/link';
 import useTranslation from '@/hooks/useTranslation';
 import useSongStore from '@/stores/useSongStore';
-import { db } from '@/lib/db';
+import { db, blobToBase64 } from '@/lib/db';
 import ImportConflictModal, { Conflict } from '@/components/common/ImportConflictModal';
 import { SongRecord, WordRecord } from '@/lib/db';
+import SongPreviewModal from '@/components/explore/SongPreviewModal';
 
 interface CommunitySong {
     id: number;
@@ -29,11 +30,14 @@ const ExplorePage: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [backendUrl, setBackendUrl] = useState('');
+    const [myNickname, setMyNickname] = useState('');
     const [importState, setImportState] = useState<ImportState | null>(null);
+    const [previewSong, setPreviewSong] = useState<CommunitySong | null>(null);
 
-    const loadBackendUrl = async () => {
+    const loadSettings = async () => {
         const settings = await db.settings.get(0);
         setBackendUrl(settings?.backendUrl || 'http://localhost:8000');
+        setMyNickname(settings?.sharerNickname || '');
     };
 
     const fetchSongs = useCallback(async (query: string = '') => {
@@ -55,7 +59,7 @@ const ExplorePage: React.FC = () => {
     }, [backendUrl]);
 
     useEffect(() => {
-        loadBackendUrl();
+        loadSettings();
     }, []);
 
     useEffect(() => {
@@ -69,30 +73,19 @@ const ExplorePage: React.FC = () => {
         fetchSongs(searchQuery);
     };
 
-    const handleDownload = async (songId: number) => {
-        if (!window.confirm(t('explore.downloadConfirm'))) return;
-
+    const handleImport = async (songData: SongRecord, wordsData: WordRecord[]) => {
         try {
-            const res = await fetch(`${backendUrl}/api/community/songs/${songId}`);
-            if (!res.ok) throw new Error('Failed to download song data');
-            const parsedData = await res.json();
-            
-            const songsData: SongRecord[] = parsedData.songs || [];
-            const wordsData: WordRecord[] = parsedData.words || [];
-
             const allExistingSongs = await db.songs.toArray();
             const existingUrlMap = new Map(allExistingSongs.map(s => [s.sourceUrl, s]));
 
             const foundConflicts: Conflict[] = [];
             const newSongs: SongRecord[] = [];
 
-            for (const importedSong of songsData) {
-                const existingSong = existingUrlMap.get(importedSong.sourceUrl);
-                if (existingSong) {
-                    foundConflicts.push({ existingSong, importedSong });
-                } else {
-                    newSongs.push(importedSong);
-                }
+            const existingSong = existingUrlMap.get(songData.sourceUrl);
+            if (existingSong) {
+                foundConflicts.push({ existingSong, importedSong: songData });
+            } else {
+                newSongs.push(songData);
             }
 
             if (foundConflicts.length > 0) {
@@ -101,13 +94,80 @@ const ExplorePage: React.FC = () => {
                     nonConflictingSongs: newSongs, 
                     importedWords: wordsData 
                 });
+                setPreviewSong(null);
             } else {
                 const { addManySongs } = useSongStore.getState();
                 await addManySongs(newSongs, wordsData);
                 alert(t('home.importSuccess'));
+                setPreviewSong(null);
             }
         } catch (e) {
             alert(t('explore.downloadError', { error: (e as Error).message }));
+        }
+    };
+
+    const handleUpdateCommunity = async (remoteSongData: SongRecord, wordsData: WordRecord[]) => {
+        if (!previewSong || !myNickname) return;
+        if (!window.confirm(t('toolPanel.communityUpdateConfirm'))) return;
+
+        try {
+            const localSongs = await db.songs.where('sourceUrl').equals(remoteSongData.sourceUrl).toArray();
+            if (localSongs.length === 0) {
+                throw new Error("Could not find this song in your local library. Please import it first.");
+            }
+            const localSong = localSongs[0];
+            const localWords = await db.words.where('sourceSongId').equals(localSong.id!).toArray();
+
+            const delRes = await fetch(`${backendUrl}/api/community/songs/${previewSong.id}?sharer_name=${encodeURIComponent(myNickname)}`, {
+                method: 'DELETE'
+            });
+            if (!delRes.ok) throw new Error("Failed to delete old community version.");
+
+            const { audioData, ...rest } = localSong;
+            let coverImageBase64 = '';
+            if (localSong.coverImageData) {
+                coverImageBase64 = await blobToBase64(localSong.coverImageData);
+            }
+            const songPayload = { ...rest, coverImageData: coverImageBase64 };
+
+            const payload = {
+                title: localSong.title,
+                artist: localSong.artist,
+                cover_url: localSong.cover_url,
+                sharer_name: myNickname,
+                song_data: songPayload,
+                words_data: localWords
+            };
+
+            const postRes = await fetch(`${backendUrl}/api/community/share`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!postRes.ok) throw new Error("Failed to upload new version.");
+
+            alert("Community data updated successfully!");
+            setPreviewSong(null);
+            fetchSongs(searchQuery);
+        } catch (e) {
+            alert(`Update failed: ${(e as Error).message}`);
+        }
+    };
+
+    const handleDeleteCommunity = async (songId: number) => {
+        if (!myNickname) return;
+        if (!window.confirm(t('toolPanel.communityDeleteConfirm'))) return;
+        try {
+            const delRes = await fetch(`${backendUrl}/api/community/songs/${songId}?sharer_name=${encodeURIComponent(myNickname)}`, {
+                method: 'DELETE'
+            });
+            if (!delRes.ok) throw new Error("Failed to delete from community server.");
+            alert(t('myShared.deleteSuccess'));
+            setPreviewSong(null);
+            fetchSongs(searchQuery);
+        } catch (e) {
+            alert(t('myShared.deleteError', { error: (e as Error).message }));
         }
     };
 
@@ -116,6 +176,18 @@ const ExplorePage: React.FC = () => {
             <Head>
                 <title>{`J-Melo - ${t('home.exploreButton')}`}</title>
             </Head>
+
+            {previewSong && (
+                <SongPreviewModal 
+                    communitySong={previewSong}
+                    backendUrl={backendUrl}
+                    onClose={() => setPreviewSong(null)}
+                    onImport={handleImport}
+                    onUpdateCommunity={handleUpdateCommunity}
+                    onDeleteCommunity={handleDeleteCommunity}
+                    myNickname={myNickname}
+                />
+            )}
 
             {importState && (
                 <ImportConflictModal
@@ -170,7 +242,7 @@ const ExplorePage: React.FC = () => {
                     ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                             {songs.map((song) => (
-                                <div key={song.id} className="bg-gray-800 rounded-lg shadow-lg overflow-hidden flex flex-col cursor-pointer hover:bg-gray-700 transition" onClick={() => handleDownload(song.id)}>
+                                <div key={song.id} className="bg-gray-800 rounded-lg shadow-lg overflow-hidden flex flex-col cursor-pointer hover:bg-gray-700 transition" onClick={() => setPreviewSong(song)}>
                                     <div className="h-48 bg-gray-700 relative">
                                         {song.cover_url ? (
                                             <img 

@@ -200,67 +200,85 @@ const ExplorePage: React.FC = () => {
                 />
             )}
 
-            <main className="bg-gray-900 min-h-screen text-white p-4 sm:p-6 lg:p-8">
-                <div className="max-w-6xl mx-auto">
-                    <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-                        <div className="flex items-center gap-3">
-                            <img src="/logo.svg" alt="J-Melo Logo" className="w-10 h-10 drop-shadow-lg" />
-                            <h1 className="text-3xl font-bold">{t('home.exploreButton')}</h1>
+            <main className="bg-[#0f172a] min-h-screen text-white pb-12 selection:bg-indigo-500/30">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-10">
+                    
+                    {/* Header */}
+                    <header className="flex justify-between items-center gap-4 mb-8 bg-gray-800/40 p-4 sm:p-6 rounded-3xl border border-gray-700/50 shadow-lg backdrop-blur-sm">
+                        <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                            <div className="bg-gray-900/50 p-2 sm:p-2.5 rounded-2xl shadow-inner border border-gray-700/50 flex-shrink-0">
+                                <svg className="w-8 h-8 sm:w-10 sm:h-10 text-indigo-400 drop-shadow-md" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>
+                            </div>
+                            <h1 className="text-xl sm:text-3xl font-extrabold tracking-tight bg-gradient-to-br from-white to-gray-400 bg-clip-text text-transparent truncate">{t('home.exploreButton')}</h1>
                         </div>
-                        <Link href="/" className="px-4 py-2 bg-gray-600 rounded-lg hover:bg-gray-500 text-white w-full sm:w-auto text-center">
-                            {t('settings.backToPlayer')}
+                        <Link href="/" className="p-2.5 sm:p-3 bg-gray-700/80 text-gray-200 rounded-2xl hover:bg-gray-600 hover:text-white transition-all flex items-center justify-center border border-gray-600/50 shadow-sm flex-shrink-0" title={t('settings.backToPlayer')}>
+                            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.75 19.5L8.25 12l7.5-7.5" />
+                            </svg>
                         </Link>
                     </header>
 
-                    <form onSubmit={handleSearch} className="mb-8 flex gap-2">
-                        <input
-                            type="text"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder={t('explore.searchPlaceholder')}
-                            className="flex-grow p-3 rounded-lg bg-gray-800 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        />
-                        <button type="submit" className="px-6 py-3 bg-indigo-600 rounded-lg hover:bg-indigo-500 font-bold">
-                            {t('explore.searchButton')}
+                    <form onSubmit={handleSearch} className="mb-10 flex gap-3 max-w-3xl mx-auto">
+                        <div className="relative flex-grow">
+                            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                <svg className="h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                            </div>
+                            <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder={t('explore.searchPlaceholder')}
+                                className="w-full pl-12 pr-4 py-3 rounded-xl bg-gray-800/60 border border-gray-700/50 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-white placeholder-gray-500 shadow-inner"
+                            />
+                        </div>
+                        <button type="submit" className="px-8 py-3 bg-indigo-600/90 rounded-xl hover:bg-indigo-500 font-bold transition-all border border-indigo-500/30 shadow-md shadow-indigo-900/20 active:scale-95 flex items-center gap-2">
+                            <span className="hidden sm:inline">{t('explore.searchButton')}</span>
+                            <span className="sm:hidden">Search</span>
                         </button>
                     </form>
 
                     {error && (
-                        <div className="bg-red-800 p-4 rounded-lg mb-6 text-center">
+                        <div className="bg-red-900/40 border border-red-800 p-4 rounded-2xl mb-8 text-center text-red-200">
                             {error}
                         </div>
                     )}
 
                     {isLoading ? (
-                        <div className="text-center py-12 text-gray-400">
-                            {t('home.loadingSongs')}
+                        <div className="flex flex-col items-center justify-center py-20 gap-4">
+                            <svg className="animate-spin h-10 w-10 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                            <p className="text-gray-400 font-medium tracking-wide animate-pulse">{t('home.loadingSongs')}</p>
                         </div>
                     ) : songs.length === 0 ? (
-                        <div className="text-center py-12 text-gray-500">
-                            {t('explore.noSongsFound')}
+                        <div className="text-center py-20 bg-gray-800/30 rounded-3xl border border-gray-700/30 border-dashed max-w-2xl mx-auto">
+                            <div className="bg-gray-900/50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+                                <svg className="w-10 h-10 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>
+                            </div>
+                            <p className="text-xl text-gray-300 font-medium mb-2">{t('explore.noSongsFound')}</p>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 sm:gap-6">
                             {songs.map((song) => (
-                                <div key={song.id} className="bg-gray-800 rounded-lg shadow-lg overflow-hidden flex flex-col cursor-pointer hover:bg-gray-700 transition" onClick={() => setPreviewSong(song)}>
-                                    <div className="h-48 bg-gray-700 relative">
+                                <div key={song.id} className="group relative bg-gray-800 rounded-2xl overflow-hidden border border-gray-700/50 hover:border-gray-600 transition-all duration-300 hover:-translate-y-1.5 hover:shadow-[0_15px_30px_-10px_rgba(0,0,0,0.5)] cursor-pointer" onClick={() => setPreviewSong(song)}>
+                                    <div className="relative aspect-square bg-gray-700 overflow-hidden">
                                         {song.cover_url ? (
                                             <img 
                                                 src={song.cover_url.startsWith('/') ? `${backendUrl}${song.cover_url}` : song.cover_url} 
                                                 alt={song.title} 
-                                                className="w-full h-full object-cover" 
+                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out" 
                                             />
                                         ) : (
-                                            <div className="flex items-center justify-center w-full h-full text-gray-500">No Cover</div>
+                                            <div className="flex items-center justify-center w-full h-full bg-gradient-to-br from-gray-700 to-gray-800 text-gray-500">
+                                                <svg className="w-12 h-12 opacity-50 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>
+                                            </div>
                                         )}
-                                    </div>
-                                    <div className="p-4 flex-grow flex flex-col">
-                                        <h2 className="text-lg font-bold truncate mb-1" title={song.title}>{song.title}</h2>
-                                        <p className="text-sm text-gray-400 truncate mb-4" title={song.artist}>{song.artist || t('home.unknownArtist')}</p>
-                                        
-                                        <div className="mt-auto text-xs text-gray-500 flex justify-between items-center border-t border-gray-700 pt-2">
-                                            <span>👤 {song.sharer_name}</span>
-                                            <span>{new Date(song.created_at).toLocaleDateString()}</span>
+                                        <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/40 to-transparent opacity-80 group-hover:opacity-90 transition-opacity duration-300"></div>
+                                        <div className="absolute bottom-0 left-0 right-0 p-4 transform translate-y-1 group-hover:translate-y-0 transition-transform duration-300 ease-out">
+                                            <h2 className="text-base font-bold text-white leading-tight mb-1 line-clamp-2 drop-shadow-md" title={song.title}>{song.title}</h2>
+                                            <p className="text-xs text-gray-300 truncate drop-shadow mb-2" title={song.artist}>{song.artist || t('home.unknownArtist')}</p>
+                                            <div className="flex justify-between items-center pt-2 border-t border-gray-600/50 text-[10px] text-gray-400 font-medium">
+                                                <span className="flex items-center gap-1"><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>{song.sharer_name}</span>
+                                                <span>{new Date(song.created_at).toLocaleDateString()}</span>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>

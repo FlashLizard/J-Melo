@@ -1,6 +1,6 @@
-{
+﻿{
   "settings.title": "Settings",
-  "settings.backToPlayer": "← Back to Player",
+  "settings.backToPlayer": "Back to Player",
   "settings.cacheSectionTitle": "Cache",
   "settings.cacheDescription": "Manage locally cached songs to save space.",
   "settings.manageCacheButton": "Manage Cache",
@@ -442,3 +442,4 @@
   "pwa.installButton": "Install App",
   "pwa.laterButton": "Later"
 }
+

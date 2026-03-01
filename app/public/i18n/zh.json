@@ -1,6 +1,6 @@
-{
+﻿{
   "settings.title": "设置",
-  "settings.backToPlayer": "← 返回播放器",
+  "settings.backToPlayer": "返回播放器",
   "settings.cacheSectionTitle": "缓存",
   "settings.cacheDescription": "管理本地缓存的歌曲以节省空间。",
   "settings.manageCacheButton": "管理缓存",
@@ -442,3 +442,4 @@
   "pwa.installButton": "安装应用",
   "pwa.laterButton": "稍后"
 }
+

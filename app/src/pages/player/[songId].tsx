@@ -255,15 +255,18 @@ const PlayerPage = () => {
       <Head>
         <title>{`J-Melo Player${song ? ` - ${song.title}` : ''}`}</title>
       </Head>
-      <main className="bg-gray-900 h-screen flex flex-col overflow-hidden">
-        <div className="p-3 bg-gray-800/80 backdrop-blur-md border-b border-gray-700/50 flex justify-between items-center z-30">
-          <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <img src="/logo.svg" alt="J-Melo Logo" className="w-8 h-8 drop-shadow-md" />
-            <h1 className="text-white text-lg font-bold tracking-tight">J-Melo Player</h1>
+      <main className="bg-[#0f172a] h-screen flex flex-col overflow-hidden selection:bg-indigo-500/30">
+        <div className="p-3 sm:p-4 bg-gray-800/40 backdrop-blur-md border-b border-gray-700/50 flex justify-between items-center z-30 shadow-lg">
+          <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity min-w-0">
+            <div className="bg-gray-900/50 p-1.5 rounded-xl border border-gray-700/50 flex-shrink-0">
+                <img src="/logo.svg" alt="J-Melo Logo" className="w-6 h-6 sm:w-7 sm:h-7 drop-shadow-md" />
+            </div>
+            <h1 className="text-white text-base sm:text-lg font-bold tracking-tight truncate">J-Melo Player</h1>
           </Link>
-          <Link href="/" className="px-4 py-1.5 text-sm bg-gray-700/80 rounded-xl hover:bg-gray-600 text-white font-medium transition-colors flex items-center gap-2 border border-gray-600/50">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-            <span className="hidden sm:inline">{t('player.backToHome')}</span>
+          <Link href="/" className="p-2 sm:p-2.5 bg-gray-700/80 text-gray-200 rounded-xl hover:bg-gray-600 hover:text-white transition-all flex items-center justify-center border border-gray-600/50 shadow-sm flex-shrink-0" title={t('player.backToHome')}>
+            <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.75 19.5L8.25 12l7.5-7.5" />
+            </svg>
           </Link>
         </div>
 

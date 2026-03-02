@@ -526,7 +526,7 @@ const HomePage = () => {
                                 t={t}
                             />
                         )}
-                        {activeTab === 'explore' && <ExploreView />}
+                        {activeTab === 'explore' && <ExploreView onImportSuccess={() => { loadSongs(); loadWordsAndSongs(); }} />}
                         {activeTab === 'vocabulary' && <VocabularyView />}
                     </motion.div>
                 </AnimatePresence>
@@ -556,10 +556,8 @@ const HomePage = () => {
                                     <h3 className="font-bold text-xl text-indigo-300 flex items-center gap-3">
                                         {activeInputMode === 'url' ? (
                                             <><svg className="w-6 h-6 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.826L10.242 10.242m-4.242 4.242l4.242-4.242M9.828 5.172a4 4 0 015.656 0l4 4a4 4 0 01-5.656 5.656l-1.102 1.101m.758-4.826L13.758 13.758" /></svg>{t('index.loadFromUrl')}</>
-                                        ) : activeInputMode === 'search' ? (
-                                            <><svg className="w-6 h-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>{t('index.platformYoutube')}</>
                                         ) : (
-                                            <><svg className="w-6 h-6 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>{t('home.importButton')}</>
+                                            <><svg className="w-6 h-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>{t('index.platformYoutube')}</>
                                         )}
                                     </h3>
                                     <button onClick={() => setActiveInputMode('none')} className="p-2.5 text-gray-400 hover:text-white bg-gray-700 hover:bg-gray-600 rounded-full transition-colors">
@@ -585,7 +583,7 @@ const HomePage = () => {
                             className="flex flex-col items-end gap-3 mb-2"
                         >
                             <button 
-                                onClick={() => { setActiveInputMode('import'); setIsFabOpen(false); }}
+                                onClick={() => { handleImportClick(); setIsFabOpen(false); }}
                                 className="flex items-center gap-3 px-5 py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl shadow-xl font-bold transition-all border border-blue-500/30 whitespace-nowrap"
                             >
                                 <span>{t('home.importButton')}</span>

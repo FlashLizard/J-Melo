@@ -7,7 +7,7 @@ import useSongStore from '@/stores/useSongStore';
 import useTranslation from '@/hooks/useTranslation';
 import { db } from '@/lib/db';
 import { LyricLine } from '@/interfaces/lyrics';
-import { formatLyricTimings } from '@/utils/lyricsProcessor';
+import { formatLyricTimings, parseFuriganaText } from '@/utils/lyricsProcessor';
 import cn from 'classnames';
 import { copyToClipboard } from '@/utils/copyToClipboard';
 import toast from 'react-hot-toast';
@@ -318,6 +318,24 @@ const TimelessLyricsImporter: React.FC = () => {
     const finalPrompt = promptTemplate.replace('{plaintext_lyrics}', plaintextLyrics);
     setPromptPreview(finalPrompt);
   };
+
+  const handleParseText = () => {
+    if (!plaintextLyrics.trim()) {
+        toast.error("Please paste lyrics first.");
+        return;
+    }
+    setIsLoading(true);
+    try {
+        const parsedLyrics = parseFuriganaText(plaintextLyrics);
+        setProcessedLyrics(formatLyricTimings(parsedLyrics));
+        toast.success(t('aiLyricCorrector.fetchSuccess') || "Parsed successfully!");
+        setActivePanel('TOOL_PANEL');
+    } catch (e) {
+        toast.error("Failed to parse text: " + (e as Error).message);
+    } finally {
+        setIsLoading(false);
+    }
+  };
   
   const handleConfirm = () => {
     if (previewData) {
@@ -446,7 +464,7 @@ const TimelessLyricsImporter: React.FC = () => {
                 </div>
               </div>
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-2 pb-4">
+            <div className="mt-4 grid grid-cols-2 gap-2">
               <button
                 className="px-4 py-2 bg-indigo-600 rounded-lg hover:bg-indigo-500 disabled:opacity-50 transition-colors"
                 onClick={handlePreviewPrompt}
@@ -460,6 +478,15 @@ const TimelessLyricsImporter: React.FC = () => {
                 disabled={isLoading}
               >
                 {isLoading ? t('aiLyricCorrector.processingButton') : t('timelessLyricsImporter.generateButton')}
+              </button>
+            </div>
+            <div className="grid grid-cols-1 pb-4">
+              <button
+                className="px-4 py-2 bg-emerald-600 rounded-lg hover:bg-emerald-500 disabled:opacity-50 transition-colors font-bold"
+                onClick={handleParseText}
+                disabled={isLoading}
+              >
+                {isLoading ? t('timelessLyricsImporter.parsingButton') : t('timelessLyricsImporter.parseTextButton')}
               </button>
             </div>
           </div>

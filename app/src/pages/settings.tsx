@@ -13,7 +13,7 @@ import Head from 'next/head';
 
 const SettingsPage: React.FC = () => {
   const { settings, updateSetting, loadSettings } = useSettingsStore();
-  const { t, i18nInitialized } = useTranslation();
+  const { t } = useTranslation();
   const router = useRouter();
 
   const [exportToken, setExportToken] = useState<any>(null);
@@ -26,14 +26,6 @@ const SettingsPage: React.FC = () => {
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
-
-  if (!i18nInitialized) {
-      return (
-          <div className="bg-[#0f172a] min-h-screen flex items-center justify-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
-          </div>
-      );
-  }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target as HTMLInputElement;
@@ -87,7 +79,7 @@ const SettingsPage: React.FC = () => {
         const finalData = { ...data, songs: sanitizedSongs };
         const blob = new Blob([JSON.stringify(finalData, null, 2)], { type: 'application/json' });
         saveAs(blob, `j-melo-backup-${new Date().toISOString().split('T')[0]}.json`);
-        toast.success(t('fullLyricsEditor.lyricsSavedSuccess') || 'Exported successfully!');
+        toast.success(t('settings.exportSuccess'));
     } catch (error) {
         toast.error('Error exporting JSON: ' + (error as Error).message);
     } finally {
@@ -109,7 +101,7 @@ const SettingsPage: React.FC = () => {
       }
       const data = await response.json();
       await importAllData(data, importMode);
-      toast.success('Import successful! The application will now reload.');
+      toast.success(t('settings.importSuccess'));
       setTimeout(() => window.location.reload(), 1500);
     } catch (error) {
       toast.error('Error importing by token: ' + (error as Error).message);
@@ -128,7 +120,7 @@ const SettingsPage: React.FC = () => {
         try {
             const data = JSON.parse(event.target?.result as string);
             await importAllData(data, importMode);
-            toast.success('JSON Import successful! The application will now reload.');
+            toast.success(t('settings.importSuccess'));
             setTimeout(() => window.location.reload(), 1500);
         } catch (error) {
             toast.error('Error parsing JSON file: ' + (error as Error).message);
@@ -223,11 +215,11 @@ const SettingsPage: React.FC = () => {
                           <div className="flex flex-wrap gap-4">
                               <button onClick={handleExportAsToken} disabled={isExporting} className="px-6 py-2.5 bg-emerald-600/90 rounded-xl hover:bg-emerald-500 text-white font-bold transition-all disabled:opacity-50 shadow-md border border-emerald-500/30 flex items-center gap-2">
                                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
-                                  {isExporting ? (t('settings.exportingButton') || 'Exporting...') : (t('settings.exportAsToken') || 'Export as Token')}
+                                  {t('settings.exportAsToken')}
                               </button>
                               <button onClick={handleExportAsJson} disabled={isExporting} className="px-6 py-2.5 bg-indigo-600/90 rounded-xl hover:bg-indigo-500 text-white font-bold transition-all disabled:opacity-50 shadow-md border border-indigo-500/30 flex items-center gap-2">
                                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                                  {isExporting ? (t('settings.exportingButton') || 'Exporting...') : (t('settings.exportAsJson') || 'Export as JSON')}
+                                  {t('settings.exportAsJson')}
                               </button>
                           </div>
                           

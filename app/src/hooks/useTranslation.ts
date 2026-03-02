@@ -9,8 +9,8 @@ type InterpolationOptions = { [key: string]: any };
 const useTranslation = () => {
   const { settings, loadSettings } = useSettingsStore();
   const [translations, setTranslations] = useState<Translations>({});
-  const [isFetching, setIsFetching] = useState(true);
-  const [isInitialized, setIsInitialized] = useState(false);
+  const [isFetching, setIsFetching] = useState(true); // Renamed from loading to isFetching
+  const [isInitialized, setIsInitialized] = useState(false); // New state for initial load
 
   // Load settings on mount if not already loaded
   useEffect(() => {
@@ -20,65 +20,47 @@ const useTranslation = () => {
   }, [settings.uiLanguage, loadSettings]);
 
   useEffect(() => {
-    let isMounted = true;
     const fetchTranslations = async () => {
       setIsFetching(true);
-      const lang = settings.uiLanguage || 'en';
+      const lang = settings.uiLanguage || 'en'; // Default to English if not set
       try {
         const response = await fetch(`/i18n/${lang}.json`);
         if (!response.ok) {
           console.error(`Failed to load translations for ${lang}. Falling back to en.`);
           const fallbackResponse = await fetch(`/i18n/en.json`);
-          const data = await fallbackResponse.json();
-          if (isMounted) {
-              setTranslations(data);
-              setIsInitialized(true);
-          }
+          setTranslations(await fallbackResponse.json());
         } else {
-          const data = await response.json();
-          if (isMounted) {
-              setTranslations(data);
-              setIsInitialized(true);
-          }
+          setTranslations(await response.json());
         }
       } catch (error) {
         console.error("Error fetching translations, falling back to English:", error);
+        // Fallback to English if fetch fails
         try {
             const fallbackResponse = await fetch(`/i18n/en.json`);
-            const data = await fallbackResponse.json();
-            if (isMounted) {
-                setTranslations(data);
-                setIsInitialized(true);
-            }
+            setTranslations(await fallbackResponse.json());
         } catch (fallbackError) {
             console.error("Failed to load even fallback English translations:", fallbackError);
-            if (isMounted) {
-                setTranslations({});
-                setIsInitialized(true);
-            }
+            setTranslations({}); // Empty translations if all else fails
         }
       } finally {
-        if (isMounted) {
-            setIsFetching(false);
-        }
+        setIsFetching(false);
+        setIsInitialized(true); // Translations are now initialized
       }
     };
 
     fetchTranslations();
-    return () => { isMounted = false; };
-  }, [settings.uiLanguage]);
+  }, [settings.uiLanguage]); // Re-fetch when uiLanguage changes
 
   const t = useCallback((key: string, options?: InterpolationOptions): string => {
-    const translatedString = translations[key] || key;
+    let translatedString = translations[key] || key; // Return key if translation not found
 
-    if (options && translatedString !== key) {
-      let result = translatedString;
+    if (options) {
       for (const optKey in options) {
         if (Object.prototype.hasOwnProperty.call(options, optKey)) {
-          result = result.replace(new RegExp(`{{${optKey}}}`, 'g'), options[optKey]);
+          // Replace {{optKey}} with the corresponding value from options
+          translatedString = translatedString.replace(new RegExp(`{{${optKey}}}`, 'g'), options[optKey]);
         }
       }
-      return result;
     }
 
     return translatedString;

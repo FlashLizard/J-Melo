@@ -24,7 +24,11 @@ interface ImportState {
   importedWords: WordRecord[];
 }
 
-const ExploreView: React.FC = () => {
+interface ExploreViewProps {
+    onImportSuccess?: () => void;
+}
+
+const ExploreView: React.FC<ExploreViewProps> = ({ onImportSuccess }) => {
     const { t } = useTranslation();
     const { settings, loadSettings } = useSettingsStore();
     const [songs, setSongs] = useState<CommunitySong[]>([]);
@@ -97,6 +101,7 @@ const ExploreView: React.FC = () => {
                 const { addManySongs } = useSongStore.getState();
                 await addManySongs(newSongs, wordsData);
                 setPreviewSong(null);
+                if (onImportSuccess) onImportSuccess();
             }
         } catch (e) {
             alert(t('explore.downloadError', { error: (e as Error).message }));
@@ -187,7 +192,10 @@ const ExploreView: React.FC = () => {
                     conflicts={importState.conflicts}
                     nonConflictingSongs={importState.nonConflictingSongs}
                     importedWords={importState.importedWords}
-                    onImportComplete={() => setImportState(null)}
+                    onImportComplete={() => {
+                        setImportState(null);
+                        if (onImportSuccess) onImportSuccess();
+                    }}
                 />
             )}
 

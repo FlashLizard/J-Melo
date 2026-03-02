@@ -207,6 +207,12 @@ class JeloDB extends Dexie {
         if (setting.themeMode === undefined) setting.themeMode = 'dark';
       });
     });
+    this.version(19).stores({
+      songs: '++id, sourceUrl, is_cached'
+    });
+    this.version(20).stores({
+      songs: '++id, sourceUrl'
+    });
   }
 }
 

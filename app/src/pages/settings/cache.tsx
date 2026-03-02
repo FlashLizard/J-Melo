@@ -14,8 +14,14 @@ const CachePage: React.FC = () => {
 
   const loadCachedSongs = async () => {
     setIsLoading(true);
-    const songs = await db.songs.where('is_cached').equals(1).toArray();
-    setCachedSongs(songs);
+    try {
+      // Use filter instead of where().equals() to avoid boolean index key errors in some browsers
+      const songs = await db.songs.toCollection().filter(s => !!s.is_cached).toArray();
+      setCachedSongs(songs);
+    } catch (err) {
+      console.error("Failed to load cached songs:", err);
+      setCachedSongs([]);
+    }
     setIsLoading(false);
   };
 

@@ -40,7 +40,7 @@ function MyApp({ Component, pageProps }: AppProps) {
     <>
       <Head>
         <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#111827" />
+        <meta name="theme-color" content="#0f172a" />
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
       </Head>
       {isLoading && <LoadingSpinner />}

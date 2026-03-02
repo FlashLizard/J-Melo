@@ -49,6 +49,8 @@ export interface Settings {
   lyricFixLLMMaxTokens?: number; // Lyric fix LLM max tokens
   sharerNickname?: string; // New: Sharer nickname
   lyricsFontSize?: number; // New: Lyrics font size multiplier
+  defaultHomepage?: 'library' | 'player'; // New: Default homepage
+  themeMode?: 'light' | 'dark'; // New: Theme mode
 }
 
 export interface PromptTemplate {
@@ -195,6 +197,14 @@ class JeloDB extends Dexie {
     }).upgrade(async (tx) => {
       await tx.table('settings').toCollection().modify(setting => {
         if (setting.lyricsFontSize === undefined) setting.lyricsFontSize = 1.0;
+      });
+    });
+    this.version(18).stores({
+      settings: 'id, openaiApiKey, llmApiUrl, llmModelType, aiResponseLanguage, uiLanguage, lyricFixLLMApiKey, lyricFixLLMModelType, lyricFixLLMApiUrl, defaultPromptTemplateId, defaultCardTemplateId, showReadings, showTranslations, translationLLMApiKey, translationLLMApiUrl, translationLLMModelType, targetTranslationLanguage, backendUrl, llmMaxTokens, lyricFixLLMMaxTokens, translationLLMMaxTokens, sharerNickname, lyricsFontSize, defaultHomepage, themeMode',
+    }).upgrade(async (tx) => {
+      await tx.table('settings').toCollection().modify(setting => {
+        if (setting.defaultHomepage === undefined) setting.defaultHomepage = 'library';
+        if (setting.themeMode === undefined) setting.themeMode = 'dark';
       });
     });
   }

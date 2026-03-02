@@ -21,6 +21,7 @@ import ExploreView from '@/components/explore/ExploreView';
 import VocabularyView from '@/components/vocabulary/VocabularyView';
 import MySharedPanel from '@/components/explore/MySharedPanel';
 import useVocabularyStore from '@/stores/useVocabularyStore';
+import useSettingsStore from '@/stores/useSettingsStore';
 
 interface DisplaySongData {
   id?: number;
@@ -61,6 +62,7 @@ const TabButton = ({ isActive, onClick, label }: { isActive: boolean, onClick: (
 const HomePage = () => {
   const { fetchAllSongs, isLoading, deleteSongs } = useSongStore();
   const { loadWordsAndSongs } = useVocabularyStore();
+  const { settings, loadSettings } = useSettingsStore();
   const [songs, setSongs] = useState<DisplaySongData[]>([]);
   const { t } = useTranslation();
   const router = useRouter();
@@ -88,6 +90,38 @@ const HomePage = () => {
     const allSongs = await fetchAllSongs();
     setSongs(allSongs);
   };
+
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
+
+  useEffect(() => {
+    const performInitialRedirect = async () => {
+        // Only redirect on first visit to home page in this session
+        if (typeof window !== 'undefined' && sessionStorage.getItem('j-melo-initial-visited')) return;
+        
+        await loadSettings();
+        const currentSettings = useSettingsStore.getState().settings;
+        
+        if (currentSettings.defaultHomepage === 'player') {
+            const allSongsFromDb = await db.songs.toArray();
+            if (allSongsFromDb.length > 0) {
+                const randomSong = allSongsFromDb[Math.floor(Math.random() * allSongsFromDb.length)];
+                if (typeof window !== 'undefined') sessionStorage.setItem('j-melo-initial-visited', 'true');
+                router.push(`/player/${randomSong.id}`);
+            } else {
+                toast.error(t('home.noSongsFound') || "No songs in library. Redirecting to Library.");
+                if (typeof window !== 'undefined') sessionStorage.setItem('j-melo-initial-visited', 'true');
+            }
+        } else {
+            if (typeof window !== 'undefined') sessionStorage.setItem('j-melo-initial-visited', 'true');
+        }
+    };
+
+    if (router.isReady) {
+        performInitialRedirect();
+    }
+  }, [router.isReady, loadSettings, t, router]);
 
   useEffect(() => {
     loadSongs();

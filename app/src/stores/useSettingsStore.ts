@@ -31,6 +31,8 @@ const DEFAULT_SETTINGS: Settings = {
   llmMaxTokens: 32768,
   lyricFixLLMMaxTokens: 32768,
   sharerNickname: '', // New: default sharer nickname
+  defaultHomepage: 'library', // Default homepage
+  themeMode: 'dark', // Default theme
 };
 
 const useSettingsStore = create<SettingsState>()(
@@ -61,11 +63,29 @@ const useSettingsStore = create<SettingsState>()(
           
           // User's stored settings (from DB) override any defaults.
           state.settings = { ...finalDefaultSettings, ...storedSettings };
+          
+          // Apply theme mode on load
+          if (typeof document !== 'undefined') {
+              if (state.settings.themeMode === 'light') {
+                  document.documentElement.classList.add('light-mode');
+              } else {
+                  document.documentElement.classList.remove('light-mode');
+              }
+          }
         });
       },
       updateSetting: async (key, value) => {
         set((state) => {
           (state.settings as any)[key] = value; // Type assertion needed due to dynamic key
+          
+          // Apply theme mode instantly
+          if (key === 'themeMode' && typeof document !== 'undefined') {
+              if (value === 'light') {
+                  document.documentElement.classList.add('light-mode');
+              } else {
+                  document.documentElement.classList.remove('light-mode');
+              }
+          }
         });
         const currentSettings = get().settings;
         await db.settings.put({ ...currentSettings, id: 0 });

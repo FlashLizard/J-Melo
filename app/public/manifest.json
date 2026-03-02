@@ -4,8 +4,8 @@
   "description": "Japanese Language Learning App through Music",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#111827",
-  "theme_color": "#10b981",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
   "icons": [
     {
       "src": "/logo.svg",

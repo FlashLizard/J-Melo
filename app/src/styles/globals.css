@@ -1,6 +1,190 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --bg-deep-space: #0f172a;
+  --card-bg: rgba(31, 41, 55, 0.4); /* gray-800/40 */
+  --text-main: #ffffff;
+  --text-muted: #9ca3af; /* gray-400 */
+  --border-color: rgba(55, 65, 81, 0.5); /* gray-700/50 */
+}
+
+html.light-mode {
+  --bg-deep-space: #f1f5f9; /* slate-100 */
+  --card-bg: #ffffff;
+  --text-main: #0f172a;
+  --text-muted: #475569; /* slate-600 */
+  --border-color: #cbd5e1; /* slate-300 */
+}
+
+/* Base style overrides for light mode */
+html.light-mode body {
+  background-color: var(--bg-deep-space);
+  color: var(--text-main);
+}
+
+html.light-mode main {
+  background-color: var(--bg-deep-space) !important;
+  color: var(--text-main) !important;
+}
+
+/* Fix generic background colors */
+html.light-mode .bg-\[\#0f172a\],
+html.light-mode .bg-gray-900,
+html.light-mode .bg-gray-900\/80,
+html.light-mode .bg-gray-900\/50,
+html.light-mode .bg-gray-900\/40,
+html.light-mode .bg-gray-900\/30 {
+  background-color: var(--bg-deep-space) !important;
+}
+
+html.light-mode .bg-gray-800,
+html.light-mode .bg-gray-800\/90,
+html.light-mode .bg-gray-800\/80,
+html.light-mode .bg-gray-800\/60,
+html.light-mode .bg-gray-800\/40 {
+  background-color: var(--card-bg) !important;
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+/* Nav Bar and Bottom Bars */
+html.light-mode .fixed.top-0,
+html.light-mode .fixed.bottom-0,
+html.light-mode .sticky.top-0 {
+    background-color: rgba(241, 245, 249, 0.95) !important;
+    backdrop-filter: blur(12px);
+}
+
+/* THEME AWARE TEXT */
+/* By default, text-white becomes text-main in light mode */
+html.light-mode .text-white {
+  color: var(--text-main) !important;
+}
+
+/* EXCEPT for buttons/elements with colorful backgrounds - these MUST stay white */
+html.light-mode .bg-indigo-600,
+html.light-mode .bg-indigo-500,
+html.light-mode .bg-blue-600,
+html.light-mode .bg-blue-500,
+html.light-mode .bg-emerald-600,
+html.light-mode .bg-emerald-500,
+html.light-mode .bg-red-600,
+html.light-mode .bg-red-500,
+html.light-mode .bg-green-600,
+html.light-mode .bg-green-500,
+html.light-mode .bg-amber-600 {
+    color: #ffffff !important;
+}
+
+/* Force children of colored buttons to be white as well */
+html.light-mode .bg-indigo-600 *,
+html.light-mode .bg-indigo-500 *,
+html.light-mode .bg-blue-600 *,
+html.light-mode .bg-blue-500 *,
+html.light-mode .bg-emerald-600 *,
+html.light-mode .bg-emerald-500 *,
+html.light-mode .bg-red-600 *,
+html.light-mode .bg-red-500 *,
+html.light-mode .bg-green-600 *,
+html.light-mode .bg-green-500 *,
+html.light-mode .bg-amber-600 * {
+    color: #ffffff !important;
+}
+
+html.light-mode .text-gray-400, 
+html.light-mode .text-gray-300,
+html.light-mode .text-gray-200 {
+  color: var(--text-muted) !important;
+}
+
+html.light-mode .text-gray-500 {
+  color: #64748b !important;
+}
+
+html.light-mode .text-gray-600 {
+  color: #475569 !important;
+}
+
+/* Fix border colors */
+html.light-mode .border-gray-700,
+html.light-mode .border-gray-700\/50,
+html.light-mode .border-gray-700\/30,
+html.light-mode .border-gray-600,
+html.light-mode .border-white\/10 {
+  border-color: var(--border-color) !important;
+}
+
+/* Selection color override */
+html.light-mode .selection\:bg-indigo-500\/30::selection {
+  background-color: rgba(99, 102, 241, 0.2);
+}
+
+/* Specific component fixes */
+html.light-mode .bg-indigo-600 {
+    background-color: #4f46e5 !important;
+}
+
+/* Secondary gray buttons - should have dark text */
+html.light-mode .bg-gray-700,
+html.light-mode .bg-gray-600 {
+    background-color: #e2e8f0 !important; 
+    color: #1e293b !important;
+}
+
+html.light-mode .bg-gray-700\/80,
+html.light-mode .bg-gray-700\/50 {
+    background-color: rgba(226, 232, 240, 0.8) !important;
+}
+
+/* Fix Hover Effects for Light Mode */
+html.light-mode .hover\:bg-gray-700:hover,
+html.light-mode .hover\:bg-gray-600:hover,
+html.light-mode .hover\:bg-gray-500:hover,
+html.light-mode .hover\:bg-gray-800:hover {
+    background-color: #cbd5e1 !important;
+    color: #0f172a !important;
+}
+
+html.light-mode .group:hover .group-hover\:bg-gray-700,
+html.light-mode .group:hover .group-hover\:bg-gray-800 {
+    background-color: #cbd5e1 !important;
+}
+
+/* Inputs in light mode */
+html.light-mode input, 
+html.light-mode textarea,
+html.light-mode select {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    border-color: #cbd5e1 !important;
+}
+
+html.light-mode input::placeholder,
+html.light-mode textarea::placeholder {
+    color: #94a3b8 !important;
+}
+
+/* Scrollbar overrides for light mode */
+html.light-mode .custom-scrollbar::-webkit-scrollbar-track {
+    background: #f1f5f9;
+}
+html.light-mode .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border: 3px solid #f1f5f9;
+}
+
+/* SVG icons visibility in light mode - Specific overrides */
+html.light-mode .text-indigo-400 {
+    color: #4f46e5 !important;
+}
+html.light-mode .text-emerald-400 {
+    color: #059669 !important;
+}
+html.light-mode .text-red-400 {
+    color: #dc2626 !important;
+}
+
 input[type=range]::-webkit-slider-thumb {
   -webkit-appearance: none;
   position: relative; /* Needed for pseudo-element positioning */

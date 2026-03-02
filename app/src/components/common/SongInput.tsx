@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import useSongStore from '@/stores/useSongStore';
 import useTranslation from '@/hooks/useTranslation';
 import cn from 'classnames';
-import { db } from '@/lib/db';
+import useSettingsStore from '@/stores/useSettingsStore';
 
 const formatDuration = (seconds: number) => {
     if (!seconds) return '';
@@ -19,6 +19,7 @@ interface SongInputProps {
 
 const SongInput: React.FC<SongInputProps> = ({ initialMode = 'url', onComplete }) => {
     const { fetchSong, isLoading } = useSongStore();
+    const { settings, loadSettings } = useSettingsStore();
     const { t } = useTranslation();
     const [url, setUrl] = useState('');
     const [mode, setMode] = useState<'url' | 'search'>(initialMode);
@@ -26,9 +27,15 @@ const SongInput: React.FC<SongInputProps> = ({ initialMode = 'url', onComplete }
     const [searchResults, setSearchResults] = useState<any[]>([]);
     const [isSearching, setIsSearching] = useState(false);
 
+    const backendUrl = settings.backendUrl;
+
     useEffect(() => {
         setMode(initialMode);
     }, [initialMode]);
+
+    useEffect(() => {
+        loadSettings();
+    }, [loadSettings]);
 
     const handleFetch = async (targetUrl?: string) => {
         const urlToFetch = targetUrl || url;
@@ -37,16 +44,6 @@ const SongInput: React.FC<SongInputProps> = ({ initialMode = 'url', onComplete }
         if (!targetUrl) setUrl('');
         if (onComplete) onComplete();
     };
-
-    const [backendUrl, setBackendUrl] = useState('');
-
-    useEffect(() => {
-        const loadBackend = async () => {
-            const settings = await db.settings.get(0);
-            setBackendUrl(settings?.backendUrl || 'http://localhost:8000');
-        };
-        loadBackend();
-    }, []);
 
     const handleSearch = async (e: React.FormEvent) => {
         e.preventDefault();

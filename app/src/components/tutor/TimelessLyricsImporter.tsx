@@ -1,4 +1,4 @@
-﻿// src/components/tutor/TimelessLyricsImporter.tsx
+// src/components/tutor/TimelessLyricsImporter.tsx
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import useUIPanelStore from '@/stores/useUIPanelStore';
@@ -6,10 +6,10 @@ import useMobileViewStore from '@/stores/useMobileViewStore';
 import useSongStore from '@/stores/useSongStore';
 import useTranslation from '@/hooks/useTranslation';
 import { db } from '@/lib/db';
-import { LyricLine, LyricToken } from '@/interfaces/lyrics';
+import { LyricLine } from '@/interfaces/lyrics';
+import { formatLyricTimings } from '@/utils/lyricsProcessor';
 import cn from 'classnames';
 import { copyToClipboard } from '@/utils/copyToClipboard';
-import { v4 as uuidv4 } from 'uuid';
 import toast from 'react-hot-toast';
 
 const Modal: React.FC<{ 
@@ -29,7 +29,7 @@ const Modal: React.FC<{
 
   return createPortal(
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[60]" onClick={onClose}>
-      <div className="bg-gray-800 rounded-lg p-6 max-w-2xl w-full max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+      <div className="bg-gray-800 rounded-lg p-6 max-w-2xl w-full max-h-[80vh] flex flex-col shadow-2xl border border-gray-700" onClick={e => e.stopPropagation()}>
         <h3 className="text-xl font-bold mb-4">{title}</h3>
         <textarea 
             className="w-full flex-grow bg-gray-900 border border-gray-700 rounded p-4 text-sm font-mono text-gray-300 resize-none outline-none custom-scrollbar" 
@@ -45,7 +45,7 @@ const Modal: React.FC<{
                       toast.error('Failed to copy content.');
                   });
               }}
-              className="p-2 bg-gray-600 rounded-lg hover:bg-gray-500"
+              className="p-2 bg-gray-600 rounded-lg hover:bg-gray-500 transition-colors"
               title={t('settings.copyButton')}
           >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
@@ -108,7 +108,93 @@ const ErrorEditing: React.FC<{
   </div>
 );
 
-const DEFAULT_PROMPT_TEMPLATE = `You are an expert in Japanese lyrics. A user has provided a block of plaintext Japanese lyrics for a song. Your task is to produce a high-quality, time-coded JSON transcription.\n\nSince you don't have the audio, please estimate the timings as best as you can based on typical song structure and line lengths.\n\nThe lyrics are:\n---\n{plaintext_lyrics}\n---\n\nPlease output a JSON array of "lyric lines". The JSON should be enclosed in a single markdown code block.\n\nEach line object must contain:\n- "startTime": Estimated start time in seconds.\n- "endTime": Estimated end time in seconds.\n- "text": The full Japanese text of the sentence.\n- "tokens": An array of word objects.\n\nEach word object must contain:\n- "surface": The Japanese word.\n- "reading": The hiragana reading.\n- "startTime": Estimated start time.\n- "endTime": Estimated end time.`;
+// --- Utaten Search Modal ---
+const UtatenSearchModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    defaultQuery: string;
+    onSelect: (url: string) => void;
+    t: (key: string) => string;
+}> = ({ isOpen, onClose, defaultQuery, onSelect, t }) => {
+    const [searchQuery, setSearchQuery] = useState(defaultQuery);
+    const [searchResults, setSearchResults] = useState<any[]>([]);
+    const [isSearching, setIsSearching] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (isOpen && defaultQuery) {
+            setSearchQuery(defaultQuery);
+            handleSearch(defaultQuery);
+        }
+    }, [isOpen, defaultQuery]);
+
+    const handleSearch = async (query: string) => {
+        if (!query.trim()) return;
+        setIsSearching(true);
+        setError(null);
+        setSearchResults([]);
+        try {
+            const storedSettings = await db.settings.get(0);
+            const backendUrl = storedSettings?.backendUrl || 'http://localhost:8000';
+            const response = await fetch(`${backendUrl}/api/lyrics/search-utaten?q=${encodeURIComponent(query)}`);
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.detail || 'Search failed');
+            }
+            const data = await response.json();
+            setSearchResults(data.results);
+        } catch (err) {
+            setError((err as Error).message);
+        } finally {
+            setIsSearching(false);
+        }
+    };
+
+    if (!isOpen) return null;
+
+    return createPortal(
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60] p-4">
+            <div className="bg-gray-800 text-white rounded-lg p-6 max-w-lg w-full max-h-[90vh] flex flex-col mx-auto my-auto shadow-2xl border border-gray-700">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl font-bold text-indigo-400">{t('aiLyricCorrector.utatenSearchTitle')}</h2>
+                    <button onClick={onClose} className="text-gray-400 hover:text-white font-bold text-xl">&times;</button>
+                </div>
+                
+                <form onSubmit={(e) => { e.preventDefault(); handleSearch(searchQuery); }} className="flex gap-2 mb-4">
+                    <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="flex-grow p-2 rounded bg-gray-900 border border-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        placeholder={t('explore.searchPlaceholder')}
+                    />
+                    <button type="submit" disabled={isSearching} className="px-4 py-2 bg-indigo-600 rounded hover:bg-indigo-500 font-bold disabled:opacity-50 transition-colors">
+                        {isSearching ? t('index.searchingStatus') : t('index.searchButton')}
+                    </button>
+                </form>
+
+                {error && <div className="text-red-400 text-sm mb-4">{error}</div>}
+
+                <div className="flex-grow overflow-y-auto pr-2 space-y-2 custom-scrollbar">
+                    {searchResults.length === 0 && !isSearching && !error && (
+                        <p className="text-center text-gray-500 py-4">{t('index.noResultsFound')}</p>
+                    )}
+                    {searchResults.map((result, idx) => (
+                        <div 
+                            key={idx}
+                            onClick={() => onSelect(result.url)}
+                            className="bg-gray-700/50 p-3 rounded cursor-pointer hover:bg-gray-700 border border-transparent hover:border-indigo-500 transition-colors"
+                        >
+                            <h3 className="font-bold text-gray-200">{result.title}</h3>
+                            <p className="text-sm text-gray-400">{result.artist}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>,
+        document.body
+    );
+};
 
 const TimelessLyricsImporter: React.FC = () => {
   const { song, setProcessedLyrics } = useSongStore();
@@ -119,13 +205,45 @@ const TimelessLyricsImporter: React.FC = () => {
   const [plaintextLyrics, setPlaintextLyrics] = useState('');
   const [jsonInput, setJsonInput] = useState('');
   const [mode, setMode] = useState<'generate' | 'import'>('generate');
-  const [promptTemplate, setPromptTemplate] = useState(DEFAULT_PROMPT_TEMPLATE);
+  const [promptTemplate, setPromptTemplate] = useState('');
+  const [isPromptDirty, setIsPromptDirty] = useState(false);
+
+  // Initialize prompt template from translation
+  useEffect(() => {
+    if (!isPromptDirty) {
+      setPromptTemplate(t('timelessLyricsImporter.defaultPrompt'));
+    }
+  }, [t, isPromptDirty]);
+
+  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const [isFetchingUtaten, setIsFetchingUtaten] = useState(false);
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<{ newLyrics: LyricLine[], rawLLMOutput: string } | null>(null);
   const [promptPreview, setPromptPreview] = useState<string | null>(null);
   const [editableLlmOutput, setEditableLlmOutput] = useState<string>('');
+
+  const handleFetchUtaten = async (url: string) => {
+    setIsSearchModalOpen(false);
+    setIsFetchingUtaten(true);
+    setError(null);
+    try {
+        const storedSettings = await db.settings.get(0);
+        const backendUrl = storedSettings?.backendUrl || 'http://localhost:8000';
+        const response = await fetch(`${backendUrl}/api/lyrics/fetch-utaten?url=${encodeURIComponent(url)}`);
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.detail || 'Failed to fetch from Utaten');
+        }
+        const data = await response.json();
+        setPlaintextLyrics(data.furigana_text);
+    } catch (err) {
+        setError(t('aiLyricCorrector.fetchError', { error: (err as Error).message }));
+    } finally {
+        setIsFetchingUtaten(false);
+    }
+  };
 
   const parseLlmOutput = (output: string) => {
     const jsonRegex = /```json\n([\s\S]*?)\n```/;
@@ -203,31 +321,31 @@ const TimelessLyricsImporter: React.FC = () => {
   
   const handleConfirm = () => {
     if (previewData) {
-      setProcessedLyrics(previewData.newLyrics);
+      setProcessedLyrics(formatLyricTimings(previewData.newLyrics));
     }
     setPreviewData(null);
-    
     setActivePanel('TOOL_PANEL');
   };
 
   const handleDirectImport = () => {
     try {
         const parsedLyrics = JSON.parse(jsonInput);
-        setProcessedLyrics(parsedLyrics);
-        
+        setProcessedLyrics(formatLyricTimings(parsedLyrics));
         setActivePanel('TOOL_PANEL');
     } catch (e) {
         toast.error(t('home.importError', { message: (e as Error).message }));
     }
   };
 
-  const handleBack = () => {
-      
-      setActivePanel('TOOL_PANEL');
-  };
-
   return (
     <>
+      <UtatenSearchModal 
+        isOpen={isSearchModalOpen}
+        onClose={() => setIsSearchModalOpen(false)}
+        defaultQuery={song?.title || ''}
+        onSelect={handleFetchUtaten}
+        t={t}
+      />
       {previewData && (
         <LyricPreviewModal
           newLyrics={previewData.newLyrics}
@@ -247,21 +365,21 @@ const TimelessLyricsImporter: React.FC = () => {
       )}
       <div className="bg-gray-800 p-4 sm:p-5 rounded-2xl h-full flex flex-col text-white border border-gray-700/50 shadow-xl overflow-hidden">
         <div className="flex justify-between items-center mb-5 pb-4 border-b border-gray-700/50 flex-shrink-0">
-          <h2 className="text-xl font-bold tracking-wide">{t('lyricsDisplay.noLyrics.importButton')}</h2>
+          <h2 className="text-xl font-bold tracking-wide">{t('timelessLyricsImporter.title')}</h2>
           <button 
-              onClick={handleBack} 
+              onClick={() => setActivePanel('TOOL_PANEL')} 
               className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-xl text-sm font-medium transition-colors flex items-center gap-2"
           >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-              {t('aiLyricCorrector.backButton')}
+              {t('timelessLyricsImporter.backButton')}
           </button>
         </div>
 
         <div className="flex border-b border-gray-700 mb-4 flex-shrink-0">
-          <button onClick={() => setMode('generate')} className={cn('px-4 py-2 text-sm font-medium', { 'border-b-2 border-green-500 text-white': mode === 'generate', 'text-gray-400': mode !== 'generate' })}>
+          <button onClick={() => setMode('generate')} className={cn('px-4 py-2 text-sm font-medium', { 'border-b-2 border-indigo-500 text-white': mode === 'generate', 'text-gray-400': mode !== 'generate' })}>
               {t('timelessLyricsImporter.generateMode')}
           </button>
-          <button onClick={() => setMode('import')} className={cn('px-4 py-2 text-sm font-medium', { 'border-b-2 border-green-500 text-white': mode === 'import', 'text-gray-400': mode !== 'import' })}>
+          <button onClick={() => setMode('import')} className={cn('px-4 py-2 text-sm font-medium', { 'border-b-2 border-indigo-500 text-white': mode === 'import', 'text-gray-400': mode !== 'import' })}>
               {t('timelessLyricsImporter.importMode')}
           </button>
         </div>
@@ -284,12 +402,27 @@ const TimelessLyricsImporter: React.FC = () => {
 
         {mode === 'generate' && (
           <div className="flex-grow flex flex-col space-y-4 overflow-y-auto pr-2 custom-scrollbar">
+            {/* Utaten Fetcher Section */}
+            <div className="bg-gray-700/50 p-3 rounded-lg border border-gray-700 flex justify-between items-center">
+              <div>
+                  <h3 className="text-sm font-bold text-indigo-300">{t('aiLyricCorrector.utatenTitle')}</h3>
+                  <p className="text-xs text-gray-400 mt-1">{t('aiLyricCorrector.utatenDescription')}</p>
+              </div>
+              <button
+                  onClick={() => setIsSearchModalOpen(true)}
+                  disabled={isFetchingUtaten}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded text-sm font-bold disabled:opacity-50 transition-colors whitespace-nowrap ml-2"
+              >
+                  {isFetchingUtaten ? t('aiLyricCorrector.fetchingButton') : t('aiLyricCorrector.searchUtatenButton')}
+              </button>
+            </div>
+
             <div className="flex flex-col">
               <label className="text-sm font-semibold mb-1 text-gray-300">{t('timelessLyricsImporter.step1PasteLyrics')}</label>
               <textarea 
                 rows={10} 
                 className="w-full bg-gray-900 text-white p-2 rounded border border-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500" 
-                placeholder={t('timelessLyricsImporter.lyricsPlaceholder')} 
+                placeholder={t('timelessLyricsImporter.placeholder')} 
                 value={plaintextLyrics} 
                 onChange={(e) => setPlaintextLyrics(e.target.value)} 
                 disabled={isLoading}
@@ -299,22 +432,30 @@ const TimelessLyricsImporter: React.FC = () => {
               <label className="text-sm font-semibold mb-1 text-gray-300">{t('timelessLyricsImporter.step2LlmPromptTemplate')}</label>
               <textarea 
                 rows={8} 
-                className="w-full bg-gray-900 text-white p-2 rounded border border-gray-700 font-mono text-xs" 
+                className="w-full bg-gray-900 text-white p-2 rounded border border-gray-700 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-2" 
                 value={promptTemplate} 
-                onChange={(e) => setPromptTemplate(e.target.value)} 
+                onChange={(e) => { setPromptTemplate(e.target.value); setIsPromptDirty(true); }} 
                 disabled={isLoading}
               />
+              <div className="mb-4">
+                <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">{t('aiPanel.placeholdersTitle')}</h4>
+                <div className="flex flex-wrap gap-1.5">
+                  {['{plaintext_lyrics}'].map(p => (
+                    <code key={p} className="px-1.5 py-0.5 bg-indigo-900/30 text-indigo-300 border border-indigo-800/30 rounded text-[10px] font-mono">{p}</code>
+                  ))}
+                </div>
+              </div>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-2 pb-4">
               <button
-                className="px-4 py-2 bg-indigo-600 rounded-lg hover:bg-indigo-500 disabled:opacity-50"
+                className="px-4 py-2 bg-indigo-600 rounded-lg hover:bg-indigo-500 disabled:opacity-50 transition-colors"
                 onClick={handlePreviewPrompt}
                 disabled={isLoading}
               >
                 {t('aiLyricCorrector.previewPromptButton')}
               </button>
               <button
-                className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-500 disabled:opacity-50"
+                className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-500 disabled:opacity-50 transition-colors"
                 onClick={handleGenerate}
                 disabled={isLoading}
               >
@@ -327,17 +468,17 @@ const TimelessLyricsImporter: React.FC = () => {
         {mode === 'import' && (
           <div className="flex-grow flex flex-col space-y-4 overflow-y-auto pr-2 custom-scrollbar">
             <div className="flex flex-col">
-              <label className="text-sm font-semibold mb-1 text-gray-300">{t('timelessLyricsImporter.pasteJson')}</label>
+              <label className="text-sm font-semibold mb-1 text-gray-300">{t('timelessLyricsImporter.importMode')}</label>
               <textarea 
                 rows={20} 
-                className="w-full bg-gray-900 text-white p-2 rounded border border-gray-700 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-green-500" 
+                className="w-full bg-gray-900 text-white p-2 rounded border border-gray-700 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500" 
                 placeholder={t('timelessLyricsImporter.jsonPlaceholder')} 
                 value={jsonInput} 
                 onChange={(e) => setJsonInput(e.target.value)} 
               />
             </div>
             <div className="flex justify-end mt-4 pb-4">
-              <button onClick={handleDirectImport} className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-500" disabled={!jsonInput.trim()}>
+              <button onClick={handleDirectImport} className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-500 transition-colors active:scale-95" disabled={!jsonInput.trim()}>
                   {t('timelessLyricsImporter.importJsonButton')}
               </button>
             </div>

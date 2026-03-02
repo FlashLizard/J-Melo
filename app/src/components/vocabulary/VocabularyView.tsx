@@ -12,17 +12,13 @@ const VocabularyView = () => {
   const { 
     words, songs, displayMode, searchQuery, selectedIds, isSelectionMode,
     isReviewing,
-    loadWordsAndSongs, setDisplayMode, setSearchQuery, toggleSelectionMode, 
-    selectedIds: selectedIdsSet, toggleIdSelection, selectBySongId, selectAll, deselectAll, deleteSelected,
+    setDisplayMode, setSearchQuery, toggleSelectionMode, 
+    toggleIdSelection, selectBySongId, selectAll, deselectAll, deleteSelected,
     exportSelectedToAnki
   } = useVocabularyStore();
 
   const [isReviewSetupOpen, setIsReviewSetupOpen] = useState(false);
   const { t } = useTranslation();
-
-  useEffect(() => {
-    loadWordsAndSongs();
-  }, [loadWordsAndSongs]);
 
   const songMap = useMemo(() => {
     const map = new Map<number, SongRecord>();

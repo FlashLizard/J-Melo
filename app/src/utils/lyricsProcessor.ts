@@ -12,15 +12,15 @@ export const processWhisperXOutput = async (data: WhisperXOutput, kuroshiro: Kur
             return {
                 surface: word.word,
                 reading: reading,
-                startTime: word.start,
-                endTime: word.end,
+                startTime: Number(word.start.toFixed(2)),
+                endTime: Number(word.end.toFixed(2)),
             };
         }));
 
         return {
             id: uuidv4(),
-            startTime: segment.start,
-            endTime: segment.end,
+            startTime: Number(segment.start.toFixed(2)),
+            endTime: Number(segment.end.toFixed(2)),
             text: segment.text.trim(),
             tokens: tokens,
             translation: '',
@@ -28,4 +28,21 @@ export const processWhisperXOutput = async (data: WhisperXOutput, kuroshiro: Kur
     }));
 
     return lines;
+};
+
+/**
+ * Ensures all time-related fields in the lyrics array are rounded to 2 decimal places.
+ */
+export const formatLyricTimings = (lines: LyricLine[]): LyricLine[] => {
+    if (!lines) return [];
+    return lines.map(line => ({
+        ...line,
+        startTime: typeof line.startTime === 'number' ? Number(line.startTime.toFixed(2)) : line.startTime,
+        endTime: typeof line.endTime === 'number' ? Number(line.endTime.toFixed(2)) : line.endTime,
+        tokens: line.tokens ? line.tokens.map(token => ({
+            ...token,
+            startTime: typeof token.startTime === 'number' ? Number(token.startTime.toFixed(2)) : token.startTime,
+            endTime: typeof token.endTime === 'number' ? Number(token.endTime.toFixed(2)) : token.endTime,
+        })) : []
+    }));
 };

@@ -1,9 +1,10 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import useUIPanelStore from '@/stores/useUIPanelStore';
 import useSongStore from '@/stores/useSongStore';
 import useMobileViewStore from '@/stores/useMobileViewStore';
 import useTranslation from '@/hooks/useTranslation';
 import { LyricLine } from '@/interfaces/lyrics';
+import { formatLyricTimings } from '@/utils/lyricsProcessor';
 import { copyToClipboard } from '@/utils/copyToClipboard';
 import toast from 'react-hot-toast';
 
@@ -18,7 +19,8 @@ const FullLyricsEditor: React.FC = () => {
   const [jsonError, setJsonError] = useState<string | null>(null);
 
   useEffect(() => {
-    setJsonString(JSON.stringify(lyrics, null, 2));
+    // Format on load to keep it clean
+    setJsonString(JSON.stringify(formatLyricTimings(lyrics), null, 2));
     clearPreviewLyrics();
   }, [lyrics, clearPreviewLyrics]);
 
@@ -52,9 +54,17 @@ const FullLyricsEditor: React.FC = () => {
       toast.error(t('fullLyricsEditor.jsonSaveError', { error: jsonError }));
       return;
     }
-    commitPreviewLyrics();
     
-    setActivePanel('TOOL_PANEL');
+    // Auto-format before saving
+    try {
+        const parsed = JSON.parse(jsonString) as LyricLine[];
+        const formatted = formatLyricTimings(parsed);
+        setPreviewLyrics(formatted);
+        commitPreviewLyrics();
+        setActivePanel('TOOL_PANEL');
+    } catch (e) {
+        toast.error('Invalid JSON. Please fix before saving.');
+    }
   };
 
   const handleCancel = () => {

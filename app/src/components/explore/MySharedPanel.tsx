@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import useTranslation from '@/hooks/useTranslation';
 import { db } from '@/lib/db';
 import { motion, AnimatePresence } from 'framer-motion';
+import useSettingsStore from '@/stores/useSettingsStore';
 
 interface CommunitySong {
     id: number;
@@ -20,23 +21,20 @@ interface MySharedPanelProps {
 
 const MySharedPanel: React.FC<MySharedPanelProps> = ({ onClose }) => {
     const { t } = useTranslation();
+    const { settings, loadSettings } = useSettingsStore();
     const [songs, setSongs] = useState<CommunitySong[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [backendUrl, setBackendUrl] = useState('');
-    const [sharerNickname, setSharerNickname] = useState('');
     const [mounted, setMounted] = useState(false);
+
+    const backendUrl = settings.backendUrl;
+    const sharerNickname = settings.sharerNickname;
 
     useEffect(() => {
         setMounted(true);
-        const loadSettings = async () => {
-            const settings = await db.settings.get(0);
-            setBackendUrl(settings?.backendUrl || 'http://localhost:8000');
-            setSharerNickname(settings?.sharerNickname || '');
-        };
         loadSettings();
         return () => setMounted(false);
-    }, []);
+    }, [loadSettings]);
 
     useEffect(() => {
         const fetchMySongs = async () => {
@@ -126,7 +124,7 @@ const MySharedPanel: React.FC<MySharedPanelProps> = ({ onClose }) => {
                                     key={song.id}
                                     className="bg-gray-900/40 border border-gray-700/50 p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:border-gray-600 transition-colors group"
                                 >
-                                    <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-4 min-w-0 w-full sm:w-auto">
                                         <div className="w-16 h-16 bg-gray-700 flex-shrink-0 rounded-xl overflow-hidden shadow-inner">
                                             {song.cover_url ? (
                                                 <img
@@ -140,15 +138,15 @@ const MySharedPanel: React.FC<MySharedPanelProps> = ({ onClose }) => {
                                                 </div>
                                             )}
                                         </div>
-                                        <div className="min-w-0">
-                                            <h3 className="text-lg font-bold truncate">{song.title}</h3>
+                                        <div className="min-w-0 flex-grow">
+                                            <h3 className="text-lg font-bold truncate text-white" title={song.title}>{song.title}</h3>
                                             <p className="text-sm text-gray-400 truncate">{song.artist}</p>
                                             <p className="text-[10px] text-gray-500 mt-1 font-mono">{new Date(song.created_at).toLocaleString()}</p>
                                         </div>
                                     </div>
                                     <button
                                         onClick={() => handleDelete(song.id)}
-                                        className="w-full sm:w-auto px-4 py-2 bg-red-900/40 text-red-300 border border-red-800/50 rounded-xl hover:bg-red-600 hover:text-white transition-all text-sm font-bold flex items-center justify-center gap-2"
+                                        className="w-full sm:w-auto px-4 py-2 flex-shrink-0 bg-red-900/40 text-red-300 border border-red-800/50 rounded-xl hover:bg-red-600 hover:text-white transition-all text-sm font-bold flex items-center justify-center gap-2"
                                     >
                                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                         {t('home.deleteButton')}

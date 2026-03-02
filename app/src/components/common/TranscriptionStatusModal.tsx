@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import useTranslation from '@/hooks/useTranslation';
-import { db } from '@/lib/db';
+import useSettingsStore from '@/stores/useSettingsStore';
 
 interface TranscriptionTask {
     id: string;
@@ -23,17 +23,25 @@ const getStatusPill = (status: string, t: (key: string) => string) => {
 };
 
 const TranscriptionStatusModal: React.FC<{ isOpen: boolean; onClose: () => void; }> = ({ isOpen, onClose }) => {
+    const { settings, loadSettings } = useSettingsStore();
     const [tasks, setTasks] = useState<TranscriptionTask[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const { t } = useTranslation();
 
+    const backendUrl = settings.backendUrl;
+
+    useEffect(() => {
+        if (isOpen) {
+            loadSettings();
+        }
+    }, [isOpen, loadSettings]);
+
     const fetchTasks = useCallback(async () => {
+        if (!backendUrl) return;
         setIsLoading(true);
         setError(null);
         try {
-            const settings = await db.settings.get(0);
-            const backendUrl = settings?.backendUrl || 'http://localhost:8000';
             const response = await fetch(`${backendUrl}/api/public/transcription-tasks`);
             if (!response.ok) throw new Error('Failed to fetch transcription queue.');
             const data = await response.json();
@@ -43,18 +51,19 @@ const TranscriptionStatusModal: React.FC<{ isOpen: boolean; onClose: () => void;
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [backendUrl]);
 
     useEffect(() => {
-        if (isOpen) {
+        if (isOpen && backendUrl) {
             fetchTasks();
         }
-    }, [isOpen, fetchTasks]);
+    }, [isOpen, backendUrl, fetchTasks]);
 
     if (!isOpen) return null;
 
     return createPortal(
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[200] p-4">            <div className="bg-gray-800 text-white rounded-lg shadow-xl p-6 max-w-2xl w-full max-h-[80vh] flex flex-col">
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[200] p-4">
+            <div className="bg-gray-800 text-white rounded-lg shadow-xl p-6 max-w-2xl w-full max-h-[80vh] flex flex-col">
                 <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-700">
                     <h2 className="text-xl font-bold text-gray-200">{t('transcriptionStatus.modalTitle')}</h2>
                     <div className="flex items-center gap-2">

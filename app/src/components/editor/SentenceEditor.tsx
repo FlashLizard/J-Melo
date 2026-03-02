@@ -1,6 +1,7 @@
-﻿// app/src/components/editor/SentenceEditor.tsx
+// app/src/components/editor/SentenceEditor.tsx
 import EditableWordRow from './EditableWordRow';
 import { LyricLine, LyricToken } from '@/interfaces/lyrics';
+import { formatLyricTimings } from '@/utils/lyricsProcessor';
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import useTranslation from '@/hooks/useTranslation'; // Import useTranslation
 import useMobileViewStore from '@/stores/useMobileViewStore'; // Import useMobileViewStore
@@ -245,7 +246,10 @@ const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, lineIndex, onSave
       return;
     }
     setActiveView('lyrics'); // Navigate to lyrics view on mobile after save
-    onSave(lineIndex, currentLine);
+    
+    // Ensure all timings in this line (and its tokens) are rounded
+    const formattedLine = formatLyricTimings([currentLine])[0];
+    onSave(lineIndex, formattedLine);
   };
   
   const handleCancelClick = () => {

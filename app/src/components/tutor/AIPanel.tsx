@@ -216,10 +216,19 @@ const AIPanel: React.FC = () => {
               </h3>
               <textarea 
                 rows={4} 
-                className="w-full bg-gray-800/80 text-gray-200 p-3 rounded-xl border border-gray-700 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-none custom-scrollbar mb-3" 
+                className="w-full bg-gray-800/80 text-gray-200 p-3 rounded-xl border border-gray-700 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-none custom-scrollbar mb-2" 
                 value={currentPromptContent} 
                 onChange={(e) => setCurrentPromptContent(e.target.value)} 
               />
+
+              <div className="mb-4">
+                <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">{t('aiPanel.placeholdersTitle')}</h4>
+                <div className="flex flex-wrap gap-1.5">
+                  {['{word}', '{reading}', '{sentence}', '{song_title}', '{song_artist}'].map(p => (
+                    <code key={p} className="px-1.5 py-0.5 bg-indigo-900/30 text-indigo-300 border border-indigo-800/30 rounded text-[10px] font-mono">{p}</code>
+                  ))}
+                </div>
+              </div>
               
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                 <select 

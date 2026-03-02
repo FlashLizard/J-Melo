@@ -7,6 +7,7 @@ import ImportConflictModal, { Conflict } from '@/components/common/ImportConflic
 import { SongRecord, WordRecord } from '@/lib/db';
 import SongPreviewModal from '@/components/explore/SongPreviewModal';
 import cn from 'classnames';
+import useSettingsStore from '@/stores/useSettingsStore';
 
 interface CommunitySong {
     id: number;
@@ -25,20 +26,17 @@ interface ImportState {
 
 const ExploreView: React.FC = () => {
     const { t } = useTranslation();
+    const { settings, loadSettings } = useSettingsStore();
     const [songs, setSongs] = useState<CommunitySong[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [backendUrl, setBackendUrl] = useState('');
-    const [myNickname, setMyNickname] = useState('');
     const [importState, setImportState] = useState<ImportState | null>(null);
     const [previewSong, setPreviewSong] = useState<CommunitySong | null>(null);
+    const [displayMode, setDisplayMode] = useState<'grid' | 'list'>('grid');
 
-    const loadSettings = async () => {
-        const settings = await db.settings.get(0);
-        setBackendUrl(settings?.backendUrl || 'http://localhost:8000');
-        setMyNickname(settings?.sharerNickname || '');
-    };
+    const backendUrl = settings.backendUrl;
+    const myNickname = settings.sharerNickname;
 
     const fetchSongs = useCallback(async (query: string = '') => {
         if (!backendUrl) return;
@@ -60,7 +58,7 @@ const ExploreView: React.FC = () => {
 
     useEffect(() => {
         loadSettings();
-    }, []);
+    }, [loadSettings]);
 
     useEffect(() => {
         if (backendUrl) {
@@ -193,24 +191,48 @@ const ExploreView: React.FC = () => {
                 />
             )}
 
-            <form onSubmit={handleSearch} className="mb-10 flex gap-3 max-w-3xl mx-auto w-full">
-                <div className="relative flex-grow">
-                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                        <svg className="h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+            {/* Unified Top Bar: Search Form (with Icon Button) and Mode Toggle */}
+            <div className="mb-10 flex flex-row items-center gap-2 sm:gap-3 max-w-5xl mx-auto w-full">
+                <form onSubmit={handleSearch} className="relative flex-grow min-w-0 flex gap-2 sm:gap-3">
+                    <div className="relative flex-grow">
+                        <div className="absolute inset-y-0 left-0 pl-3 sm:pl-4 flex items-center pointer-events-none">
+                            <svg className="h-4 w-4 sm:h-5 sm:w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                        </div>
+                        <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder={t('explore.searchPlaceholder')}
+                            className="w-full pl-9 sm:pl-12 pr-3 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl bg-gray-800/60 border border-gray-700/50 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-white text-sm sm:text-base placeholder-gray-500 shadow-inner"
+                        />
                     </div>
-                    <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder={t('explore.searchPlaceholder')}
-                        className="w-full pl-12 pr-4 py-3 rounded-xl bg-gray-800/60 border border-gray-700/50 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-white placeholder-gray-500 shadow-inner"
-                    />
+                    <button 
+                        type="submit" 
+                        disabled={isLoading}
+                        className="p-2.5 sm:p-3 bg-indigo-600/90 rounded-xl sm:rounded-2xl hover:bg-indigo-500 text-white transition-all border border-indigo-500/30 shadow-md active:scale-95 shrink-0 disabled:opacity-50"
+                        title={t('explore.searchButton')}
+                    >
+                        <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                    </button>
+                </form>
+
+                <div className="flex bg-gray-800/60 p-1 rounded-xl sm:rounded-2xl border border-gray-700/50 shadow-inner shrink-0">
+                    <button 
+                        onClick={() => setDisplayMode('grid')}
+                        className={cn("p-1.5 sm:p-2 rounded-lg sm:rounded-xl transition-all", displayMode === 'grid' ? "bg-gray-700 text-indigo-400 shadow-sm" : "text-gray-500 hover:text-gray-300")}
+                        title="Grid Mode"
+                    >
+                        <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
+                    </button>
+                    <button 
+                        onClick={() => setDisplayMode('list')}
+                        className={cn("p-1.5 sm:p-2 rounded-lg sm:rounded-xl transition-all", displayMode === 'list' ? "bg-gray-700 text-indigo-400 shadow-sm" : "text-gray-500 hover:text-gray-300")}
+                        title="List Mode"
+                    >
+                        <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+                    </button>
                 </div>
-                <button type="submit" className="px-8 py-3 bg-indigo-600/90 rounded-xl hover:bg-indigo-500 font-bold transition-all border border-indigo-500/30 shadow-md shadow-indigo-900/20 active:scale-95 flex items-center gap-2 flex-shrink-0">
-                    <span className="hidden sm:inline">{t('explore.searchButton')}</span>
-                    <span className="sm:hidden">Search</span>
-                </button>
-            </form>
+            </div>
 
             {error && (
                 <div className="bg-red-900/40 border border-red-800 p-4 rounded-2xl mb-8 text-center text-red-200">
@@ -230,7 +252,7 @@ const ExploreView: React.FC = () => {
                     </div>
                     <p className="text-xl text-gray-300 font-medium mb-2">{t('explore.noSongsFound')}</p>
                 </div>
-            ) : (
+            ) : displayMode === 'grid' ? (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 sm:gap-6">
                     {songs.map((song) => (
                         <div 
@@ -260,6 +282,41 @@ const ExploreView: React.FC = () => {
                                         <span>{new Date(song.created_at).toLocaleDateString()}</span>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <div className="flex flex-col gap-2 max-w-5xl mx-auto w-full">
+                    {songs.map((song) => (
+                        <div 
+                            key={song.id}
+                            onClick={() => setPreviewSong(song)}
+                            className="flex items-center gap-4 p-3 rounded-2xl bg-gray-800/40 border border-gray-700/50 hover:bg-gray-800/60 hover:border-gray-600 transition-all duration-200 select-none cursor-pointer group"
+                        >
+                            <div className="w-14 h-14 rounded-xl bg-gray-700 overflow-hidden flex-shrink-0 shadow-inner">
+                                {song.cover_url ? (
+                                    <img 
+                                        src={song.cover_url.startsWith('/') ? `${backendUrl}${song.cover_url}` : `${backendUrl}/api/media/proxy-image?url=${encodeURIComponent(song.cover_url)}`} 
+                                        alt={song.title} 
+                                        className="w-full h-full object-cover" 
+                                    />
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-gray-500">
+                                        <svg className="w-6 h-6 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="flex-grow min-w-0">
+                                <h3 className="font-bold text-white truncate">{song.title}</h3>
+                                <p className="text-sm text-gray-400 truncate">{song.artist || t('home.unknownArtist')}</p>
+                            </div>
+                            <div className="flex flex-col items-end shrink-0 pr-2 text-right">
+                                <span className="text-[10px] text-indigo-400 font-bold flex items-center gap-1 uppercase tracking-tighter">
+                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                                    {song.sharer_name}
+                                </span>
+                                <span className="text-[10px] text-gray-500 mt-0.5">{new Date(song.created_at).toLocaleDateString()}</span>
                             </div>
                         </div>
                     ))}

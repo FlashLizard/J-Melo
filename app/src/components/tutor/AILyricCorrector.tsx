@@ -1,12 +1,13 @@
-﻿// src/components/tutor/AILyricCorrector.tsx
+// src/components/tutor/AILyricCorrector.tsx
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import useUIPanelStore from '@/stores/useUIPanelStore';
-import useMobileViewStore from '@/stores/useMobileViewStore'; // Import useMobileViewStore
+import useMobileViewStore from '@/stores/useMobileViewStore';
 import { db } from '@/lib/db';
-import useSongStore from '@/stores/useSongStore'; // Changed from songStoreActions
+import useSongStore from '@/stores/useSongStore';
 import { LyricLine } from '@/interfaces/lyrics';
-import useTranslation from '@/hooks/useTranslation'; // Import useTranslation
+import { formatLyricTimings } from '@/utils/lyricsProcessor';
+import useTranslation from '@/hooks/useTranslation';
 import { copyToClipboard } from '@/utils/copyToClipboard';
 import cn from 'classnames';
 import toast from 'react-hot-toast';
@@ -28,10 +29,10 @@ const Modal: React.FC<{
 
   return createPortal(
     <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-800 text-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] flex flex-col">
+      <div className="bg-gray-800 text-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-gray-700">
         <h2 className="text-2xl font-bold mb-4">{title}</h2>
         <div className="flex-grow overflow-y-auto bg-gray-900 p-4 rounded-md border border-gray-700 mb-4">
-          <pre className="text-sm whitespace-pre-wrap">{content}</pre>
+          <pre className="text-sm whitespace-pre-wrap font-mono">{content}</pre>
         </div>
 
         {children}
@@ -45,14 +46,15 @@ const Modal: React.FC<{
                       toast.error('Failed to copy content.');
                   });
               }}
-              className="p-2 bg-gray-600 rounded-lg hover:bg-gray-500"
+              className="p-2 bg-gray-600 rounded-lg hover:bg-gray-500 transition-colors"
               title={t('settings.copyButton')}
-          >              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+          >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                   <path d="M7 3a1 1 0 011-1h3a1 1 0 011 1v1h1a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h1V3z" />
                   <path d="M9 2a2 2 0 00-2 2v1h4V4a2 2 0 00-2-2z" />
               </svg>
           </button>
-          <button onClick={onClose} className="px-4 py-2 bg-gray-600 rounded-lg hover:bg-gray-500">{t('aiLyricCorrector.closeButton')}</button>
+          <button onClick={onClose} className="px-4 py-2 bg-gray-600 rounded-lg hover:bg-gray-500 transition-colors">{t('aiLyricCorrector.closeButton')}</button>
         </div>
       </div>
     </div>,
@@ -118,7 +120,6 @@ const UtatenSearchModal: React.FC<{
     const [isSearching, setIsSearching] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // Perform initial search when modal opens
     useEffect(() => {
         if (isOpen && defaultQuery) {
             setSearchQuery(defaultQuery);
@@ -152,7 +153,7 @@ const UtatenSearchModal: React.FC<{
 
     return createPortal(
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60] p-4">
-            <div className="bg-gray-800 text-white rounded-lg p-6 max-w-lg w-full max-h-[90vh] flex flex-col mx-auto my-auto shadow-2xl">
+            <div className="bg-gray-800 text-white rounded-lg p-6 max-w-lg w-full max-h-[90vh] flex flex-col mx-auto my-auto shadow-2xl border border-gray-700">
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-xl font-bold text-indigo-400">{t('aiLyricCorrector.utatenSearchTitle')}</h2>
                     <button onClick={onClose} className="text-gray-400 hover:text-white font-bold text-xl">&times;</button>
@@ -163,10 +164,10 @@ const UtatenSearchModal: React.FC<{
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="flex-grow p-2 rounded bg-gray-900 border border-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        className="flex-grow p-2 rounded bg-gray-900 border border-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                         placeholder={t('explore.searchPlaceholder')}
                     />
-                    <button type="submit" disabled={isSearching} className="px-4 py-2 bg-indigo-600 rounded hover:bg-indigo-500 font-bold disabled:opacity-50">
+                    <button type="submit" disabled={isSearching} className="px-4 py-2 bg-indigo-600 rounded hover:bg-indigo-500 font-bold disabled:opacity-50 transition-colors">
                         {isSearching ? t('index.searchingStatus') : t('index.searchButton')}
                     </button>
                 </form>
@@ -194,20 +195,26 @@ const UtatenSearchModal: React.FC<{
     );
 };
 
-const DEFAULT_PROMPT_TEMPLATE = `You are an expert in audio transcription and Japanese lyrics. A user has provided a potentially inaccurate transcription of a song. They have also provided a block of text containing the correct lyrics, and the original JSON data to use as a timing reference.\n\nYour task is to listen to the song audio and produce a new, perfectly accurate, time-coded JSON transcription.\n\nThe user-provided correct lyrics are:\n---\n{correct_lyrics}\n---\n\nThe original, potentially inaccurate JSON is:\n---\n{original_lyrics_json}\n---\n\nPlease output a JSON object that follows the specified format. The JSON should be enclosed in a single markdown code block.\n\nThe format is an array of "lyric lines". Each line object must contain:\n- "startTime": The start time of the sentence in seconds.\n- "endTime": The end time of the sentence in seconds.\n- "text": The full Japanese text of the sentence.\n- "tokens": An array of word objects.\n\nEach word object in the "tokens" array must contain:\n- "surface": The Japanese word.\n- "reading": The hiragana reading of the word.\n- "startTime": The start time of the word in seconds.\n- "endTime": The end time of the word in seconds.`;
-
 const AILyricCorrector: React.FC = () => {
-  const { song, lyrics, setProcessedLyrics } = useSongStore(); // Get song to use its title for searching
+  const { song, lyrics, setProcessedLyrics } = useSongStore();
   const { t } = useTranslation();
   const { setActiveView } = useMobileViewStore();
+  const { setActivePanel } = useUIPanelStore();
 
   const [correctLyrics, setCorrectLyrics] = useState('');
   const [jsonInput, setJsonInput] = useState('');
   const [mainMode, setMainMode] = useState<'generate' | 'import'>('generate');
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [isFetchingUtaten, setIsFetchingUtaten] = useState(false);
-  const [promptTemplate, setPromptTemplate] = useState(DEFAULT_PROMPT_TEMPLATE);
-  const { setActivePanel } = useUIPanelStore();
+  const [promptTemplate, setPromptTemplate] = useState('');
+  const [isPromptDirty, setIsPromptDirty] = useState(false);
+
+  // Initialize prompt template from translation
+  useEffect(() => {
+    if (!isPromptDirty) {
+      setPromptTemplate(t('aiLyricCorrector.defaultPrompt'));
+    }
+  }, [t, isPromptDirty]);
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -216,7 +223,7 @@ const AILyricCorrector: React.FC = () => {
   const [editableLlmOutput, setEditableLlmOutput] = useState<string>('');
 
   const handleFetchUtaten = async (url: string) => {
-    setIsSearchModalOpen(false); // Close modal when selection is made
+    setIsSearchModalOpen(false);
     setIsFetchingUtaten(true);
     setError(null);
     try {
@@ -228,9 +235,7 @@ const AILyricCorrector: React.FC = () => {
             throw new Error(errData.detail || 'Failed to fetch from Utaten');
         }
         const data = await response.json();
-        // We use furigana_text as it's more comprehensive for the LLM
         setCorrectLyrics(data.furigana_text);
-        
     } catch (err) {
         setError(t('aiLyricCorrector.fetchError', { error: (err as Error).message }));
     } finally {
@@ -252,38 +257,40 @@ const AILyricCorrector: React.FC = () => {
     setError(null);
     setEditableLlmOutput('');
     setPreviewData(null);
-  
+
     try {
-      const settings = await db.settings.get(0);
-      const apiKey = settings?.lyricFixLLMApiKey || settings?.openaiApiKey;
-      const apiUrl = settings?.lyricFixLLMApiUrl || settings?.llmApiUrl || 'https://api.openai.com/v1/chat/completions';
-      const modelType = settings?.lyricFixLLMModelType || settings?.llmModelType || 'gpt-3.5-turbo';
-      const maxTokens = settings?.lyricFixLLMMaxTokens || settings?.llmMaxTokens || 32768;
-  
+      const storedSettings = await db.settings.get(0);
+      const apiKey = storedSettings?.openaiApiKey;
+      const apiUrl = storedSettings?.llmApiUrl || 'https://api.openai.com/v1/chat/completions';
+      const modelType = storedSettings?.llmModelType || 'gpt-3.5-turbo';
+      const maxTokens = storedSettings?.llmMaxTokens || 32768;
+
       if (!apiKey) throw new Error(t('aiLyricCorrector.apiKeyNotSet'));
       if (!correctLyrics.trim()) throw new Error(t('aiLyricCorrector.pasteCorrectLyricsHint'));
-  
-      const originalLyricsJson = JSON.stringify(lyrics, null, 2);
+
+      // Ensure timings are rounded to 2 decimal places for the prompt
+      const formattedLyrics = formatLyricTimings(lyrics);
+      const originalLyricsJson = JSON.stringify(formattedLyrics, null, 2);
       const finalPrompt = promptTemplate
         .replace('{correct_lyrics}', correctLyrics)
         .replace('{original_lyrics_json}', originalLyricsJson);
-  
+
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: modelType, messages: [{ role: 'user', content: finalPrompt }], temperature: 0.2, max_tokens: maxTokens }),
+        body: JSON.stringify({ model: modelType, messages: [{ role: 'user', content: finalPrompt }], temperature: 0.3, max_tokens: maxTokens }),
       });
-  
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(`${t('aiLyricCorrector.llmApiError')}: ${errorData.error?.message || t('aiLyricCorrector.failedToFetch')}`);
       }
-  
+
       const result = await response.json();
       const llmOutput = result.choices[0]?.message?.content;
-  
+
       if (!llmOutput) throw new Error(t('aiLyricCorrector.llmEmptyResponse'));
-      
+
       try {
         const parsedJson = parseLlmOutput(llmOutput);
         setPreviewData({ newLyrics: parsedJson, rawLLMOutput: llmOutput });
@@ -291,7 +298,7 @@ const AILyricCorrector: React.FC = () => {
         setError((e as Error).message);
         setEditableLlmOutput(llmOutput);
       }
-  
+
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -311,7 +318,8 @@ const AILyricCorrector: React.FC = () => {
   };
 
   const handlePreviewPrompt = () => {
-    const originalLyricsJson = JSON.stringify(lyrics, null, 2);
+    const formattedLyrics = formatLyricTimings(lyrics);
+    const originalLyricsJson = JSON.stringify(formattedLyrics, null, 2);
     const finalPrompt = promptTemplate
       .replace('{correct_lyrics}', correctLyrics)
       .replace('{original_lyrics_json}', originalLyricsJson);
@@ -320,29 +328,23 @@ const AILyricCorrector: React.FC = () => {
   
   const handleConfirm = () => {
     if (previewData) {
-      setProcessedLyrics(previewData.newLyrics); // Use setProcessedLyrics directly
+      // Ensure final saved lyrics are also formatted correctly
+      setProcessedLyrics(formatLyricTimings(previewData.newLyrics));
     }
     setPreviewData(null);
-     // Navigate to lyrics view on mobile after confirm
     setActivePanel('TOOL_PANEL');
   };
 
   const handleDirectImport = () => {
     try {
         const parsedLyrics = JSON.parse(jsonInput);
-        setProcessedLyrics(parsedLyrics);
-        
+        setProcessedLyrics(formatLyricTimings(parsedLyrics));
         setActivePanel('TOOL_PANEL');
     } catch (e) {
         toast.error(t('home.importError', { message: (e as Error).message }));
     }
   };
 
-  const handleBack = () => {
-      
-      setActivePanel('TOOL_PANEL');
-  };
-  
   return (
     <>
       <UtatenSearchModal 
@@ -371,43 +373,43 @@ const AILyricCorrector: React.FC = () => {
       )}
       <div className="bg-gray-800 p-4 sm:p-5 rounded-2xl h-full flex flex-col text-white border border-gray-700/50 shadow-xl overflow-hidden">
         <div className="flex justify-between items-center mb-5 pb-4 border-b border-gray-700/50 flex-shrink-0">
-            <h2 className="text-xl font-bold tracking-wide">{t('aiLyricCorrector.title')}</h2>
-            <button
-                className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-xl text-sm font-medium transition-colors flex items-center gap-2"
-                onClick={() => {  setActivePanel('TOOL_PANEL');  }}
-                disabled={isLoading}
-            >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-                {t('aiLyricCorrector.backButton')}
-            </button>
+          <h2 className="text-xl font-bold tracking-wide">{t('toolPanel.aiLyricCorrectionButton')}</h2>
+          <button 
+              onClick={() => setActivePanel('TOOL_PANEL')} 
+              className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-xl text-sm font-medium transition-colors flex items-center gap-2"
+          >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+              {t('aiLyricCorrector.backButton')}
+          </button>
         </div>
 
-        <div className="flex border-b border-gray-700 mb-4 flex-shrink-0">          <button onClick={() => setMainMode('generate')} className={cn('px-4 py-2 text-sm font-medium', { 'border-b-2 border-green-500 text-white': mainMode === 'generate', 'text-gray-400': mainMode !== 'generate' })}>
-              {t('timelessLyricsImporter.generateMode')}
+        <div className="flex border-b border-gray-700 mb-4 flex-shrink-0">
+          <button onClick={() => setMainMode('generate')} className={cn('px-4 py-2 text-sm font-medium', { 'border-b-2 border-indigo-500 text-white': mainMode === 'generate', 'text-gray-400': mainMode !== 'generate' })}>
+              {t('aiLyricCorrector.generateMode')}
           </button>
-          <button onClick={() => setMainMode('import')} className={cn('px-4 py-2 text-sm font-medium', { 'border-b-2 border-green-500 text-white': mainMode === 'import', 'text-gray-400': mainMode !== 'import' })}>
-              {t('timelessLyricsImporter.importMode')}
+          <button onClick={() => setMainMode('import')} className={cn('px-4 py-2 text-sm font-medium', { 'border-b-2 border-indigo-500 text-white': mainMode === 'import', 'text-gray-400': mainMode !== 'import' })}>
+              {t('aiLyricCorrector.importMode')}
           </button>
         </div>
-        
+  
         {error && editableLlmOutput && (
-          <ErrorEditing 
-            errorMessage={error}
-            rawOutput={editableLlmOutput}
-            onRawOutputChange={setEditableLlmOutput}
-            onRevalidate={handleRevalidate}
-            t={t}
-          />
+            <ErrorEditing 
+              errorMessage={error}
+              rawOutput={editableLlmOutput}
+              onRawOutputChange={setEditableLlmOutput}
+              onRevalidate={handleRevalidate}
+              t={t}
+            />
         )}
         {error && !editableLlmOutput && (
-           <div className="bg-red-800 border border-red-600 p-3 rounded-md mb-4">
+           <div className="bg-red-800 border border-red-600 p-3 rounded-md mb-4 flex-shrink-0">
               <h3 className="font-bold text-red-200">{t('aiLyricCorrector.errorOccurred')}</h3>
               <p className="text-red-200 text-sm whitespace-pre-wrap">{error}</p>
             </div>
         )}
 
         {mainMode === 'generate' && (
-            <div className="flex-grow flex flex-col space-y-4 overflow-y-auto">
+            <div className="flex-grow flex flex-col space-y-4 overflow-y-auto pr-2 custom-scrollbar">
               {/* Utaten Fetcher Section */}
               <div className="bg-gray-700/50 p-3 rounded-lg border border-gray-700 flex justify-between items-center">
                 <div>
@@ -445,26 +447,31 @@ const AILyricCorrector: React.FC = () => {
                 <textarea
                   id="prompt-template"
                   rows={8}
-                  className="w-full bg-gray-900 text-white p-2 rounded border border-gray-700 font-mono text-xs"
+                  className="w-full bg-gray-900 text-white p-2 rounded border border-gray-700 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-2"
                   value={promptTemplate}
-                  onChange={(e) => setPromptTemplate(e.target.value)}
+                  onChange={(e) => { setPromptTemplate(e.target.value); setIsPromptDirty(true); }}
                   disabled={isLoading}
                 />
-                 <div className="text-xs text-gray-500 mt-1">
-                  {t('aiLyricCorrector.promptTemplateTagsHint')}
+                <div className="mb-4">
+                  <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">{t('aiPanel.placeholdersTitle')}</h4>
+                  <div className="flex flex-wrap gap-1.5">
+                    {['{correct_lyrics}', '{original_lyrics_json}'].map(p => (
+                      <code key={p} className="px-1.5 py-0.5 bg-indigo-900/30 text-indigo-300 border border-indigo-800/30 rounded text-[10px] font-mono">{p}</code>
+                    ))}
+                  </div>
                 </div>
               </div>
             
               <div className="mt-4 grid grid-cols-2 gap-2 pb-4">
                 <button
-                  className="px-4 py-2 bg-indigo-600 rounded-lg hover:bg-indigo-500 disabled:opacity-50"
+                  className="px-4 py-2 bg-indigo-600 rounded-lg hover:bg-indigo-500 disabled:opacity-50 transition-all active:scale-95"
                   onClick={handlePreviewPrompt}
                   disabled={isLoading}
                 >
                   {t('aiLyricCorrector.previewPromptButton')}
                 </button>
                 <button
-                  className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-500 disabled:opacity-50"
+                  className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-500 disabled:opacity-50 transition-all active:scale-95"
                   onClick={handleSmartFix}
                   disabled={isLoading}
                 >
@@ -475,20 +482,20 @@ const AILyricCorrector: React.FC = () => {
         )}
 
         {mainMode === 'import' && (
-          <div className="flex-grow flex flex-col space-y-4 overflow-y-auto">
+          <div className="flex-grow flex flex-col space-y-4 overflow-y-auto pr-2 custom-scrollbar">
             <div className="flex flex-col">
-              <label className="text-sm font-semibold mb-1 text-gray-300">{t('timelessLyricsImporter.pasteJson')}</label>
+              <label className="text-sm font-semibold mb-1 text-gray-300">{t('aiLyricCorrector.importMode')}</label>
               <textarea 
                 rows={20} 
-                className="w-full bg-gray-900 text-white p-2 rounded border border-gray-700 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-green-500" 
-                placeholder={t('timelessLyricsImporter.jsonPlaceholder')} 
+                className="w-full bg-gray-900 text-white p-2 rounded border border-gray-700 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500" 
+                placeholder={t('aiLyricCorrector.jsonPlaceholder')} 
                 value={jsonInput} 
                 onChange={(e) => setJsonInput(e.target.value)} 
               />
             </div>
-            <div className="flex justify-end mt-4">
-              <button onClick={handleDirectImport} className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-500" disabled={!jsonInput.trim()}>
-                  {t('timelessLyricsImporter.importJsonButton')}
+            <div className="flex justify-end mt-4 pb-4">
+              <button onClick={handleDirectImport} className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-500 transition-all active:scale-95" disabled={!jsonInput.trim()}>
+                  {t('aiLyricCorrector.importJsonButton')}
               </button>
             </div>
           </div>

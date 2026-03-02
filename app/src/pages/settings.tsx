@@ -11,6 +11,38 @@ import { saveAs } from 'file-saver';
 import toast from 'react-hot-toast';
 import Head from 'next/head';
 
+const SectionCard: React.FC<{ title: string; icon: React.ReactNode; children: React.ReactNode }> = ({ title, icon, children }) => (
+  <div className="bg-gray-800/40 backdrop-blur-sm rounded-3xl border border-gray-700/50 p-6 sm:p-8 shadow-lg">
+      <h2 className="text-lg font-bold text-gray-200 uppercase tracking-wider mb-6 flex items-center gap-3">
+          <span className="text-indigo-400">{icon}</span>
+          {title}
+      </h2>
+      {children}
+  </div>
+);
+
+const InputField: React.FC<{ 
+  label: string; 
+  name: string; 
+  type?: string; 
+  placeholder?: string; 
+  value: any; 
+  onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void 
+}> = ({ label, name, type = 'text', placeholder, value, onChange }) => (
+  <div>
+      <label htmlFor={name} className="block text-sm font-medium text-gray-400 mb-2 ml-1">{label}</label>
+      <input
+          type={type}
+          id={name}
+          name={name}
+          value={value || ''}
+          onChange={onChange}
+          placeholder={placeholder}
+          className="w-full p-3 rounded-2xl bg-gray-900/50 border border-gray-700/50 text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all placeholder-gray-600 shadow-inner"
+      />
+  </div>
+);
+
 const SettingsPage: React.FC = () => {
   const { settings, updateSetting, loadSettings } = useSettingsStore();
   const { t } = useTranslation();
@@ -130,31 +162,6 @@ const SettingsPage: React.FC = () => {
     };
     reader.readAsText(file);
   };
-
-  const SectionCard: React.FC<{ title: string; icon: React.ReactNode; children: React.ReactNode }> = ({ title, icon, children }) => (
-    <div className="bg-gray-800/40 backdrop-blur-sm rounded-3xl border border-gray-700/50 p-6 sm:p-8 shadow-lg">
-        <h2 className="text-lg font-bold text-gray-200 uppercase tracking-wider mb-6 flex items-center gap-3">
-            <span className="text-indigo-400">{icon}</span>
-            {title}
-        </h2>
-        {children}
-    </div>
-  );
-
-  const InputField: React.FC<{ label: string; name: string; type?: string; placeholder?: string; value: any }> = ({ label, name, type = 'text', placeholder, value }) => (
-    <div>
-        <label htmlFor={name} className="block text-sm font-medium text-gray-400 mb-2 ml-1">{label}</label>
-        <input
-            type={type}
-            id={name}
-            name={name}
-            value={value || ''}
-            onChange={handleInputChange}
-            placeholder={placeholder}
-            className="w-full p-3 rounded-2xl bg-gray-900/50 border border-gray-700/50 text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all placeholder-gray-600 shadow-inner"
-        />
-    </div>
-  );
 
   return (
     <>
@@ -326,22 +333,22 @@ const SettingsPage: React.FC = () => {
                               <option value="zh">{t('language.chinese')}</option>
                           </select>
                       </div>
-                      <InputField label={t('settings.apiKey')} name="openaiApiKey" type="password" value={settings.openaiApiKey} />
-                      <InputField label={t('settings.llmApiUrl')} name="llmApiUrl" value={settings.llmApiUrl} placeholder="e.g., https://api.openai.com/v1/chat/completions" />
+                      <InputField label={t('settings.apiKey')} name="openaiApiKey" type="password" value={settings.openaiApiKey} onChange={handleInputChange} />
+                      <InputField label={t('settings.llmApiUrl')} name="llmApiUrl" value={settings.llmApiUrl} placeholder="e.g., https://api.openai.com/v1/chat/completions" onChange={handleInputChange} />
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                          <InputField label={t('settings.llmModelType')} name="llmModelType" value={settings.llmModelType} placeholder="e.g., gpt-3.5-turbo" />
-                          <InputField label={t('settings.llmMaxTokens')} name="llmMaxTokens" type="number" value={settings.llmMaxTokens} placeholder="e.g., 32768" />
+                          <InputField label={t('settings.llmModelType')} name="llmModelType" value={settings.llmModelType} placeholder="e.g., gpt-3.5-turbo" onChange={handleInputChange} />
+                          <InputField label={t('settings.llmMaxTokens')} name="llmMaxTokens" type="number" value={settings.llmMaxTokens} placeholder="e.g., 32768" onChange={handleInputChange} />
                       </div>
                   </div>
               </SectionCard>
 
               <SectionCard title={t('settings.lyricFixLlmSectionTitle')} icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>}>
                   <div className="space-y-6">
-                      <InputField label={t('settings.apiKey')} name="lyricFixLLMApiKey" type="password" value={settings.lyricFixLLMApiKey} />
-                      <InputField label={t('settings.llmApiUrl')} name="lyricFixLLMApiUrl" value={settings.lyricFixLLMApiUrl} />
+                      <InputField label={t('settings.apiKey')} name="lyricFixLLMApiKey" type="password" value={settings.lyricFixLLMApiKey} onChange={handleInputChange} />
+                      <InputField label={t('settings.llmApiUrl')} name="lyricFixLLMApiUrl" value={settings.lyricFixLLMApiUrl} onChange={handleInputChange} />
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                          <InputField label={t('settings.llmModelType')} name="lyricFixLLMModelType" value={settings.lyricFixLLMModelType} />
-                          <InputField label={t('settings.llmMaxTokens')} name="lyricFixLLMMaxTokens" type="number" value={settings.lyricFixLLMMaxTokens} />
+                          <InputField label={t('settings.llmModelType')} name="lyricFixLLMModelType" value={settings.lyricFixLLMModelType} onChange={handleInputChange} />
+                          <InputField label={t('settings.llmMaxTokens')} name="lyricFixLLMMaxTokens" type="number" value={settings.lyricFixLLMMaxTokens} onChange={handleInputChange} />
                       </div>
                       <p className="text-xs text-gray-500 ml-1 italic">{t('settings.lyricFixApiKeyHint')}</p>
                   </div>
@@ -361,11 +368,11 @@ const SettingsPage: React.FC = () => {
                               <option value="es">{t('language.spanish')}</option>
                           </select>
                       </div>
-                      <InputField label={t('settings.apiKey')} name="translationLLMApiKey" type="password" value={settings.translationLLMApiKey} />
-                      <InputField label={t('settings.llmApiUrl')} name="translationLLMApiUrl" value={settings.translationLLMApiUrl} />
+                      <InputField label={t('settings.apiKey')} name="translationLLMApiKey" type="password" value={settings.translationLLMApiKey} onChange={handleInputChange} />
+                      <InputField label={t('settings.llmApiUrl')} name="translationLLMApiUrl" value={settings.translationLLMApiUrl} onChange={handleInputChange} />
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                          <InputField label={t('settings.llmModelType')} name="translationLLMModelType" value={settings.translationLLMModelType} />
-                          <InputField label={t('settings.llmMaxTokens')} name="translationLLMMaxTokens" type="number" value={settings.translationLLMMaxTokens} />
+                          <InputField label={t('settings.llmModelType')} name="translationLLMModelType" value={settings.translationLLMModelType} onChange={handleInputChange} />
+                          <InputField label={t('settings.llmMaxTokens')} name="translationLLMMaxTokens" type="number" value={settings.translationLLMMaxTokens} onChange={handleInputChange} />
                       </div>
                       <p className="text-xs text-gray-500 ml-1 italic">{t('settings.lyricTranslationApiKeyHint')}</p>
                   </div>

@@ -43,6 +43,16 @@ interface TaskStatus {
     created_at: string;
 }
 
+const SectionCard: React.FC<{ title: string; icon?: React.ReactNode; children: React.ReactNode }> = ({ title, icon, children }) => (
+  <div className="bg-gray-800/40 backdrop-blur-sm rounded-3xl border border-gray-700/50 p-6 sm:p-8 shadow-lg">
+      <h2 className="text-xl font-bold text-gray-200 uppercase tracking-wider mb-6 flex items-center gap-3">
+          {icon && <span className="text-indigo-400">{icon}</span>}
+          {title}
+      </h2>
+      {children}
+  </div>
+);
+
 const AdminPage = () => {
   const { t } = useTranslation();
   const [token, setToken] = useState('');
@@ -72,7 +82,7 @@ const AdminPage = () => {
       const [cacheRes, configRes, tasksRes] = await Promise.all([
         fetch(`${backendUrl}/api/admin/cache-info`, { headers }),
         fetch(`${backendUrl}/api/admin/config`, { headers }),
-        fetch(`${backendUrl}/api/admin/tasks`, { headers })
+        fetch(`${backendUrl}/api/admin/transcription-tasks`, { headers })
       ]);
 
       if (!cacheRes.ok || !configRes.ok || !tasksRes.ok) {
@@ -84,9 +94,35 @@ const AdminPage = () => {
       const configData = await configRes.json();
       const tasksData = await tasksRes.json();
 
-      setCacheInfo(cacheData);
-      setPolicies(configData);
-      setTasks(tasksData.tasks);
+      // Map backend data to frontend structure
+      setCacheInfo({
+          media: cacheData.media_cache,
+          tokens: cacheData.token_cache,
+          transcription: cacheData.transcription_cache,
+          community: {
+              db_size_bytes: cacheData.community_db.size_bytes,
+              song_count: 0, // Not provided by this endpoint currently
+              quota_bytes: configData.community_policy?.max_db_size_bytes || 1024 * 1024 * 1024
+          }
+      });
+
+      setPolicies({
+          media: configData.media_cache_policy,
+          tokens: configData.token_cache_policy,
+          transcription: configData.transcription_cache_policy,
+          proxy: configData.proxy,
+          admin_token: configData.admin_token
+      });
+
+      // Transform tasks map to array
+      const tasksList: TaskStatus[] = Object.entries(tasksData).map(([id, info]: [string, any]) => ({
+          url: info.display_name || id,
+          status: info.status,
+          queue_position: 0,
+          created_at: info.started_at || new Date().toISOString()
+      }));
+      setTasks(tasksList);
+
       setIsAuthenticated(true);
       sessionStorage.setItem('admin_token', authToken);
     } catch (err) {
@@ -117,14 +153,20 @@ const AdminPage = () => {
   };
 
   const handleClearCache = async (cacheName: string) => {
+    // Map frontend names to backend names if necessary
+    const backendCacheName = cacheName === 'transcription' ? 'transcriptions' : cacheName;
     if (!window.confirm(t('admin.confirmClear', { cacheName }))) return;
     
     setIsLoading(true);
     try {
       const authToken = sessionStorage.getItem('admin_token');
-      const res = await fetch(`${backendUrl}/api/admin/clear-cache/${cacheName}`, {
+      const res = await fetch(`${backendUrl}/api/admin/clear-cache`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${authToken}` }
+        headers: { 
+            'Authorization': `Bearer ${authToken}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ cache_name: backendCacheName })
       });
       if (!res.ok) throw new Error(t('admin.clearError'));
       alert(t('admin.clearSuccess', { cacheName }));
@@ -141,13 +183,20 @@ const AdminPage = () => {
     setIsSaving(true);
     try {
       const authToken = sessionStorage.getItem('admin_token');
+      const payload = {
+          admin_token: policies.admin_token,
+          proxy: policies.proxy,
+          media_cache_policy: policies.media,
+          token_cache_policy: policies.tokens,
+          transcription_cache_policy: policies.transcription
+      };
       const res = await fetch(`${backendUrl}/api/admin/config`, {
         method: 'POST',
         headers: { 
             'Authorization': `Bearer ${authToken}`,
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify(policies)
+        body: JSON.stringify(payload)
       });
       if (!res.ok) throw new Error(t('admin.saveConfigError'));
       alert(t('admin.saveConfigSuccess'));
@@ -159,16 +208,6 @@ const AdminPage = () => {
   };
 
   if (!backendUrl) return null;
-
-  const SectionCard: React.FC<{ title: string; icon?: React.ReactNode; children: React.ReactNode }> = ({ title, icon, children }) => (
-    <div className="bg-gray-800/40 backdrop-blur-sm rounded-3xl border border-gray-700/50 p-6 sm:p-8 shadow-lg">
-        <h2 className="text-xl font-bold text-gray-200 uppercase tracking-wider mb-6 flex items-center gap-3">
-            {icon && <span className="text-indigo-400">{icon}</span>}
-            {title}
-        </h2>
-        {children}
-    </div>
-  );
 
   return (
     <>

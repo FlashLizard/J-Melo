@@ -1,4 +1,4 @@
-const CACHE_NAME = 'j-melo-cache-v3';
+const CACHE_NAME = 'j-melo-cache-v6';
 const PRECACHE_ASSETS = [
   '/',
   '/manifest.json',
@@ -8,7 +8,6 @@ const PRECACHE_ASSETS = [
   '/i18n/en.json'
 ];
 
-// Dictionary data files needed for kuroshiro (kuromoji)
 const DICT_ASSETS = [
   '/dict/base.dat.gz',
   '/dict/cc.dat.gz',
@@ -28,7 +27,14 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll([...PRECACHE_ASSETS, ...DICT_ASSETS]);
+      return Promise.allSettled(
+        [...PRECACHE_ASSETS, ...DICT_ASSETS].map(url => 
+          fetch(url).then(response => {
+            if (response.ok) return cache.put(url, response);
+            throw new Error(`Failed to fetch ${url}`);
+          }).catch(err => console.warn(`Precache failed for ${url}:`, err))
+        )
+      );
     })
   );
 });
@@ -49,9 +55,11 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
+
   const url = new URL(event.request.url);
 
-  // 1. Strategy: Cache proxied images even if they are cross-origin
+  // 1. Media Proxy Images
   if (url.pathname.includes('/api/media/proxy-image')) {
     event.respondWith(
       caches.match(event.request).then((cachedResponse) => {
@@ -62,18 +70,13 @@ self.addEventListener('fetch', (event) => {
             caches.open(CACHE_NAME).then(cache => cache.put(event.request, cacheCopy));
           }
           return networkResponse;
-        }).catch(() => null);
+        }).catch(() => new Response('', { status: 404 }));
       })
     );
     return;
   }
 
-  // 2. Skip other cross-origin requests
-  if (url.origin !== self.location.origin) {
-    return;
-  }
-
-  // 3. Strategy: Cache First for Static Assets (Dictionary, i18n, logo, fonts)
+  // 2. Local Static Assets (i18n, dict, logos) - Cache First
   if (
     url.pathname.startsWith('/dict/') ||
     url.pathname.startsWith('/i18n/') ||
@@ -83,17 +86,12 @@ self.addEventListener('fetch', (event) => {
   ) {
     event.respondWith(
       caches.match(event.request).then((cachedResponse) => {
-        if (cachedResponse) {
-          return cachedResponse;
-        }
+        if (cachedResponse) return cachedResponse;
         return fetch(event.request).then((response) => {
-          if (!response || response.status !== 200 || response.type !== 'basic') {
-            return response;
+          if (response && response.status === 200) {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
           }
-          const responseToCache = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
           return response;
         });
       })
@@ -101,45 +99,57 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 4. Strategy: Stale-While-Revalidate for Next.js scripts and styles
-  if (url.pathname.startsWith('/_next/static/')) {
+  // 3. Next.js Internal Assets (Stale-While-Revalidate)
+  if (url.pathname.startsWith('/_next/')) {
     event.respondWith(
-      caches.open(CACHE_NAME).then((cache) => {
-        return cache.match(event.request).then((cachedResponse) => {
-          const fetchedResponse = fetch(event.request).then((networkResponse) => {
-            cache.put(event.request, networkResponse.clone());
-            return networkResponse;
-          }).catch(() => null);
-
-          return cachedResponse || fetchedResponse;
+      caches.match(event.request).then((cachedResponse) => {
+        const fetchPromise = fetch(event.request).then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
+          }
+          return networkResponse;
+        }).catch(() => {
+            // Return null so we can check it later
+            return null;
         });
+
+        if (cachedResponse) return cachedResponse;
+        return fetchPromise.then(resp => resp || new Response('', { status: 404 }));
       })
     );
     return;
   }
 
-  // 5. Strategy: Network First for Page Navigation (HTML)
+  // 4. Page Navigation (Network First, fallback to cached '/' index)
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-          const responseToCache = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
+          if (response && response.status === 200) {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
+          }
           return response;
         })
         .catch(() => {
-          return caches.match('/'); 
+          return caches.match(event.request).then(response => {
+            return response || caches.match('/');
+          });
         })
     );
     return;
   }
 
-  // 6. Default: Match cache or Network
-  event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request);
-    })
-  );
+  // 5. Default - Match Cache or Network
+  if (url.origin === self.location.origin) {
+    event.respondWith(
+      caches.match(event.request).then((response) => {
+        return response || fetch(event.request).catch(() => {
+            if (event.request.destination === 'image') return new Response('', { status: 404 });
+            return new Response('Offline', { status: 503 });
+        });
+      })
+    );
+  }
 });

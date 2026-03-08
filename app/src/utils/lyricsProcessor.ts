@@ -1,21 +1,19 @@
 // app/src/utils/lyricsProcessor.ts
 import { WhisperXOutput, LyricLine, LyricToken } from '@/interfaces/lyrics';
-import Kuroshiro from 'kuroshiro';
 import { v4 as uuidv4 } from 'uuid';
 
-export const processWhisperXOutput = async (data: WhisperXOutput, kuroshiro: Kuroshiro): Promise<LyricLine[]> => {
+export const processWhisperXOutput = async (data: WhisperXOutput): Promise<LyricLine[]> => {
     if (!data || !data.segments) return [];
 
-    const lines: LyricLine[] = await Promise.all(data.segments.map(async (segment) => {
-        const tokens: LyricToken[] = await Promise.all(segment.words.map(async (word) => {
-            const reading = await kuroshiro.convert(word.word, { to: 'hiragana', mode: 'spaced' });
+    const lines: LyricLine[] = data.segments.map((segment) => {
+        const tokens: LyricToken[] = segment.words.map((word) => {
             return {
                 surface: word.word,
-                reading: reading,
+                reading: (word as any).reading || word.word, // Use backend reading if available
                 startTime: Number(word.start.toFixed(2)),
                 endTime: Number(word.end.toFixed(2)),
             };
-        }));
+        });
 
         return {
             id: uuidv4(),
@@ -25,7 +23,7 @@ export const processWhisperXOutput = async (data: WhisperXOutput, kuroshiro: Kur
             tokens: tokens,
             translation: '',
         };
-    }));
+    });
 
     return lines;
 };

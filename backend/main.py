@@ -11,6 +11,8 @@ import sqlite3
 import base64
 from pathlib import Path
 from bs4 import BeautifulSoup
+import jaconv
+from sudachipy import dictionary, tokenizer
 from fastapi import Depends, FastAPI, HTTPException, Response, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
@@ -73,6 +75,19 @@ except Exception as e:
     print(f"Error loading WhisperX model: {e}")
     model = None
 
+# Initialize Sudachi
+print("Initializing Sudachi with full dictionary...")
+try:
+    # Requires sudachipy and sudachidict_full packages
+    sudachi_dict = dictionary.Dictionary(dict="full")
+    sudachi_tokenizer = sudachi_dict.create()
+except Exception as e:
+    print(f"WARNING: Could not load Sudachi 'full' dictionary. Falling back to default: {e}")
+    sudachi_dict = dictionary.Dictionary()
+    sudachi_tokenizer = sudachi_dict.create()
+
+sudachi_split_mode = tokenizer.Tokenizer.SplitMode.C
+
 # --- Security ---
 bearer_scheme = HTTPBearer()
 
@@ -130,7 +145,54 @@ class SharedSongUpload(BaseModel):
     song_data: dict
     words_data: list
 
+class AnnotateRequest(BaseModel):
+    text: str
+
 # --- Services ---
+
+def is_pure_kana_or_punct(s: str) -> bool:
+    """Checks if a string consists only of Hiragana, Katakana, Punctuation or whitespace."""
+    import re
+    # \u3040-\u309f: Hiragana
+    # \u30a0-\u30ff: Katakana (and \u30fc long vowel)
+    # \u3000-\u303f: Japanese punctuation
+    # \s: whitespace
+    # [\u0020-\u002f\u003a-\u0040\u005b-\u0060\u007b-\u007e]: ASCII punctuation/symbols
+    pattern = r'^[\u3040-\u309f\u30a0-\u30ff\u30fc\u3000-\u303f\s\u0020-\u002f\u003a-\u0040\u005b-\u0060\u007b-\u007e！-～]+$'
+    return bool(re.match(pattern, s))
+
+def annotate_japanese_text(text: str) -> str:
+    """Annotates text with furigana for words containing Kanji or other non-kana scripts."""
+    if not text:
+        return ""
+    
+    # Split text into lines to preserve structure
+    lines = text.splitlines()
+    annotated_lines = []
+    
+    for line in lines:
+        if not line.strip():
+            annotated_lines.append(line)
+            continue
+            
+        tokens = sudachi_tokenizer.tokenize(line, sudachi_split_mode)
+        result = []
+        for t in tokens:
+            surface = t.surface()
+            if is_pure_kana_or_punct(surface):
+                result.append(surface)
+            else:
+                # Not pure kana/punct (likely contains Kanji)
+                # Sudachi reading is Katakana. Convert to Hiragana.
+                reading = jaconv.kata2hira(t.reading_form())
+                if reading == surface:
+                    result.append(surface)
+                else:
+                    result.append(f"{surface}[{reading}]")
+        annotated_lines.append("".join(result))
+        
+    return "\n".join(annotated_lines)
+
 def fetch_media_info(url: str) -> dict:
     command = ["yt-dlp", "--dump-json", "--no-playlist", url]
     proxy = ADMIN_CONFIG.get("proxy")
@@ -180,6 +242,14 @@ app.add_middleware(
 @app.get("/")
 def read_root():
     return {"message": "J-Melo Backend is running."}
+
+@app.post("/api/lyrics/annotate")
+async def api_annotate_lyrics(request: AnnotateRequest):
+    try:
+        annotated_text = annotate_japanese_text(request.text)
+        return {"annotated_text": annotated_text}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Annotation failed: {str(e)}")
 
 @app.get("/api/media/proxy-image")
 async def proxy_image(url: str = Query(..., description="The URL of the image to proxy")):
@@ -355,22 +425,100 @@ async def get_transcribe_status(media_id: str, local_path: str = Query(None)):
 def format_whisper_output(segments):
     formatted_segments = []
     for segment in segments:
-        formatted_words = []
+        segment_text = segment.text.strip()
+        if not segment_text:
+            continue
+
+        # 1. Map each character in the original Whisper words to a timestamp
+        char_times = []
         if hasattr(segment, 'words') and segment.words:
-            for word in segment.words:
-                formatted_words.append({
-                    "word": word.word,
-                    "start": float(word.start),
-                    "end": float(word.end),
-                    "score": float(word.probability)
-                })
+            for w in segment.words:
+                w_text = w.word.strip()
+                if not w_text:
+                    continue
+                w_start = float(w.start)
+                w_end = float(w.end)
+                duration = w_end - w_start
+                
+                # Interpolate time for each character in the Whisper token
+                char_count = len(w_text)
+                for i in range(char_count):
+                    char_times.append({
+                        "char": w_text[i],
+                        "start": w_start + (i / char_count) * duration,
+                        "end": w_start + ((i + 1) / char_count) * duration
+                    })
+        
+        # 2. Use Sudachi to tokenize the entire segment text for better context/reading
+        tokens = sudachi_tokenizer.tokenize(segment_text, sudachi_split_mode)
+        
+        formatted_words = []
+        current_char_idx = 0
+        full_annotated_parts = []
+
+        for t in tokens:
+            surface = t.surface()
+            # Sudachi reading is Katakana -> Convert to Hiragana
+            raw_reading = jaconv.kata2hira(t.reading_form())
+            
+            # Determine reading display (only if it contains Kanji/non-kana)
+            is_pure = is_pure_kana_or_punct(surface)
+            reading_for_word = surface if is_pure or raw_reading == surface else raw_reading
+            
+            # Build annotated text part
+            if is_pure or raw_reading == surface:
+                full_annotated_parts.append(surface)
+            else:
+                full_annotated_parts.append(f"{surface}[{raw_reading}]")
+
+            # 3. Align timestamps
+            # We look for where this 'surface' exists in our char_times array
+            word_start = None
+            word_end = None
+            
+            # Find the best match for this surface in char_times to extract timestamps
+            # We use a simple pointer approach since the text should mostly align
+            temp_idx = current_char_idx
+            chars_found = 0
+            while temp_idx < len(char_times) and chars_found < len(surface.strip()):
+                # Skip spaces in char_times if any (Whisper sometimes includes them)
+                if char_times[temp_idx]["char"].isspace() and not surface[chars_found].isspace():
+                    temp_idx += 1
+                    continue
+                
+                if word_start is None:
+                    word_start = char_times[temp_idx]["start"]
+                word_end = char_times[temp_idx]["end"]
+                
+                chars_found += 1
+                temp_idx += 1
+            
+            # Advance main pointer
+            current_char_idx = temp_idx
+
+            # Fallback if no timing data found for this segment/word
+            if word_start is None:
+                word_start = float(segment.start)
+            if word_end is None:
+                word_end = float(segment.end)
+
+            formatted_words.append({
+                "word": surface,
+                "reading": reading_for_word,
+                "start": round(word_start, 2),
+                "end": round(word_end, 2),
+                "score": 1.0 # Sudachi tokens are definitive
+            })
+
         formatted_segment = {
             "start": float(segment.start),
             "end": float(segment.end),
-            "text": segment.text.strip(),
+            "text": segment_text,
+            "annotated_text": "".join(full_annotated_parts),
             "words": formatted_words
         }
         formatted_segments.append(formatted_segment)
+        
     return {"segments": formatted_segments}
 
 # --- Data Backup & Restore Endpoints ---

@@ -319,15 +319,36 @@ const TimelessLyricsImporter: React.FC = () => {
     setPromptPreview(finalPrompt);
   };
 
-  const handleParseText = () => {
+  const handleParseText = async () => {
     if (!plaintextLyrics.trim()) {
         toast.error("Please paste lyrics first.");
         return;
     }
     setIsLoading(true);
     try {
-        const parsedLyrics = parseFuriganaText(plaintextLyrics);
+        const storedSettings = await db.settings.get(0);
+        const backendUrl = storedSettings?.backendUrl || 'http://localhost:8000';
+        
+        // 1. Call backend to annotate text with Sudachi
+        const annotateResponse = await fetch(`${backendUrl}/api/lyrics/annotate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: plaintextLyrics })
+        });
+        
+        if (!annotateResponse.ok) {
+            throw new Error('Backend annotation failed');
+        }
+        
+        const { annotated_text } = await annotateResponse.json();
+        
+        // 2. Update the textarea with annotated text so user can see/edit it
+        setPlaintextLyrics(annotated_text);
+
+        // 3. Parse the annotated text into LyricLines
+        const parsedLyrics = parseFuriganaText(annotated_text);
         setProcessedLyrics(formatLyricTimings(parsedLyrics));
+        
         toast.success(t('aiLyricCorrector.fetchSuccess') || "Parsed successfully!");
         setActivePanel('TOOL_PANEL');
     } catch (e) {

@@ -11,3 +11,8 @@ httpx
 faster_whisper
 beautifulsoup4
 html5lib
+
+# For Japanese Text Annotation
+sudachipy
+sudachidict_full
+jaconv

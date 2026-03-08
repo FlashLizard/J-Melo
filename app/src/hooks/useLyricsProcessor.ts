@@ -1,7 +1,6 @@
 // src/hooks/useLyricsProcessor.ts
 import { useState, useEffect } from 'react';
 import { WhisperXOutput } from '@/interfaces/lyrics';
-import KuroshiroManager from '@/lib/kuroshiro';
 import { processWhisperXOutput } from '@/utils/lyricsProcessor';
 
 interface LyricsProcessorProps {
@@ -18,8 +17,7 @@ const useLyricsProcessor = ({ whisperData, onProcessed }: LyricsProcessorProps) 
     const process = async () => {
       setIsProcessing(true);
       try {
-        const kuroshiro = await KuroshiroManager.getInstance();
-        const processed = await processWhisperXOutput(whisperData, kuroshiro);
+        const processed = await processWhisperXOutput(whisperData);
         onProcessed(processed);
       } catch (error) {
         console.error("Failed to process lyrics:", error);
@@ -29,7 +27,7 @@ const useLyricsProcessor = ({ whisperData, onProcessed }: LyricsProcessorProps) 
     };
 
     process();
-  }, [whisperData, onProcessed]);
+  }, [whisperData]); // Removed onProcessed from dependencies to prevent infinite loops if not memoized
 
   return { isProcessing };
 };

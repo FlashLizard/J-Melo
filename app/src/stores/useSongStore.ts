@@ -6,7 +6,6 @@ import { LyricLine, WhisperXOutput } from '@/interfaces/lyrics';
 import { db, SongRecord, WordRecord, base64ToBlob } from '@/lib/db';
 import useSettingsStore from './useSettingsStore';
 import { processWhisperXOutput } from '@/utils/lyricsProcessor';
-import KuroshiroManager from '@/lib/kuroshiro';
 import toast from 'react-hot-toast';
 
 interface SongState {
@@ -214,8 +213,7 @@ const useSongStore = create<SongState>()(
               if (statusData.status === 'completed') {
                   const useCache = window.confirm(t('transcription.cacheFoundConfirm'));
                   if (useCache) {
-                      const kuroshiro = await KuroshiroManager.getInstance();
-                      const tempLyrics = await processWhisperXOutput(statusData.data, kuroshiro);
+                      const tempLyrics = await processWhisperXOutput(statusData.data);
                       set({ previewLyrics: tempLyrics, isLoading: false });
                       return;
                   } else {
@@ -263,8 +261,7 @@ const useSongStore = create<SongState>()(
               verifyUrl.searchParams.append('local_path', songRecord.local_path);
               statusResponse = await fetch(verifyUrl.toString());
               const statusData = await statusResponse.json();
-              const kuroshiro = await KuroshiroManager.getInstance();
-              const tempLyrics = await processWhisperXOutput(statusData.data, kuroshiro);
+              const tempLyrics = await processWhisperXOutput(statusData.data);
               set({ previewLyrics: tempLyrics, isLoading: false });
           } else {
               set({ isLoading: false });

@@ -18,8 +18,9 @@ function MyApp({ Component, pageProps }: AppProps) {
   useEffect(() => {
     loadSettings();
     
-    // Register Service Worker for PWA
-    if ('serviceWorker' in navigator) {
+    // Register Service Worker for PWA - ONLY IN PRODUCTION
+    // This fixes HMR issues where SW caches dev assets
+    if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('/sw.js').catch(err => {
                 console.log('Service Worker registration failed: ', err);

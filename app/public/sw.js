@@ -1,4 +1,4 @@
-const CACHE_NAME = 'j-melo-cache-v6';
+const CACHE_NAME = 'j-melo-cache-v7';
 const PRECACHE_ASSETS = [
   '/',
   '/manifest.json',
@@ -59,6 +59,11 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
 
+  // Skip interception in development mode (localhost) to avoid HMR issues
+  if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+    return;
+  }
+
   // 1. Media Proxy Images
   if (url.pathname.includes('/api/media/proxy-image')) {
     event.respondWith(
@@ -76,10 +81,27 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2. Local Static Assets (i18n, dict, logos) - Cache First
+  // 2. i18n JSON files (Network First to ensure latest translations)
+  if (url.pathname.startsWith('/i18n/')) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response && response.status === 200) {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
+          }
+          return response;
+        })
+        .catch(() => {
+          return caches.match(event.request);
+        })
+    );
+    return;
+  }
+
+  // 3. Dictionary & Other static assets (Cache First)
   if (
     url.pathname.startsWith('/dict/') ||
-    url.pathname.startsWith('/i18n/') ||
     url.pathname.endsWith('.svg') ||
     url.pathname.endsWith('.png') ||
     url.pathname.endsWith('.ico')
@@ -99,7 +121,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 3. Next.js Internal Assets (Stale-While-Revalidate)
+  // 4. Next.js Internal Assets (Stale-While-Revalidate)
   if (url.pathname.startsWith('/_next/')) {
     event.respondWith(
       caches.match(event.request).then((cachedResponse) => {
@@ -109,10 +131,7 @@ self.addEventListener('fetch', (event) => {
             caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
           }
           return networkResponse;
-        }).catch(() => {
-            // Return null so we can check it later
-            return null;
-        });
+        }).catch(() => null);
 
         if (cachedResponse) return cachedResponse;
         return fetchPromise.then(resp => resp || new Response('', { status: 404 }));
@@ -121,7 +140,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 4. Page Navigation (Network First, fallback to cached '/' index)
+  // 5. Page Navigation (Network First, fallback to cached '/' index)
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
@@ -141,7 +160,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 5. Default - Match Cache or Network
+  // 6. Default - Match Cache or Network
   if (url.origin === self.location.origin) {
     event.respondWith(
       caches.match(event.request).then((response) => {

@@ -21,7 +21,7 @@ interface SongState {
   generateTranscriptionPreview: (song: SongData, t: (key: string) => string) => Promise<void>;
   setProcessedLyrics: (lyrics: LyricLine[]) => void;
   updateLyricLine: (index: number, updatedLine: LyricLine) => void;
-  updateSongInfo: (info: { title: string; artist: string }) => void;
+  updateSongInfo: (info: Partial<{ title: string; artist: string }>) => Promise<void>;
   setPreviewLyrics: (lyrics: LyricLine[]) => void;
   clearPreviewLyrics: () => void;
   commitPreviewLyrics: () => void;
@@ -285,11 +285,11 @@ const useSongStore = create<SongState>()(
         db.songs.update(song.id, { lyrics: newLyrics });
         set({ lyrics: newLyrics });
     },
-    updateSongInfo: (info) => {
+    updateSongInfo: async (info) => {
         const { song } = get();
         if (song) {
           const updatedSong = { ...song, ...info };
-          if (song.id) db.songs.update(song.id, info);
+          if (song.id) await db.songs.update(song.id, info);
           set({ song: updatedSong });
         }
     },

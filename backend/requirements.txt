@@ -16,3 +16,6 @@ html5lib
 sudachipy
 sudachidict_full
 jaconv
+
+demucs
+stable-ts

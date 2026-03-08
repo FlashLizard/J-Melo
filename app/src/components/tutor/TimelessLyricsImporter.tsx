@@ -329,25 +329,17 @@ const TimelessLyricsImporter: React.FC = () => {
         const storedSettings = await db.settings.get(0);
         const backendUrl = storedSettings?.backendUrl || 'http://localhost:8000';
         
-        // 1. Call backend to annotate text with Sudachi
-        const annotateResponse = await fetch(`${backendUrl}/api/lyrics/annotate`, {
+        // Call backend for high-precision r1/r2 parsing
+        const response = await fetch(`${backendUrl}/api/lyrics/parse-to-tokens`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text: plaintextLyrics })
         });
         
-        if (!annotateResponse.ok) {
-            throw new Error('Backend annotation failed');
-        }
+        if (!response.ok) throw new Error('Backend parsing failed');
         
-        const { annotated_text } = await annotateResponse.json();
-        
-        // 2. Update the textarea with annotated text so user can see/edit it
-        setPlaintextLyrics(annotated_text);
-
-        // 3. Parse the annotated text into LyricLines
-        const parsedLyrics = parseFuriganaText(annotated_text);
-        setProcessedLyrics(formatLyricTimings(parsedLyrics));
+        const { lyrics_data } = await response.json();
+        setProcessedLyrics(formatLyricTimings(lyrics_data));
         
         toast.success(t('aiLyricCorrector.fetchSuccess') || "Parsed successfully!");
         setActivePanel('TOOL_PANEL');

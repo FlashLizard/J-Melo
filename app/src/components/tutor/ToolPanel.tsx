@@ -51,7 +51,7 @@ const SectionHeader: React.FC<{ title: string }> = ({ title }) => (
 
 const ToolPanel: React.FC = () => {
   const { song, cacheCurrentSongAudio, uncacheCurrentSongAudio, generateTranscriptionPreview, deleteSongs } = useSongStore();
-  const { setActivePanel } = useUIPanelStore();
+  const { setActivePanel, setIsLyricsWizardOpen } = useUIPanelStore();
   const { setActiveView } = useMobileViewStore();
   const { t } = useTranslation();
   const { startReview } = useVocabularyStore();
@@ -287,6 +287,13 @@ const ToolPanel: React.FC = () => {
 
           <SectionHeader title={t('toolPanel.sectionDataSources') || 'Data Sources'} />
           <ToolButton 
+              onClick={() => setIsLyricsWizardOpen(true)}
+              disabled={!song}
+              variant="accent"
+              label={t('lyricsWizard.recommendedFlowButton')}
+              icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>}
+          />
+          <ToolButton 
               onClick={() => setActivePanel('TIMELESS_LYRICS_IMPORTER')}
               disabled={!song}
               label={t('lyricsDisplay.noLyrics.importButton')}
@@ -300,6 +307,13 @@ const ToolPanel: React.FC = () => {
           />
 
           <SectionHeader title={t('toolPanel.sectionEditing') || 'Editing & Synchronization'} />
+          <ToolButton 
+              onClick={() => setActivePanel('LYRICS_ALIGNMENT_PANEL')}
+              disabled={!song}
+              variant="success"
+              label={t('toolPanel.aiLyricsAlignmentButton')}
+              icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+          />
           <ToolButton 
               onClick={handleEnterTimeSyncMode}
               disabled={!song}

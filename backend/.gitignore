@@ -42,3 +42,7 @@ shared_songs.db
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
+
+# test
+test_parser.py
+test.txt

@@ -1,6 +1,5 @@
 // app/src/utils/lyricsProcessor.ts
 import { WhisperXOutput, LyricLine, LyricToken } from '@/interfaces/lyrics';
-import { v4 as uuidv4 } from 'uuid';
 
 export const processWhisperXOutput = async (data: WhisperXOutput): Promise<LyricLine[]> => {
     if (!data || !data.segments) return [];
@@ -16,7 +15,6 @@ export const processWhisperXOutput = async (data: WhisperXOutput): Promise<Lyric
         });
 
         return {
-            id: uuidv4(),
             startTime: Number(segment.start.toFixed(2)),
             endTime: Number(segment.end.toFixed(2)),
             text: segment.text.trim(),
@@ -49,7 +47,6 @@ const getScriptType = (char: string) => {
 /**
  * Parses plain text with furigana in the format "Kanji[reading]" into LyricLine array.
  * This is particularly useful for Utaten lyrics.
- * Splits tokens by character type to prevent merging (e.g., "あの日[ひ]" -> "あの", "日[ひ]").
  */
 export const parseFuriganaText = (text: string): LyricLine[] => {
     if (!text) return [];
@@ -62,44 +59,75 @@ export const parseFuriganaText = (text: string): LyricLine[] => {
         while (i < line.length) {
             let surface = "";
             let reading = "";
+            const startIdx = i;
             
             const firstChar = line[i];
-            const currentType = getScriptType(firstChar);
+            const firstType = getScriptType(firstChar);
 
-            // 1. Build a segment of the same character type
-            let j = i;
-            while (j < line.length) {
-                const char = line[j];
-                // Stop if we hit a bracket or a change in script type
-                if (char === '[' || char === ']' || getScriptType(char) !== currentType) {
-                    break;
+            if (firstType === 'kanji') {
+                // Potential word start. Search forward for a bracket.
+                // We allow Kanji, Hiragana (okurigana), and Katakana to be part of the surface before a bracket.
+                let j = i;
+                let foundBracket = -1;
+                while (j < line.length) {
+                    const char = line[j];
+                    const type = getScriptType(char);
+                    if (char === '[') {
+                        foundBracket = j;
+                        break;
+                    }
+                    // Stop searching if we hit something that clearly isn't part of this word
+                    if (type === 'space' || type === 'other') break;
+                    j++;
                 }
-                surface += char;
-                j++;
-            }
 
-            // 2. Check if a furigana bracket immediately follows this segment
-            if (j < line.length && line[j] === '[') {
-                let k = j + 1;
-                let bracketContent = "";
-                while (k < line.length && line[k] !== ']') {
-                    bracketContent += line[k];
-                    k++;
-                }
-                
-                if (k < line.length && line[k] === ']') {
-                    // Valid bracket!
+                if (foundBracket !== -1) {
+                    // We found a bracket! The surface is everything from i to foundBracket.
+                    surface = line.substring(i, foundBracket);
+                    let k = foundBracket + 1;
+                    let bracketContent = "";
+                    while (k < line.length && line[k] !== ']') {
+                        bracketContent += line[k];
+                        k++;
+                    }
                     reading = bracketContent;
-                    i = k + 1; // Move pointer past the ']'
+                    i = k + (k < line.length ? 1 : 0); // Move past ']'
                 } else {
-                    // Malformed bracket, treat '[' as a normal char in the next loop
+                    // No bracket found for this Kanji block. Group same type.
+                    let j = i;
+                    while (j < line.length && getScriptType(line[j]) === 'kanji') {
+                        surface += line[j];
+                        j++;
+                    }
                     reading = surface;
-                    i = j; 
+                    i = j;
                 }
             } else {
-                // No bracket follows, reading is the same as surface
-                reading = surface;
-                i = j;
+                // Not starting with Kanji. Group same script type.
+                let j = i;
+                while (j < line.length) {
+                    const char = line[j];
+                    const type = getScriptType(char);
+                    // Stop if script type changes or we hit a bracket
+                    if (type !== firstType || char === '[' || char === ']') break;
+                    surface += char;
+                    j++;
+                }
+                
+                // Check if this non-kanji block is immediately followed by a bracket (uncommon but possible)
+                if (j < line.length && line[j] === '[') {
+                    let k = j + 1;
+                    let bracketContent = "";
+                    while (k < line.length && line[k] !== ']') {
+                        bracketContent += line[k];
+                        k++;
+                    }
+                    reading = bracketContent;
+                    i = k + (k < line.length ? 1 : 0);
+                } else {
+                    reading = surface;
+                    i = j;
+                }
             }
 
             if (surface) {
@@ -109,23 +137,15 @@ export const parseFuriganaText = (text: string): LyricLine[] => {
                     startTime: 0,
                     endTime: 0
                 });
-            } else if (i < line.length && (line[i] === '[' || line[i] === ']')) {
-                // Handle stray brackets as their own tokens or skip
-                tokens.push({
-                    surface: line[i],
-                    reading: line[i],
-                    startTime: 0,
-                    endTime: 0
-                });
-                i++;
-            } else if (i < line.length) {
-                // Fallback for any unhandled characters
+            } else if (i === startIdx && i < line.length) {
+                // Safety fallback for stray brackets or unhandled chars
+                const fallback = line[i];
+                tokens.push({ surface: fallback, reading: fallback, startTime: 0, endTime: 0 });
                 i++;
             }
         }
         
         return {
-            id: uuidv4(),
             startTime: 0,
             endTime: 0,
             text: line.replace(/\[[^\]]+\]/g, ''),

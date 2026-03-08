@@ -15,6 +15,8 @@ import ToolPanel from '@/components/tutor/ToolPanel';
 import SongInfoEditor from '@/components/editor/SongInfoEditor';
 import AILyricCorrector from '@/components/tutor/AILyricCorrector';
 import LyricTranslationPanel from '@/components/tutor/LyricTranslationPanel';
+import LyricsAlignmentPanel from '@/components/tutor/LyricsAlignmentPanel';
+import LyricsWizardPanel from '@/components/tutor/LyricsWizardPanel';
 import useSongStore from '@/stores/useSongStore';
 import usePlayerStore, { playerStoreActions } from '@/stores/usePlayerStore';
 import useLyricsProcessor from '@/hooks/useLyricsProcessor';
@@ -60,6 +62,8 @@ const RightHandPanel = () => {
   if (activePanel === 'SONG_INFO_EDITOR') return <SongInfoEditor />;
   if (activePanel === 'LYRIC_TRANSLATION_PANEL') return <LyricTranslationPanel />;
   if (activePanel === 'TIMELESS_LYRICS_IMPORTER') return <TimelessLyricsImporter />;
+  if (activePanel === 'LYRICS_ALIGNMENT_PANEL') return <LyricsAlignmentPanel />;
+  if (activePanel === 'LYRICS_WIZARD_PANEL') return <LyricsWizardPanel />;
 
   return <ToolPanel />;
 };
@@ -134,6 +138,19 @@ const PlayerPage = () => {
   const swipeHandlers = useSwipeable({
     onSwiping: (e) => {
       if (!isMobile || isSwipeDisabled) return;
+      
+      // Disable swipe if starting on interactive elements
+      const target = e.event.target as HTMLElement;
+      const isInteractive = 
+        target.tagName === 'INPUT' || 
+        target.tagName === 'TEXTAREA' || 
+        target.tagName === 'BUTTON' || 
+        target.tagName === 'SELECT' ||
+        target.closest('button') ||
+        target.closest('.no-swipe');
+        
+      if (isInteractive) return;
+
       const startX = e.initial[0];
       const edgeWidth = window.innerWidth * 0.15; // 15% edge zone
       if (startX > edgeWidth && startX < window.innerWidth - edgeWidth) return;
@@ -301,6 +318,9 @@ const PlayerPage = () => {
         </div>
 
         <MobileNavDots />
+        
+        {/* Modals & Wizards */}
+        <LyricsWizardPanel />
       </main>
     </>
   );

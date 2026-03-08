@@ -159,30 +159,36 @@ const HomePage = () => {
       setSelectedSongIds([]);
       setIsSelectMode(false);
       loadSongs(); // Refresh the list
+      toast.success(t('home.deleteSuccess') || 'Deleted successfully!');
     }
   };
 
   const handleShareSelected = async () => {
     if (selectedSongIds.length === 0) return;
-    const songsToShare = await db.songs.where('id').anyOf(selectedSongIds).toArray();
-    const wordsToShare = await db.words.where('sourceSongId').anyOf(selectedSongIds).toArray();
+    try {
+        const songsToShare = await db.songs.where('id').anyOf(selectedSongIds).toArray();
+        const wordsToShare = await db.words.where('sourceSongId').anyOf(selectedSongIds).toArray();
 
-    const sanitizedSongs = await Promise.all(songsToShare.map(async (song) => {
-        const { audioData, ...rest } = song;
-        let coverImageBase64 = '';
-        if (song.coverImageData) {
-            coverImageBase64 = await blobToBase64(song.coverImageData);
-        }
-        return { ...rest, coverImageData: coverImageBase64 };
-    }));
-    
-    const exportData = {
-        songs: sanitizedSongs,
-        words: wordsToShare
-    };
+        const sanitizedSongs = await Promise.all(songsToShare.map(async (song) => {
+            const { audioData, ...rest } = song;
+            let coverImageBase64 = '';
+            if (song.coverImageData) {
+                coverImageBase64 = await blobToBase64(song.coverImageData);
+            }
+            return { ...rest, coverImageData: coverImageBase64 };
+        }));
+        
+        const exportData = {
+            songs: sanitizedSongs,
+            words: wordsToShare
+        };
 
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-    saveAs(blob, 'j-melo-songs.json');
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+        saveAs(blob, 'j-melo-songs.json');
+        toast.success(t('settings.exportSuccess'));
+    } catch (e) {
+        toast.error('Export failed: ' + (e as Error).message);
+    }
   };
 
   const handleUploadSelected = async () => {
@@ -308,9 +314,10 @@ const HomePage = () => {
             const { addManySongs } = useSongStore.getState();
             await addManySongs(newSongs, wordsData);
             loadSongs();
+            toast.success(t('settings.importSuccess'));
           }
         } catch (error) {
-          alert(t('home.importError', { message: (error as Error).message }));
+          toast.error(t('home.importError', { message: (error as Error).message }));
         }
       }
     };
@@ -320,6 +327,7 @@ const HomePage = () => {
   const handleImportComplete = () => {
     setImportState(null);
     loadSongs();
+    toast.success(t('settings.importSuccess'));
   };
 
   const isAllSelected = useMemo(() => {

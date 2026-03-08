@@ -7,6 +7,8 @@ import { db } from '@/lib/db';
 import Head from 'next/head';
 import cn from 'classnames';
 
+import toast from 'react-hot-toast';
+
 interface CacheInfo {
   size_bytes: number;
   file_count?: number;
@@ -169,7 +171,7 @@ const AdminPage = () => {
         body: JSON.stringify({ cache_name: backendCacheName })
       });
       if (!res.ok) throw new Error(t('admin.clearError'));
-      alert(t('admin.clearSuccess', { cacheName }));
+      toast.success(t('admin.clearSuccess', { cacheName }));
       fetchAdminData(authToken!);
     } catch (err) {
       setError((err as Error).message);
@@ -199,7 +201,7 @@ const AdminPage = () => {
         body: JSON.stringify(payload)
       });
       if (!res.ok) throw new Error(t('admin.saveConfigError'));
-      alert(t('admin.saveConfigSuccess'));
+      toast.success(t('admin.saveConfigSuccess'));
     } catch (err) {
       setError((err as Error).message);
     } finally {

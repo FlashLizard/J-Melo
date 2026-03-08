@@ -4,6 +4,7 @@ import useSongStore from '@/stores/useSongStore';
 import useTranslation from '@/hooks/useTranslation';
 import cn from 'classnames';
 import useSettingsStore from '@/stores/useSettingsStore';
+import toast from 'react-hot-toast';
 
 const formatDuration = (seconds: number) => {
     if (!seconds) return '';
@@ -40,9 +41,14 @@ const SongInput: React.FC<SongInputProps> = ({ initialMode = 'url', onComplete }
     const handleFetch = async (targetUrl?: string) => {
         const urlToFetch = targetUrl || url;
         if (!urlToFetch.trim()) return;
-        await fetchSong(urlToFetch);
-        if (!targetUrl) setUrl('');
-        if (onComplete) onComplete();
+        try {
+            await fetchSong(urlToFetch);
+            if (!targetUrl) setUrl('');
+            toast.success(t('index.fetchSuccess') || 'Song loaded successfully!');
+            if (onComplete) onComplete();
+        } catch (err) {
+            toast.error(t('index.loadError') || 'Failed to load song.');
+        }
     };
 
     const handleSearch = async (e: React.FormEvent) => {
@@ -53,8 +59,12 @@ const SongInput: React.FC<SongInputProps> = ({ initialMode = 'url', onComplete }
             const res = await fetch(`${backendUrl}/api/media/search?q=${encodeURIComponent(searchQuery)}`);
             const data = await res.json();
             setSearchResults(data.results || []);
+            if (data.results && data.results.length > 0) {
+                toast.success(t('index.searchTitle') + ' success');
+            }
         } catch (error) {
             console.error("Search failed", error);
+            toast.error('Search failed.');
         } finally {
             setIsSearching(false);
         }

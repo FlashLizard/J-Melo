@@ -353,6 +353,7 @@ const TimelessLyricsImporter: React.FC = () => {
   const handleConfirm = () => {
     if (previewData) {
       setProcessedLyrics(formatLyricTimings(previewData.newLyrics));
+      toast.success(t('fullLyricsEditor.lyricsSavedSuccess'));
     }
     setPreviewData(null);
     setActivePanel('TOOL_PANEL');
@@ -362,6 +363,7 @@ const TimelessLyricsImporter: React.FC = () => {
     try {
         const parsedLyrics = JSON.parse(jsonInput);
         setProcessedLyrics(formatLyricTimings(parsedLyrics));
+        toast.success(t('fullLyricsEditor.lyricsSavedSuccess'));
         setActivePanel('TOOL_PANEL');
     } catch (e) {
         toast.error(t('home.importError', { message: (e as Error).message }));

@@ -88,6 +88,7 @@ const SettingsPage: React.FC = () => {
       if (!response.ok) throw new Error('Failed to export data.');
       const result = await response.json();
       setExportToken(result);
+      toast.success(t('settings.exportSuccess'));
     } catch (error) {
       toast.error('Error exporting token: ' + (error as Error).message);
     } finally {

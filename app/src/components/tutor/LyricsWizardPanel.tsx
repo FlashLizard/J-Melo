@@ -155,7 +155,7 @@ const LyricsWizardPanel: React.FC = () => {
                 <input 
                   value={editedTitle} 
                   onChange={e => setEditedTitle(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-2xl px-5 py-4 text-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                  className="w-full bg-gray-800 border border-gray-700 rounded-2xl px-5 py-4 text-lg text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
                   placeholder="Song Title"
                 />
               </div>

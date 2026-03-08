@@ -8,6 +8,8 @@ import ReviewSetup from '@/components/vocabulary/ReviewSetup';
 import Reviewer from '@/components/vocabulary/Reviewer';
 import useTranslation from '@/hooks/useTranslation';
 
+import toast from 'react-hot-toast';
+
 const VocabularyView = () => {
   const { 
     words, songs, displayMode, searchQuery, selectedIds, isSelectionMode,
@@ -55,8 +57,16 @@ const VocabularyView = () => {
     );
   }
 
-  const handleExport = () => {
-    exportSelectedToAnki(t);
+  const handleExport = async () => {
+    await exportSelectedToAnki(t);
+    toast.success(t('settings.exportSuccess'));
+  };
+
+  const handleDelete = async () => {
+    if (window.confirm(t('home.deleteConfirm', { count: selectedIds.size }))) {
+        await deleteSelected();
+        toast.success(t('home.deleteSuccess'));
+    }
   };
 
   return (
@@ -78,7 +88,7 @@ const VocabularyView = () => {
             <>
               <button onClick={selectAll} className="px-4 py-2 text-xs font-bold bg-gray-700 hover:bg-gray-600 rounded-xl transition-all border border-gray-600/50">{t('vocabularyPage.selectAllLabel')}</button>
               <button onClick={handleExport} disabled={selectedIds.size === 0} className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 rounded-xl transition-all disabled:opacity-50 border border-indigo-500/30 shadow-sm shadow-indigo-900/20">{t('vocabularyPage.exportButton')}</button>
-              <button onClick={deleteSelected} disabled={selectedIds.size === 0} className="px-4 py-2 text-xs font-bold bg-red-900/40 text-red-300 hover:bg-red-600 hover:text-white rounded-xl transition-all disabled:opacity-50 border border-red-800/50">{t('vocabularyPage.deleteButton')}</button>
+              <button onClick={handleDelete} disabled={selectedIds.size === 0} className="px-4 py-2 text-xs font-bold bg-red-900/40 text-red-300 hover:bg-red-600 hover:text-white rounded-xl transition-all disabled:opacity-50 border border-red-800/50">{t('vocabularyPage.deleteButton')}</button>
               <button onClick={toggleSelectionMode} className="px-4 py-2 text-xs font-bold bg-gray-700 hover:bg-gray-600 rounded-xl transition-all border border-gray-600/50">{t('vocabularyPage.cancelButton')}</button>
             </>
           ) : (

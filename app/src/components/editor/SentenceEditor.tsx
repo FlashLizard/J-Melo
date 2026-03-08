@@ -250,6 +250,7 @@ const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, lineIndex, onSave
     // Ensure all timings in this line (and its tokens) are rounded
     const formattedLine = formatLyricTimings([currentLine])[0];
     onSave(lineIndex, formattedLine);
+    toast.success(t('fullLyricsEditor.lyricsSavedSuccess'));
   };
   
   const handleCancelClick = () => {

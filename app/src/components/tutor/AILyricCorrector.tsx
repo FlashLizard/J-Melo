@@ -330,6 +330,7 @@ const AILyricCorrector: React.FC = () => {
     if (previewData) {
       // Ensure final saved lyrics are also formatted correctly
       setProcessedLyrics(formatLyricTimings(previewData.newLyrics));
+      toast.success(t('fullLyricsEditor.lyricsSavedSuccess'));
     }
     setPreviewData(null);
     setActivePanel('TOOL_PANEL');
@@ -339,6 +340,7 @@ const AILyricCorrector: React.FC = () => {
     try {
         const parsedLyrics = JSON.parse(jsonInput);
         setProcessedLyrics(formatLyricTimings(parsedLyrics));
+        toast.success(t('fullLyricsEditor.lyricsSavedSuccess'));
         setActivePanel('TOOL_PANEL');
     } catch (e) {
         toast.error(t('home.importError', { message: (e as Error).message }));

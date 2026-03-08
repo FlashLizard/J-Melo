@@ -261,6 +261,7 @@ const LyricTranslationPanel: React.FC = () => {
           translation: line.translation || ''
       }));
       await updateLyricTranslations(formattedForStore);
+      toast.success(t('lyricTranslationPanel.translationAppliedSuccess') || 'Translation applied!');
     }
     setPreviewData(null);
     setActivePanel('TOOL_PANEL');
@@ -274,6 +275,7 @@ const LyricTranslationPanel: React.FC = () => {
             translation: line.translation || ''
         }));
         await updateLyricTranslations(formattedForStore);
+        toast.success(t('lyricTranslationPanel.translationAppliedSuccess') || 'Translation applied!');
         setActivePanel('TOOL_PANEL');
     } catch (e) {
         toast.error(t('home.importError', { message: (e as Error).message }));

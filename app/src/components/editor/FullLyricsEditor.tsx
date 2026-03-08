@@ -61,6 +61,7 @@ const FullLyricsEditor: React.FC = () => {
         const formatted = formatLyricTimings(parsed);
         setPreviewLyrics(formatted);
         commitPreviewLyrics();
+        toast.success(t('fullLyricsEditor.lyricsSavedSuccess'));
         setActivePanel('TOOL_PANEL');
     } catch (e) {
         toast.error('Invalid JSON. Please fix before saving.');

@@ -210,58 +210,33 @@ const PlayerPage = () => {
 
   const { hasEnded, playMode } = usePlayerStore();
 
-  // Helper to find next/prev song ID
-  const getNeighborSongId = async (direction: 'next' | 'prev') => {
-    if (!song?.id) return null;
-    const { db } = await import('@/lib/db');
-    const allSongs = await db.songs.toArray();
-    if (allSongs.length === 0) return null;
-
-    if (playMode === 'shuffle' && allSongs.length > 1) {
-        let randomIndex;
-        do {
-            randomIndex = Math.floor(Math.random() * allSongs.length);
-        } while (allSongs[randomIndex].id === song.id);
-        return allSongs[randomIndex].id!;
-    }
-
-    const currentIndex = allSongs.findIndex(s => s.id === song.id);
-    if (currentIndex === -1) return null;
-
-    if (direction === 'next') {
-        const nextIndex = (currentIndex + 1) % allSongs.length;
-        return allSongs[nextIndex].id!;
-    } else {
-        const prevIndex = (currentIndex - 1 + allSongs.length) % allSongs.length;
-        return allSongs[prevIndex].id!;
-    }
-  };
-
-  // Register callbacks for the player store
+  // Sync the playlist IDs to the store for synchronous switching logic
   useEffect(() => {
-    playerStoreActions.onNextTrack = async () => {
-        const nextId = await getNeighborSongId('next');
-        if (nextId) router.push(`/player/${nextId}?autoplay=1`);
+    const syncPlaylist = async () => {
+        const { db } = await import('@/lib/db');
+        const allSongs = await db.songs.toArray();
+        const ids = allSongs.map(s => s.id!).filter(id => id !== undefined);
+        playerStoreActions.setPlaylist(ids);
     };
-    playerStoreActions.onPrevTrack = async () => {
-        const prevId = await getNeighborSongId('prev');
-        if (prevId) router.push(`/player/${prevId}?autoplay=1`);
-    };
-    playerStoreActions.onTrackEnded = () => {
-        if (playMode === 'loop-single') {
-            playerStoreActions.seek(0);
-            playerStoreActions.play();
-        } else {
-            playerStoreActions.onNextTrack?.();
-        }
-    };
+    syncPlaylist();
+  }, [song]); // Re-sync if current song changes or on mount
 
-    return () => {
-        playerStoreActions.onNextTrack = null;
-        playerStoreActions.onPrevTrack = null;
-        playerStoreActions.onTrackEnded = null;
+
+  useEffect(() => {
+    if (song?.id) {
+        playerStoreActions.setCurrentSongId(song.id);
+    }
+  }, [song]);
+
+  // Register callbacks for route synchronization
+  useEffect(() => {
+    playerStoreActions.onSongSwitch = (newId: number) => {
+        router.push(`/player/${newId}`, undefined, { shallow: true });
     };
-  }, [song, playMode, router]);
+    return () => {
+        playerStoreActions.onSongSwitch = null;
+    };
+  }, [router]);
 
   // Update Media Session Metadata
   useEffect(() => {
@@ -274,7 +249,7 @@ const PlayerPage = () => {
     }
   }, [song]);
 
-  // Handle the autoplay query parameter
+  // Handle the autoplay query parameter (only for initial external entry)
   useEffect(() => {
     if (router.isReady && router.query.autoplay === '1' && song && !isLoading) {
         const playTimer = setTimeout(() => {

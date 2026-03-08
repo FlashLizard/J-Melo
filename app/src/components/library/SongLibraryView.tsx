@@ -1,6 +1,5 @@
 // src/components/library/SongLibraryView.tsx
 import React, { useMemo, useState } from 'react';
-import Link from 'next/link';
 import { SongRecord } from '@/lib/db';
 import cn from 'classnames';
 
@@ -42,29 +41,37 @@ const SongLibraryView: React.FC<SongLibraryViewProps> = ({
         );
     }, [songs, searchQuery]);
 
+    const handleSearchSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        // Filtering is already handled by useMemo
+    };
+
     return (
         <div className="animate-in fade-in duration-500">
             {/* Unified Top Bar: Search, Search Icon Button, and Mode Toggle */}
-            <div className="mb-8 flex flex-row items-center gap-2 sm:gap-3 max-w-5xl mx-auto">
-                <div className="relative flex-grow min-w-0">
-                    <div className="absolute inset-y-0 left-0 pl-3 sm:pl-4 flex items-center pointer-events-none">
-                        <svg className="h-4 w-4 sm:h-5 sm:w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+            <div className="mb-8 flex flex-row items-center gap-2 sm:gap-3 max-w-5xl mx-auto w-full">
+                <form onSubmit={handleSearchSubmit} className="flex-grow flex gap-2 sm:gap-3 min-w-0">
+                    <div className="relative flex-grow min-w-0">
+                        <div className="absolute inset-y-0 left-0 pl-3 sm:pl-4 flex items-center pointer-events-none">
+                            <svg className="h-4 w-4 sm:h-5 sm:w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                        </div>
+                        <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder={t('explore.searchPlaceholder')}
+                            className="w-full pl-9 sm:pl-12 pr-3 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl bg-gray-800/60 border border-gray-700/50 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-white text-sm sm:text-base placeholder-gray-500 shadow-inner"
+                        />
                     </div>
-                    <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder={t('explore.searchPlaceholder')}
-                        className="w-full pl-9 sm:pl-12 pr-3 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl bg-gray-800/60 border border-gray-700/50 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-white text-sm sm:text-base placeholder-gray-500 shadow-inner"
-                    />
-                </div>
 
-                <button 
-                    className="p-2.5 sm:p-3 bg-indigo-600/90 rounded-xl sm:rounded-2xl hover:bg-indigo-500 text-white transition-all border border-indigo-500/30 shadow-md active:scale-95 shrink-0"
-                    title={t('index.searchButton')}
-                >
-                    <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                </button>
+                    <button 
+                        type="submit"
+                        className="p-2.5 sm:p-3 bg-indigo-600/90 rounded-xl sm:rounded-2xl hover:bg-indigo-500 text-white transition-all border border-indigo-500/30 shadow-md active:scale-95 shrink-0"
+                        title={t('index.searchButton')}
+                    >
+                        <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                    </button>
+                </form>
                 
                 <div className="flex bg-gray-800/60 p-1 rounded-xl sm:rounded-2xl border border-gray-700/50 shadow-inner shrink-0">
                     <button 
@@ -72,7 +79,7 @@ const SongLibraryView: React.FC<SongLibraryViewProps> = ({
                         className={cn("p-1.5 sm:p-2 rounded-lg sm:rounded-xl transition-all", displayMode === 'grid' ? "bg-gray-700 text-indigo-400 shadow-sm" : "text-gray-500 hover:text-gray-300")}
                         title="Grid Mode"
                     >
-                        <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
+                        <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
                     </button>
                     <button 
                         onClick={() => setDisplayMode('list')}
@@ -106,7 +113,7 @@ const SongLibraryView: React.FC<SongLibraryViewProps> = ({
                                 onPointerUp={onPointerUpOrLeave}
                                 onPointerLeave={onPointerUpOrLeave}
                                 className={cn(
-                                "group relative bg-gray-800 rounded-2xl overflow-hidden border transition-all duration-300 select-none",
+                                "group relative bg-gray-800 rounded-2xl overflow-hidden border transition-all duration-300 select-none shadow-md",
                                 isSelectMode ? "cursor-pointer" : "md:hover:-translate-y-1.5 md:hover:shadow-[0_15px_30px_-10px_rgba(0,0,0,0.5)]",
                                 isSelected ? "border-indigo-500 shadow-[0_0_0_2px_rgba(99,102,241,0.5)] ring-2 ring-indigo-500 ring-offset-2 ring-offset-[#0f172a]" : "border-gray-700/50 md:hover:border-gray-600"
                             )}
@@ -155,7 +162,7 @@ const SongLibraryView: React.FC<SongLibraryViewProps> = ({
                                 onPointerLeave={onPointerUpOrLeave}
                                 onClick={() => handleCardAction(songId)}
                                 className={cn(
-                                    "flex items-center gap-4 p-3 rounded-2xl bg-gray-800/40 border transition-all duration-200 select-none cursor-pointer group",
+                                    "flex items-center gap-4 p-3 rounded-2xl bg-gray-800/40 border transition-all duration-200 select-none cursor-pointer group shadow-sm",
                                     isSelected ? "border-indigo-500 bg-indigo-500/10" : "border-gray-700/50 hover:bg-gray-800/60 hover:border-gray-600"
                                 )}
                                 style={{ WebkitTouchCallout: 'none' }}
@@ -179,7 +186,6 @@ const SongLibraryView: React.FC<SongLibraryViewProps> = ({
                                             <svg className="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
                                         </div>
                                     )}
-                                    {/* Permanent checkbox in list mode */}
                                     <div 
                                         className={cn(
                                             "w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all",

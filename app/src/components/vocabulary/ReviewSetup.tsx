@@ -2,7 +2,8 @@
 import React, { useState, useMemo } from 'react';
 import useVocabularyStore from '@/stores/useVocabularyStore';
 import { SongRecord } from '@/lib/db';
-import useTranslation from '@/hooks/useTranslation'; // Import useTranslation
+import useTranslation from '@/hooks/useTranslation';
+import toast from 'react-hot-toast';
 
 interface ReviewSetupProps {
   onClose: () => void;
@@ -12,7 +13,7 @@ const ReviewSetup: React.FC<ReviewSetupProps> = ({ onClose }) => {
   const { songs, words, startReview } = useVocabularyStore();
   const [mode, setMode] = useState<'all' | 'bySong'>('all');
   const [selectedSongIds, setSelectedSongIds] = useState<Set<number>>(new Set());
-  const { t } = useTranslation(); // Initialize useTranslation
+  const { t } = useTranslation();
 
   const songsWithWords: SongRecord[] = useMemo(() => {
     const songIdWithWords = new Set(words.map(w => w.sourceSongId));
@@ -37,14 +38,14 @@ const ReviewSetup: React.FC<ReviewSetupProps> = ({ onClose }) => {
     let wordsToReview = words;
     if (mode === 'bySong') {
       if (selectedSongIds.size === 0) {
-        alert(t('reviewSetup.selectAtLeastOneSongAlert'));
+        toast.error(t('reviewSetup.selectAtLeastOneSongAlert'));
         return;
       }
       wordsToReview = words.filter(word => selectedSongIds.has(word.sourceSongId));
     }
     
     if (wordsToReview.length === 0) {
-      alert(t('reviewSetup.noWordsToReviewAlert'));
+      toast.error(t('reviewSetup.noWordsToReviewAlert'));
       return;
     }
     startReview(wordsToReview);

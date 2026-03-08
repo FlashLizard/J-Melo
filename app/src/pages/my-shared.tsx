@@ -4,6 +4,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import useTranslation from '@/hooks/useTranslation';
 import { db } from '@/lib/db';
+import toast from 'react-hot-toast';
 
 interface CommunitySong {
     id: number;
@@ -57,9 +58,10 @@ const MySharedPage: React.FC = () => {
                 method: 'DELETE'
             });
             if (!res.ok) throw new Error('Failed to delete song');
+            toast.success(t('myShared.deleteSuccess'));
             setSongs(prev => prev.filter(s => s.id !== songId));
         } catch (err) {
-            alert(t('myShared.deleteError', { error: (err as Error).message }));
+            toast.error(t('myShared.deleteError', { error: (err as Error).message }));
         }
     };
 

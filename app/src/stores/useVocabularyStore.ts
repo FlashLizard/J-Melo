@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 import { db, WordRecord, SongRecord } from '@/lib/db';
+import toast from 'react-hot-toast';
 
 export type VocabDisplayMode = 'all' | 'bySong' | 'search';
 
@@ -130,7 +131,7 @@ const useVocabularyStore = create<VocabularyState>()(
       exportSelectedToAnki: async (t) => { // Accept t here
         const { selectedIds, words, songs } = get();
         if (selectedIds.size === 0) {
-          alert(t("vocabularyPage.noWordsSelectedAlert"));
+          toast.error(t("vocabularyPage.noWordsSelectedAlert"));
           return;
         }
 

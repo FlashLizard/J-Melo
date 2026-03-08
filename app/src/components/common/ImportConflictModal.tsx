@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import useSongStore from '@/stores/useSongStore';
 import useTranslation from '@/hooks/useTranslation';
 import { SongRecord, WordRecord } from '@/lib/db';
+import toast from 'react-hot-toast';
 
 export interface Conflict {
   existingSong: SongRecord;
@@ -67,7 +68,7 @@ const ImportConflictModal: React.FC<ImportConflictModalProps> = ({
       
       onImportComplete();
     } catch (error) {
-      alert(t('home.importError', { message: (error as Error).message }));
+      toast.error(t('home.importError', { message: (error as Error).message }));
     } finally {
       setIsProcessing(false);
       onClose();

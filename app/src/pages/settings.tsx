@@ -214,6 +214,33 @@ const SettingsPage: React.FC = () => {
                   </div>
               </SectionCard>
 
+              <SectionCard title={t('settings.communitySectionTitle') || 'Community'} icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>}>
+                  <div className="space-y-6 max-w-2xl">
+                      <InputField 
+                          label={t('settings.sharerNicknameLabel')} 
+                          name="sharerNickname" 
+                          value={settings.sharerNickname} 
+                          placeholder={t('settings.sharerNicknamePlaceholder')} 
+                          onChange={handleInputChange} 
+                      />
+                      <p className="text-xs text-gray-500 ml-1 italic">{t('settings.sharerNicknameHint')}</p>
+                      
+                      <div className="pt-4">
+                          <label htmlFor="backendUrl" className="block text-sm font-medium text-gray-400 mb-2 ml-1">{t('settings.backendUrl')}</label>
+                          <input
+                              type="text"
+                              id="backendUrl"
+                              name="backendUrl"
+                              value={settings.backendUrl || ''}
+                              onChange={handleInputChange}
+                              placeholder="e.g., http://localhost:8000"
+                              className="w-full p-3 rounded-2xl bg-gray-900/50 border border-gray-700/50 text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all placeholder-gray-600 shadow-inner"
+                          />
+                          <p className="text-xs text-gray-500 mt-2 ml-1 italic">{t('settings.backendUrlHint')}</p>
+                      </div>
+                  </div>
+              </SectionCard>
+
               <SectionCard title={t('settings.dataBackupRestoreTitle')} icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>}>
                   <div className="space-y-10">
                       {/* Export Section */}

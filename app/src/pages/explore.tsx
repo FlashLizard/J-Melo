@@ -7,6 +7,7 @@ import { db, blobToBase64 } from '@/lib/db';
 import ImportConflictModal, { Conflict } from '@/components/common/ImportConflictModal';
 import { SongRecord, WordRecord } from '@/lib/db';
 import SongPreviewModal from '@/components/explore/SongPreviewModal';
+import toast from 'react-hot-toast';
 
 interface CommunitySong {
     id: number;
@@ -98,11 +99,11 @@ const ExplorePage: React.FC = () => {
             } else {
                 const { addManySongs } = useSongStore.getState();
                 await addManySongs(newSongs, wordsData);
-                
+                toast.success(t('settings.importSuccess'));
                 setPreviewSong(null);
             }
         } catch (e) {
-            alert(t('explore.downloadError', { error: (e as Error).message }));
+            toast.error(t('explore.downloadError', { error: (e as Error).message }));
         }
     };
 
@@ -147,11 +148,11 @@ const ExplorePage: React.FC = () => {
 
             if (!postRes.ok) throw new Error("Failed to upload new version.");
 
-            
+            toast.success("Community version updated!");
             setPreviewSong(null);
             fetchSongs(searchQuery);
         } catch (e) {
-            alert(`Update failed: ${(e as Error).message}`);
+            toast.error(`Update failed: ${(e as Error).message}`);
         }
     };
 
@@ -164,10 +165,11 @@ const ExplorePage: React.FC = () => {
             });
             if (!delRes.ok) throw new Error("Failed to delete from community server.");
             
+            toast.success(t('myShared.deleteSuccess'));
             setPreviewSong(null);
             fetchSongs(searchQuery);
         } catch (e) {
-            alert(t('myShared.deleteError', { error: (e as Error).message }));
+            toast.error(t('myShared.deleteError', { error: (e as Error).message }));
         }
     };
 
@@ -196,7 +198,10 @@ const ExplorePage: React.FC = () => {
                     conflicts={importState.conflicts}
                     nonConflictingSongs={importState.nonConflictingSongs}
                     importedWords={importState.importedWords}
-                    onImportComplete={() => setImportState(null)}
+                    onImportComplete={() => {
+                        setImportState(null);
+                        toast.success(t('settings.importSuccess'));
+                    }}
                 />
             )}
 
@@ -211,7 +216,7 @@ const ExplorePage: React.FC = () => {
                             </div>
                             <h1 className="text-lg sm:text-2xl font-extrabold tracking-tight bg-gradient-to-br from-white to-gray-400 bg-clip-text text-transparent truncate">{t('home.exploreButton')}</h1>
                         </div>
-                        <Link href="/" className="p-2 sm:p-2.5 bg-gray-700/80 text-gray-200 rounded-xl hover:bg-gray-600 hover:text-white transition-all flex items-center justify-center border border-gray-600/50 shadow-sm flex-shrink-0" title={t('settings.backToPlayer')}>
+                        <Link href="/" className="p-2 sm:p-2.5 bg-gray-700/80 text-gray-200 rounded-2xl hover:bg-gray-600 hover:text-white transition-all flex items-center justify-center border border-gray-600/50 shadow-sm flex-shrink-0" title={t('settings.backToPlayer')}>
                             <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.75 19.5L8.25 12l7.5-7.5" />
                             </svg>

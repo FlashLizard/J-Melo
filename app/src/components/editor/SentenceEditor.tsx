@@ -189,7 +189,7 @@ const SentenceEditor: React.FC<SentenceEditorProps> = ({ line, lineIndex, onSave
 
       const availableSpace = maxAllowedEndTime - clickTime;
       if (availableSpace < minDuration) {
-          alert(t('sentenceEditor.spaceTooSmallAlert') || "Not enough space to add a new word here.");
+          toast.error(t('sentenceEditor.spaceTooSmallAlert') || "Not enough space to add a new word here.");
           return;
       }
 

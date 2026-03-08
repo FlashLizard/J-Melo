@@ -1,3 +1,4 @@
+// src/stores/usePlayerStore.ts
 import { create } from 'zustand';
 
 export type PlayMode = 'sequential' | 'shuffle' | 'loop-single';
@@ -15,7 +16,7 @@ interface PlayerState {
 
 let mediaElement: HTMLAudioElement | HTMLVideoElement | null = null;
 let rafId: number | null = null;
-let isSeeking = false; // Add a flag to block rAF updates during seek
+let isSeeking = false;
 
 const usePlayerStore = create<PlayerState>(() => ({
   isPlaying: false,
@@ -30,14 +31,9 @@ const usePlayerStore = create<PlayerState>(() => ({
 
 const updateTimeLoop = () => {
     if (!mediaElement) return;
-    
-    // Do not update from mediaElement if we are in the middle of a seek operation,
-    // to avoid Safari reporting old/wrong times while buffering.
     if (!isSeeking) {
-        const { loopA, loopB, isPlaying } = usePlayerStore.getState();
+        const { loopA, loopB } = usePlayerStore.getState();
         const newTime = mediaElement.currentTime;
-
-        // Check for looping
         if (loopA !== null && loopB !== null && newTime >= loopB) {
             mediaElement.currentTime = loopA;
             usePlayerStore.setState({ currentTime: loopA });
@@ -45,39 +41,67 @@ const updateTimeLoop = () => {
             usePlayerStore.setState({ currentTime: newTime });
         }
     }
-
-    // Always keep the loop running if we are supposed to be playing
     if (usePlayerStore.getState().isPlaying) {
         rafId = requestAnimationFrame(updateTimeLoop);
     }
 };
 
-const handleLoadedMetadata = () => mediaElement && usePlayerStore.setState({ duration: mediaElement.duration });
+const handleLoadedMetadata = () => {
+    if (mediaElement) {
+        usePlayerStore.setState({ duration: mediaElement.duration });
+        if ('mediaSession' in navigator && mediaElement.duration) {
+            navigator.mediaSession.setPositionState({
+                duration: mediaElement.duration,
+                playbackRate: mediaElement.playbackRate,
+                position: mediaElement.currentTime
+            });
+        }
+    }
+};
+
 const handlePlay = () => {
     usePlayerStore.setState({ isPlaying: true });
     if (rafId) cancelAnimationFrame(rafId);
     rafId = requestAnimationFrame(updateTimeLoop);
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
 };
+
 const handlePause = () => {
     usePlayerStore.setState({ isPlaying: false });
     if (rafId) cancelAnimationFrame(rafId);
     if (mediaElement && !isSeeking) usePlayerStore.setState({ currentTime: mediaElement.currentTime });
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
 };
+
 const handleEnded = () => {
     usePlayerStore.setState({ isPlaying: false, hasEnded: true });
     if (rafId) cancelAnimationFrame(rafId);
+    if (playerStoreActions.onTrackEnded) {
+        playerStoreActions.onTrackEnded();
+    }
 };
-const handleSeeking = () => {
-    isSeeking = true;
-};
+
+const handleSeeking = () => { isSeeking = true; };
 const handleSeeked = () => {
     isSeeking = false;
-    if (mediaElement) usePlayerStore.setState({ currentTime: mediaElement.currentTime });
+    if (mediaElement) {
+        usePlayerStore.setState({ currentTime: mediaElement.currentTime });
+        if ('mediaSession' in navigator && mediaElement.duration) {
+            navigator.mediaSession.setPositionState({
+                duration: mediaElement.duration,
+                playbackRate: mediaElement.playbackRate,
+                position: mediaElement.currentTime
+            });
+        }
+    }
 };
 
 export const playerStoreActions = {
+  onTrackEnded: null as (() => void) | null,
+  onNextTrack: null as (() => void) | null,
+  onPrevTrack: null as (() => void) | null,
+
   setMediaElement: (element: HTMLAudioElement | HTMLVideoElement | null) => {
-    console.log("playerStoreActions.setMediaElement called with:", element);
     if (mediaElement) {
         mediaElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
         mediaElement.removeEventListener('play', handlePlay);
@@ -89,46 +113,53 @@ export const playerStoreActions = {
     }
     mediaElement = element;
     isSeeking = false;
-    // Keep playbackRate and playMode but reset other playback state
     usePlayerStore.setState({ isPlaying: false, currentTime: 0, duration: 0, hasEnded: false });
     if (element) {
-        element.playbackRate = usePlayerStore.getState().playbackRate; // Apply current rate to new element
+        element.playbackRate = usePlayerStore.getState().playbackRate;
         element.addEventListener('loadedmetadata', handleLoadedMetadata);
         element.addEventListener('play', handlePlay);
         element.addEventListener('pause', handlePause);
         element.addEventListener('ended', handleEnded);
         element.addEventListener('seeking', handleSeeking);
         element.addEventListener('seeked', handleSeeked);
-        if (!element.paused) {
-            handlePlay();
+        if (!element.paused) handlePlay();
+
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.setActionHandler('play', () => playerStoreActions.play());
+            navigator.mediaSession.setActionHandler('pause', () => playerStoreActions.pause());
+            navigator.mediaSession.setActionHandler('previoustrack', () => playerStoreActions.onPrevTrack?.());
+            navigator.mediaSession.setActionHandler('nexttrack', () => playerStoreActions.onNextTrack?.());
+            navigator.mediaSession.setActionHandler('seekto', (details) => {
+                if (details.seekTime !== undefined) playerStoreActions.seek(details.seekTime);
+            });
         }
     }
   },
-  play: () => {
-    mediaElement?.play();
+
+  updateMetadata: (title: string, artist: string, artworkUrl: string) => {
+    if ('mediaSession' in navigator && (window as any).MediaMetadata) {
+        navigator.mediaSession.metadata = new (window as any).MediaMetadata({
+            title, artist,
+            artwork: [{ src: artworkUrl, sizes: '512x512', type: 'image/png' }]
+        });
+    }
   },
-  pause: () => {
-    mediaElement?.pause();
-  },
+
+  play: () => { mediaElement?.play().catch(e => console.error("Play failed", e)); },
+  pause: () => { mediaElement?.pause(); },
   togglePlay: () => {
     const { isPlaying } = usePlayerStore.getState();
-    if (isPlaying) {
-      mediaElement?.pause();
-    } else {
-      mediaElement?.play();
-    }
+    if (isPlaying) mediaElement?.pause(); else mediaElement?.play().catch(e => console.error("Play failed", e));
   },
   setPlaybackRate: (rate: number) => {
-    if (mediaElement) {
-        mediaElement.playbackRate = rate;
-    }
+    if (mediaElement) mediaElement.playbackRate = rate;
     usePlayerStore.setState({ playbackRate: rate });
   },
   seek: (time: number) => { 
     if (mediaElement) {
-        isSeeking = true; // Instantly lock updates
+        isSeeking = true;
         mediaElement.currentTime = time; 
-        usePlayerStore.setState({ currentTime: time }); // Optimistic UI update
+        usePlayerStore.setState({ currentTime: time });
     }
   },
   setLoopA: () => usePlayerStore.setState({ loopA: usePlayerStore.getState().currentTime, loopB: null }),

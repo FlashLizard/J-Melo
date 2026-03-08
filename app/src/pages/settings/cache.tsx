@@ -6,6 +6,7 @@ import useTranslation from '@/hooks/useTranslation';
 import { db, SongRecord } from '@/lib/db';
 import { filesize } from 'filesize';
 import Head from 'next/head';
+import toast from 'react-hot-toast';
 
 const CachePage: React.FC = () => {
   const { t } = useTranslation();
@@ -37,6 +38,7 @@ const CachePage: React.FC = () => {
   const handleDelete = async (id: number) => {
     if (window.confirm(t('cacheManager.deleteSongConfirm'))) {
       await db.songs.update(id, { audioData: undefined, is_cached: false });
+      toast.success(t('admin.clearSuccess', { cacheName: 'Media' }));
       loadCachedSongs();
     }
   };
@@ -45,6 +47,7 @@ const CachePage: React.FC = () => {
     if (window.confirm(t('cacheManager.deleteAllConfirm'))) {
       const ids = cachedSongs.map(s => s.id!).filter(id => id !== undefined);
       await db.songs.bulkUpdate(ids.map(id => ({ key: id, changes: { audioData: undefined, is_cached: false } })));
+      toast.success(t('admin.clearSuccess', { cacheName: 'All Media' }));
       loadCachedSongs();
     }
   };

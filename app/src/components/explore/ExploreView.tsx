@@ -1,13 +1,14 @@
 // src/components/explore/ExploreView.tsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import useTranslation from '@/hooks/useTranslation';
 import useSongStore from '@/stores/useSongStore';
 import { db, blobToBase64 } from '@/lib/db';
 import ImportConflictModal, { Conflict } from '@/components/common/ImportConflictModal';
 import { SongRecord, WordRecord } from '@/lib/db';
 import SongPreviewModal from '@/components/explore/SongPreviewModal';
-import cn from 'classnames';
 import useSettingsStore from '@/stores/useSettingsStore';
+import toast from 'react-hot-toast';
+import cn from 'classnames';
 
 interface CommunitySong {
     id: number;
@@ -100,11 +101,12 @@ const ExploreView: React.FC<ExploreViewProps> = ({ onImportSuccess }) => {
             } else {
                 const { addManySongs } = useSongStore.getState();
                 await addManySongs(newSongs, wordsData);
+                toast.success(t('settings.importSuccess'));
                 setPreviewSong(null);
                 if (onImportSuccess) onImportSuccess();
             }
         } catch (e) {
-            alert(t('explore.downloadError', { error: (e as Error).message }));
+            toast.error(t('explore.downloadError', { error: (e as Error).message }));
         }
     };
 
@@ -149,10 +151,11 @@ const ExploreView: React.FC<ExploreViewProps> = ({ onImportSuccess }) => {
 
             if (!postRes.ok) throw new Error("Failed to upload new version.");
 
+            toast.success("Community version updated!");
             setPreviewSong(null);
             fetchSongs(searchQuery);
         } catch (e) {
-            alert(`Update failed: ${(e as Error).message}`);
+            toast.error(`Update failed: ${(e as Error).message}`);
         }
     };
 
@@ -164,10 +167,12 @@ const ExploreView: React.FC<ExploreViewProps> = ({ onImportSuccess }) => {
                 method: 'DELETE'
             });
             if (!delRes.ok) throw new Error("Failed to delete from community server.");
+            
+            toast.success(t('myShared.deleteSuccess'));
             setPreviewSong(null);
             fetchSongs(searchQuery);
         } catch (e) {
-            alert(t('myShared.deleteError', { error: (e as Error).message }));
+            toast.error(t('myShared.deleteError', { error: (e as Error).message }));
         }
     };
 
@@ -194,17 +199,18 @@ const ExploreView: React.FC<ExploreViewProps> = ({ onImportSuccess }) => {
                     importedWords={importState.importedWords}
                     onImportComplete={() => {
                         setImportState(null);
+                        toast.success(t('settings.importSuccess'));
                         if (onImportSuccess) onImportSuccess();
                     }}
                 />
             )}
 
-            {/* Unified Top Bar: Search Form (with Icon Button) and Mode Toggle */}
-            <div className="mb-10 flex flex-row items-center gap-2 sm:gap-3 max-w-5xl mx-auto w-full">
-                <form onSubmit={handleSearch} className="relative flex-grow min-w-0 flex gap-2 sm:gap-3">
-                    <div className="relative flex-grow">
-                        <div className="absolute inset-y-0 left-0 pl-3 sm:pl-4 flex items-center pointer-events-none">
-                            <svg className="h-4 w-4 sm:h-5 sm:w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+            {/* Unified Top Bar: Search, Search Icon Button, and Mode Toggle */}
+            <div className="mb-8 flex flex-row items-center gap-2 sm:gap-3 max-w-5xl mx-auto w-full">
+                <form onSubmit={handleSearch} className="flex-grow flex gap-2 sm:gap-3 min-w-0">
+                    <div className="relative flex-grow min-w-0">
+                        <div className="absolute inset-y-0 left-0 pl-3 sm:pl-4 flex items-center pointer-events-none text-gray-500">
+                            <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                         </div>
                         <input
                             type="text"
@@ -215,15 +221,14 @@ const ExploreView: React.FC<ExploreViewProps> = ({ onImportSuccess }) => {
                         />
                     </div>
                     <button 
-                        type="submit" 
-                        disabled={isLoading}
-                        className="p-2.5 sm:p-3 bg-indigo-600/90 rounded-xl sm:rounded-2xl hover:bg-indigo-500 text-white transition-all border border-indigo-500/30 shadow-md active:scale-95 shrink-0 disabled:opacity-50"
+                        type="submit"
+                        className="p-2.5 sm:p-3 bg-indigo-600/90 rounded-xl sm:rounded-2xl hover:bg-indigo-500 text-white transition-all border border-indigo-500/30 shadow-md active:scale-95 shrink-0"
                         title={t('explore.searchButton')}
                     >
                         <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                     </button>
                 </form>
-
+                
                 <div className="flex bg-gray-800/60 p-1 rounded-xl sm:rounded-2xl border border-gray-700/50 shadow-inner shrink-0">
                     <button 
                         onClick={() => setDisplayMode('grid')}
@@ -243,7 +248,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({ onImportSuccess }) => {
             </div>
 
             {error && (
-                <div className="bg-red-900/40 border border-red-800 p-4 rounded-2xl mb-8 text-center text-red-200">
+                <div className="bg-red-900/40 border border-red-800 p-4 rounded-2xl mb-8 text-center text-red-200 shadow-sm">
                     {error}
                 </div>
             )}
@@ -254,7 +259,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({ onImportSuccess }) => {
                     <p className="text-gray-400 font-medium tracking-wide animate-pulse">{t('home.loadingSongs')}</p>
                 </div>
             ) : songs.length === 0 ? (
-                <div className="text-center py-20 bg-gray-800/30 rounded-3xl border border-gray-700/30 border-dashed max-w-2xl mx-auto w-full">
+                <div className="text-center py-20 bg-gray-800/30 rounded-3xl border border-gray-700/30 border-dashed max-w-2xl mx-auto">
                     <div className="bg-gray-900/50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
                         <svg className="w-10 h-10 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>
                     </div>
@@ -265,7 +270,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({ onImportSuccess }) => {
                     {songs.map((song) => (
                         <div 
                             key={song.id} 
-                            className="group relative bg-gray-800 rounded-2xl overflow-hidden border border-gray-700/50 md:hover:border-gray-600 transition-all duration-300 md:hover:-translate-y-1.5 md:hover:shadow-[0_15px_30px_-10px_rgba(0,0,0,0.5)] cursor-pointer select-none" 
+                            className="group relative bg-gray-800 rounded-2xl overflow-hidden border border-gray-700/50 md:hover:border-gray-600 transition-all duration-300 md:hover:-translate-y-1.5 md:hover:shadow-[0_15px_30px_-10px_rgba(0,0,0,0.5)] cursor-pointer select-none shadow-md" 
                             onClick={() => setPreviewSong(song)}
                             style={{ WebkitTouchCallout: 'none' }}
                         >
@@ -283,10 +288,10 @@ const ExploreView: React.FC<ExploreViewProps> = ({ onImportSuccess }) => {
                                 )}
                                 <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/40 to-transparent opacity-80 md:group-hover:opacity-90 transition-opacity duration-300"></div>
                                 <div className="absolute bottom-0 left-0 right-0 p-4 transform sm:translate-y-1 md:group-hover:translate-y-0 transition-transform duration-300 ease-out">
-                                    <h2 className="text-base font-bold text-white leading-tight mb-1 line-clamp-2 drop-shadow-md" title={song.title}>{song.title}</h2>
-                                    <p className="text-xs text-gray-300 truncate drop-shadow mb-2" title={song.artist}>{song.artist || t('home.unknownArtist')}</p>
-                                    <div className="flex justify-between items-center pt-2 border-t border-gray-600/50 text-[10px] text-gray-400 font-medium">
-                                        <span className="flex items-center gap-1"><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>{song.sharer_name}</span>
+                                    <h2 className="text-sm font-bold text-white leading-tight mb-1 line-clamp-2 drop-shadow-md" title={song.title}>{song.title}</h2>
+                                    <p className="text-[10px] text-gray-300 truncate drop-shadow mb-2" title={song.artist}>{song.artist || t('home.unknownArtist')}</p>
+                                    <div className="flex justify-between items-center pt-2 border-t border-gray-600/50 text-[9px] text-gray-400 font-medium">
+                                        <span className="flex items-center gap-1"><svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>{song.sharer_name}</span>
                                         <span>{new Date(song.created_at).toLocaleDateString()}</span>
                                     </div>
                                 </div>
@@ -295,12 +300,13 @@ const ExploreView: React.FC<ExploreViewProps> = ({ onImportSuccess }) => {
                     ))}
                 </div>
             ) : (
-                <div className="flex flex-col gap-2 max-w-5xl mx-auto w-full">
+                <div className="flex flex-col gap-2 max-w-5xl mx-auto">
                     {songs.map((song) => (
                         <div 
                             key={song.id}
                             onClick={() => setPreviewSong(song)}
                             className="flex items-center gap-4 p-3 rounded-2xl bg-gray-800/40 border border-gray-700/50 hover:bg-gray-800/60 hover:border-gray-600 transition-all duration-200 select-none cursor-pointer group"
+                            style={{ WebkitTouchCallout: 'none' }}
                         >
                             <div className="w-14 h-14 rounded-xl bg-gray-700 overflow-hidden flex-shrink-0 shadow-inner">
                                 {song.cover_url ? (
@@ -319,12 +325,9 @@ const ExploreView: React.FC<ExploreViewProps> = ({ onImportSuccess }) => {
                                 <h3 className="font-bold text-white truncate">{song.title}</h3>
                                 <p className="text-sm text-gray-400 truncate">{song.artist || t('home.unknownArtist')}</p>
                             </div>
-                            <div className="flex flex-col items-end shrink-0 pr-2 text-right">
-                                <span className="text-[10px] text-indigo-400 font-bold flex items-center gap-1 uppercase tracking-tighter">
-                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                                    {song.sharer_name}
-                                </span>
-                                <span className="text-[10px] text-gray-500 mt-0.5">{new Date(song.created_at).toLocaleDateString()}</span>
+                            <div className="flex flex-col items-end gap-1 shrink-0 pr-2">
+                                <span className="text-[10px] font-bold text-indigo-400 bg-indigo-900/20 px-2 py-0.5 rounded border border-indigo-800/30">{song.sharer_name}</span>
+                                <span className="text-[9px] text-gray-500 font-mono">{new Date(song.created_at).toLocaleDateString()}</span>
                             </div>
                         </div>
                     ))}

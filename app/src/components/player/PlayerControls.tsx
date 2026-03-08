@@ -209,7 +209,7 @@ const PlayerControls: React.FC = () => {
             </div>
             
             <button 
-                onClick={() => navigateToSong('prev')}
+                onClick={() => playerStoreActions.onPrevTrack?.()}
                 className="p-2 text-gray-300 hover:text-white transition-colors active:scale-95"
                 title="Previous Song"
             >
@@ -225,7 +225,7 @@ const PlayerControls: React.FC = () => {
             </button>
 
             <button 
-                onClick={() => navigateToSong('next')}
+                onClick={() => playerStoreActions.onNextTrack?.()}
                 className="p-2 text-gray-300 hover:text-white transition-colors active:scale-95"
                 title="Next Song"
             >

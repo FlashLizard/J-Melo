@@ -230,12 +230,12 @@ const useSongStore = create<SongState>()(
                       });
                       const newData = await newTranscriptionResponse.json();
                       set({ isLoading: false });
-                      alert(t('transcription.startedAlert').replace('{{queue_position}}', newData.queue_position));
+                      toast.success(t('transcription.startedAlert').replace('{{queue_position}}', newData.queue_position));
                       return;
                   }
               } else if (statusData.status === 'running' || statusData.status === 'pending' || statusData.status === 'processing') {
                   set({ isLoading: false });
-                  alert(t('transcription.inProgressAlert').replace('{{queue_position}}', statusData.queue_position));
+                  toast.success(t('transcription.inProgressAlert').replace('{{queue_position}}', statusData.queue_position));
                   return;
               }
           }
@@ -265,7 +265,8 @@ const useSongStore = create<SongState>()(
               set({ previewLyrics: tempLyrics, isLoading: false });
           } else {
               set({ isLoading: false });
-              alert(t('transcription.startedAlert').replace('{{queue_position}}', startData.queue_position));
+              toast.success(t('transcription.startedAlert').replace('{{queue_position}}', startData.queue_position));
+
           }
         } catch (err) {
           set({ error: (err as Error).message, isLoading: false });

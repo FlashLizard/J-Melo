@@ -210,57 +210,77 @@ const PlayerPage = () => {
 
   const { hasEnded, playMode } = usePlayerStore();
 
-  useEffect(() => {
-    if (hasEnded && song?.id) {
-        const playNext = async () => {
-            playerStoreActions.clearHasEnded();
-            try {
-                // We use Dexie directly to get the latest list
-                const { db } = await import('@/lib/db');
-                const allSongs = await db.songs.toArray();
-                if (allSongs.length === 0) return;
+  // Helper to find next/prev song ID
+  const getNeighborSongId = async (direction: 'next' | 'prev') => {
+    if (!song?.id) return null;
+    const { db } = await import('@/lib/db');
+    const allSongs = await db.songs.toArray();
+    if (allSongs.length === 0) return null;
 
-                let nextSongId = song.id;
-
-                if (playMode === 'sequential') {
-                    const currentIndex = allSongs.findIndex(s => s.id === song.id);
-                    if (currentIndex !== -1) {
-                        const nextIndex = (currentIndex + 1) % allSongs.length;
-                        nextSongId = allSongs[nextIndex].id!;
-                    }
-                } else if (playMode === 'shuffle') {
-                    if (allSongs.length > 1) {
-                        let randomIndex;
-                        do {
-                            randomIndex = Math.floor(Math.random() * allSongs.length);
-                        } while (allSongs[randomIndex].id === song.id);
-                        nextSongId = allSongs[randomIndex].id!;
-                    }
-                }
-                // 'loop-single' just stays on the same song
-                if (nextSongId) {
-                    // Use a query parameter to instruct the next page load to auto-play
-                    router.push(`/player/${nextSongId}?autoplay=1`);
-                }
-            } catch (error) {
-                console.error("Auto-play next failed", error);
-            }
-        };
-        playNext();
+    if (playMode === 'shuffle' && allSongs.length > 1) {
+        let randomIndex;
+        do {
+            randomIndex = Math.floor(Math.random() * allSongs.length);
+        } while (allSongs[randomIndex].id === song.id);
+        return allSongs[randomIndex].id!;
     }
-  }, [hasEnded, song, playMode, router]);
+
+    const currentIndex = allSongs.findIndex(s => s.id === song.id);
+    if (currentIndex === -1) return null;
+
+    if (direction === 'next') {
+        const nextIndex = (currentIndex + 1) % allSongs.length;
+        return allSongs[nextIndex].id!;
+    } else {
+        const prevIndex = (currentIndex - 1 + allSongs.length) % allSongs.length;
+        return allSongs[prevIndex].id!;
+    }
+  };
+
+  // Register callbacks for the player store
+  useEffect(() => {
+    playerStoreActions.onNextTrack = async () => {
+        const nextId = await getNeighborSongId('next');
+        if (nextId) router.push(`/player/${nextId}?autoplay=1`);
+    };
+    playerStoreActions.onPrevTrack = async () => {
+        const prevId = await getNeighborSongId('prev');
+        if (prevId) router.push(`/player/${prevId}?autoplay=1`);
+    };
+    playerStoreActions.onTrackEnded = () => {
+        if (playMode === 'loop-single') {
+            playerStoreActions.seek(0);
+            playerStoreActions.play();
+        } else {
+            playerStoreActions.onNextTrack?.();
+        }
+    };
+
+    return () => {
+        playerStoreActions.onNextTrack = null;
+        playerStoreActions.onPrevTrack = null;
+        playerStoreActions.onTrackEnded = null;
+    };
+  }, [song, playMode, router]);
+
+  // Update Media Session Metadata
+  useEffect(() => {
+    if (song) {
+        playerStoreActions.updateMetadata(
+            song.title,
+            song.artist || 'Unknown Artist',
+            song.cover_url || 'https://via.placeholder.com/512'
+        );
+    }
+  }, [song]);
 
   // Handle the autoplay query parameter
   useEffect(() => {
-    // Only attempt autoplay if we have a song, it's not currently playing, and we have an audio element ready.
-    // The actual play() might need to happen slightly after the audio element is mounted.
     if (router.isReady && router.query.autoplay === '1' && song && !isLoading) {
-        // We set a small timeout to let the <audio> element register its 'canplay' or just mount.
         const playTimer = setTimeout(() => {
             playerStoreActions.play();
-            // Clean up the URL so it doesn't auto-play again on accidental refresh
             router.replace(`/player/${song.id}`, undefined, { shallow: true });
-        }, 500);
+        }, 300);
         return () => clearTimeout(playTimer);
     }
   }, [router.isReady, router.query.autoplay, song, isLoading, router]);

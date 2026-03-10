@@ -28,6 +28,7 @@ import services.media_logic as media_logic
 import services.transcription_logic as transcription_logic
 import services.alignment_logic as alignment_logic
 import services.lyrics_logic as lyrics_logic
+import services.lyrics_petit_logic as lyrics_petit_logic
 import services.community_logic as community_logic
 import services.admin_logic as admin_logic
 
@@ -163,6 +164,14 @@ async def search_utaten(q: str = Query(...)):
 @app.get("/api/lyrics/fetch-utaten")
 async def fetch_utaten(url: str = Query(...)):
     return await lyrics_logic.fetch_utaten(url)
+
+@app.get("/api/lyrics/search-petitlyrics")
+async def api_search_petitlyrics(q: str = Query(...), artist: str = Query("")):
+    return {"results": await lyrics_petit_logic.search_petitlyrics(q, artist)}
+
+@app.get("/api/lyrics/fetch-petitlyrics")
+async def api_fetch_petitlyrics(lyrics_id: str = Query(...)):
+    return {"lyrics_data": await lyrics_petit_logic.fetch_petitlyrics_data(lyrics_id)}
 
 # --- Community Endpoints ---
 

@@ -149,18 +149,30 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
             
             <div className="flex flex-col gap-4 w-full max-w-[280px]">
                 <button
-                    onClick={() => setIsLyricsWizardOpen(true)}
+                    onClick={() => {
+                        setActivePanel('PETIT_LYRICS_IMPORTER');
+                        setActiveView('tools');
+                    }}
                     className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-2xl transition-all shadow-xl shadow-indigo-900/40 flex items-center justify-center gap-3 active:scale-95"
+                >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                    {t('petitLyrics.title')}
+                </button>
+
+                <button
+                    onClick={() => setIsLyricsWizardOpen(true)}
+                    className="w-full py-3.5 bg-gray-800 hover:bg-gray-700 text-indigo-300 font-bold rounded-2xl transition-all border border-indigo-500/20 flex items-center justify-center gap-3 active:scale-95 shadow-lg"
                 >
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                     {t('lyricsWizard.recommendedFlowButton')}
                 </button>
                 
-                <div className="grid grid-cols-2 gap-3 mt-2">
+                <div className="grid grid-cols-2 gap-3 mt-1">
                     <button
                         onClick={() => song && generateTranscriptionPreview(song, t)}
-                        className="py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold rounded-xl transition-all border border-gray-700/50 text-xs"
+                        className="py-3 bg-gray-800/50 hover:bg-gray-700 text-gray-400 hover:text-gray-200 font-bold rounded-xl transition-all border border-gray-700/50 text-xs flex flex-col items-center justify-center gap-1"
                     >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
                         {t('lyricsDisplay.noLyrics.transcribeButton')}
                     </button>
                     <button
@@ -168,8 +180,9 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
                             setActivePanel('TIMELESS_LYRICS_IMPORTER');
                             setActiveView('tools');
                         }}
-                        className="py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold rounded-xl transition-all border border-gray-700/50 text-xs"
+                        className="py-3 bg-gray-800/50 hover:bg-gray-700 text-gray-400 hover:text-gray-200 font-bold rounded-xl transition-all border border-gray-700/50 text-xs flex flex-col items-center justify-center gap-1"
                     >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
                         {t('lyricsDisplay.noLyrics.importButton')}
                     </button>
                 </div>

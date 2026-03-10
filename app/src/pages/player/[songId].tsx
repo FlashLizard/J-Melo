@@ -17,6 +17,7 @@ import AILyricCorrector from '@/components/tutor/AILyricCorrector';
 import LyricTranslationPanel from '@/components/tutor/LyricTranslationPanel';
 import LyricsAlignmentPanel from '@/components/tutor/LyricsAlignmentPanel';
 import LyricsWizardPanel from '@/components/tutor/LyricsWizardPanel';
+import PetitLyricsImporter from '@/components/tutor/PetitLyricsImporter';
 import useSongStore from '@/stores/useSongStore';
 import usePlayerStore, { playerStoreActions } from '@/stores/usePlayerStore';
 import useLyricsProcessor from '@/hooks/useLyricsProcessor';
@@ -63,6 +64,7 @@ const RightHandPanel = () => {
   if (activePanel === 'LYRIC_TRANSLATION_PANEL') return <LyricTranslationPanel />;
   if (activePanel === 'TIMELESS_LYRICS_IMPORTER') return <TimelessLyricsImporter />;
   if (activePanel === 'LYRICS_ALIGNMENT_PANEL') return <LyricsAlignmentPanel />;
+  if (activePanel === 'PETIT_LYRICS_IMPORTER') return <PetitLyricsImporter />;
   if (activePanel === 'LYRICS_WIZARD_PANEL') return <LyricsWizardPanel />;
 
   return <ToolPanel />;

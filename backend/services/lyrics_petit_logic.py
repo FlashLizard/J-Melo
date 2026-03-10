@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import xml.etree.ElementTree as ET
 import re
@@ -5,6 +6,7 @@ import traceback
 import httpx
 import numpy as np
 import io
+import html  # 新增：用于处理网页元数据中的 HTML 转义符
 import jaconv
 from sudachipy import dictionary, tokenizer
 from fastapi import HTTPException
@@ -109,51 +111,72 @@ def lsy_decoder(lsy_base64_lyric, lyrics_text_base64):
         log_info(f"LSY Decoder Error: {traceback.format_exc()}")
         return[]
 
-# --- 全新提取的 API 高效并发拉取助手 ---
-async def _fetch_from_api(client: httpx.AsyncClient, title: str, artist: str, lyrics_type: str, max_pages: int = 2):
-    """通过使用 findall('song') 一次性提取所有列表，避免愚蠢的 N+1 循环网络请求"""
-    results =[]
-    for page in range(max_pages):
-        body = REQUEST_BODY_BASE.copy()
-        body.update({
-            'key_title': title,
-            'key_artist': artist,
-            'index': str(page),
-            'lyricsType': lyrics_type,
-            'maxcount': '50'  # 放大单页阈值，通常一次请求即可涵盖所有结果
-        })
+# --- 完美并发版的 API 拉取助手 ---
+async def _fetch_from_api(client: httpx.AsyncClient, title: str, artist: str, lyrics_type: str, max_items: int = 15):
+    """并发拉取 API 的多个 index，突破官方一次只返回 1 条的限制，消除 404 及返回数量缺失问题"""
+    body = REQUEST_BODY_BASE.copy()
+    body.update({
+        'key_title': title,
+        'key_artist': artist,
+        'index': '0',
+        'lyricsType': lyrics_type
+    })
+    
+    try:
+        resp = await client.post(PETIT_LYRICS_API_URL, data=body, headers=REQUEST_HEADERS, timeout=15.0)
+        if resp.status_code != 200: return[]
+            
+        root = ET.fromstring(resp.text)
+        songs_node = root.find('songs')
+        if songs_node is None: return[]
+            
+        songs = songs_node.findall('song')
+        if not songs: return[]
         
-        try:
-            resp = await client.post(PETIT_LYRICS_API_URL, data=body, headers=REQUEST_HEADERS, timeout=15.0)
-            if resp.status_code != 200: break
-                
-            root = ET.fromstring(resp.text)
-            songs_node = root.find('songs')
-            if songs_node is None: break
-                
-            songs = songs_node.findall('song') # 修复：这里必须用 findall 提取数组！
-            if not songs: break
-                
-            results.extend(songs)
+        matched_node = songs_node.find('matchedCount')
+        matched_count = int(matched_node.text) if matched_node is not None and matched_node.text else 1
+        
+        results = list(songs)
+        
+        if len(results) < matched_count and len(results) < max_items:
+            fetch_limit = min(matched_count, max_items)
             
-            matched_node = songs_node.find('matchedCount')
-            matched_count = int(matched_node.text) if matched_node is not None and matched_node.text else 0
-            
-            # 如果目前拉取的数量已经覆盖了匹配总数，立刻停止分页请求
-            if len(results) >= matched_count:
-                break
-        except Exception as e:
-            log_info(f"API fetch error on page {page}: {str(e)}")
-            break
-            
-    return results
+            async def fetch_single_index(idx: int):
+                req_body = REQUEST_BODY_BASE.copy()
+                req_body.update({
+                    'key_title': title,
+                    'key_artist': artist,
+                    'index': str(idx),
+                    'lyricsType': lyrics_type
+                })
+                try:
+                    r = await client.post(PETIT_LYRICS_API_URL, data=req_body, headers=REQUEST_HEADERS, timeout=15.0)
+                    if r.status_code == 200:
+                        r_root = ET.fromstring(r.text)
+                        s_node = r_root.find('songs')
+                        if s_node is not None:
+                            return s_node.findall('song')
+                except Exception:
+                    pass
+                return[]
+
+            tasks =[fetch_single_index(i) for i in range(1, fetch_limit)]
+            if tasks:
+                extra_results = await asyncio.gather(*tasks)
+                for res_list in extra_results:
+                    if res_list:
+                        results.extend(res_list)
+                        
+        return results
+    except Exception as e:
+        log_info(f"API fetch error: {str(e)}")
+        return[]
 
 async def search_petitlyrics(title: str, artist: str = ""):
     proxy_url = ADMIN_CONFIG.get("proxy") or None
     async with httpx.AsyncClient(proxy=proxy_url) as client:
         try:
-            # 去除原先 for i in range(15): 的低效逻辑，直接用助手最多拉2页(100条)即可
-            songs = await _fetch_from_api(client, title, artist, '1', max_pages=2)
+            songs = await _fetch_from_api(client, title, artist, '1', max_items=15)
             results =[]
             seen_ids = set()
             
@@ -188,7 +211,7 @@ async def fetch_petitlyrics_data(lyrics_id: str):
     proxy_url = ADMIN_CONFIG.get("proxy") or None
     async with httpx.AsyncClient(proxy=proxy_url) as client:
         try:
-            # 1. Get Metadata (增加了更真实的请求头和重试机制，增强正则容错)
+            # 1. Get Metadata
             web_url = f"https://petitlyrics.com/lyrics/{lyrics_id}"
             web_headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -207,38 +230,53 @@ async def fetch_petitlyrics_data(lyrics_id: str):
             if not web_resp or web_resp.status_code != 200:
                 raise HTTPException(status_code=404, detail="Lyric page not found")
             
+            # 【核心修复 1】: 提取 Metadata 时进行 html.unescape() 还原真实字符串
             title, artist = "", ""
-            match = re.search(r'<meta property="og:title" content="(.*?)(?: / (.*?))?">', web_resp.text)
-            if match:
-                title = match.group(1).strip()
-                artist = match.group(2).strip() if match.group(2) else ""
+            og_match = re.search(r'<meta property="og:title" content="(.*?)">', web_resp.text)
+            if og_match:
+                content = html.unescape(og_match.group(1).strip())
+                if " / " in content:
+                    title, artist = content.rsplit(" / ", 1)
+                else:
+                    title = content
             else:
-                match = re.search(r'<title>\s*(.*?)(?:\s*/\s*(.*?))?\s*｜', web_resp.text)
-                if match: 
-                    title = match.group(1).strip()
-                    artist = match.group(2).strip() if match.group(2) else ""
+                title_match = re.search(r'<title>\s*(.*?)(?:\s*/\s*(.*?))?\s*｜', web_resp.text)
+                if title_match:
+                    title = html.unescape(title_match.group(1).strip())
+                    artist = html.unescape(title_match.group(2).strip()) if title_match.group(2) else ""
             
             if not title: raise HTTPException(status_code=500, detail="Failed to parse metadata from page")
 
-            # 2. Fetch Timing and Text (大幅缩减请求次数)
+            # 2. Fetch Timing and Text 
             target_song = None
             target_type = 0
             
-            # 先尝试寻找类型 3 (WSY 精确歌词)
-            songs_3 = await _fetch_from_api(client, title, artist, '3')
+            songs_3 = await _fetch_from_api(client, title, artist, '3', max_items=30)
             target_song = next((s for s in songs_3 if s.find('lyricsId') is not None and s.find('lyricsId').text == str(lyrics_id)), None)
             
             if target_song is not None:
                 target_type = 3
             else:
-                # 降级尝试寻找类型 2 (LSY 逐行歌词)
-                songs_2 = await _fetch_from_api(client, title, artist, '2')
+                songs_2 = await _fetch_from_api(client, title, artist, '2', max_items=30)
                 target_song = next((s for s in songs_2 if s.find('lyricsId') is not None and s.find('lyricsId').text == str(lyrics_id)), None)
                 if target_song is not None:
                     target_type = 2
 
+            # 【核心修复 2】: 究极容错降级。如果带 artist 找不到，很可能是网页的 artist 名字和 API 数据库内部对不上，去掉 artist 再狂扫一遍！
+            if target_song is None and artist:
+                log_info(f"Fallback: Searching without artist for title '{title}'...")
+                songs_3_fallback = await _fetch_from_api(client, title, "", '3', max_items=30)
+                target_song = next((s for s in songs_3_fallback if s.find('lyricsId') is not None and s.find('lyricsId').text == str(lyrics_id)), None)
+                if target_song is not None:
+                    target_type = 3
+                else:
+                    songs_2_fallback = await _fetch_from_api(client, title, "", '2', max_items=30)
+                    target_song = next((s for s in songs_2_fallback if s.find('lyricsId') is not None and s.find('lyricsId').text == str(lyrics_id)), None)
+                    if target_song is not None:
+                        target_type = 2
+
             if target_song is None:
-                raise HTTPException(status_code=404, detail="Lyric data not found")
+                raise HTTPException(status_code=404, detail="Lyric data not found after API search")
 
             lyrics_data_node = target_song.find('lyricsData')
             lyrics_base64 = lyrics_data_node.text if lyrics_data_node is not None else ""
@@ -247,14 +285,19 @@ async def fetch_petitlyrics_data(lyrics_id: str):
 
             txt_base64 = ""
             if target_type == 2:
-                # LSY 格式需要额外的原文 base64 进行解密
-                songs_1 = await _fetch_from_api(client, title, artist, '1')
+                songs_1 = await _fetch_from_api(client, title, artist, '1', max_items=30)
                 ts1 = next((s for s in songs_1 if s.find('lyricsId') is not None and s.find('lyricsId').text == str(lyrics_id)), None)
+                
+                # 同样的无 artist 降级搜索应用给 txt 获取
+                if ts1 is None and artist:
+                    songs_1_fb = await _fetch_from_api(client, title, "", '1', max_items=30)
+                    ts1 = next((s for s in songs_1_fb if s.find('lyricsId') is not None and s.find('lyricsId').text == str(lyrics_id)), None)
+
                 if ts1 is not None:
                     t1_node = ts1.find('lyricsData')
                     txt_base64 = t1_node.text if t1_node is not None else ""
 
-            # --- 全新时间提取层（还原WSY精确字级时间 / LSY生成插值） ---
+            # --- 全新时间提取层 ---
             raw_lines =[]
             if target_type == 3: # WSY
                 xml_data = base64.b64decode(lyrics_base64).decode("UTF-8")

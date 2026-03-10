@@ -26,14 +26,17 @@ interface ServerCacheInfo {
 }
 
 interface CleanupPolicy {
-  max_size_gb: number;
-  max_age_days: number;
+  max_size_gb?: number;
+  max_age_days?: number;
+  max_size_mb?: number;
+  max_age_hours?: number;
 }
 
 interface ServerPolicies {
   media: CleanupPolicy;
   transcription: CleanupPolicy;
   tokens: CleanupPolicy;
+  community: CleanupPolicy;
   proxy: string | null;
   admin_token: string;
 }
@@ -42,6 +45,14 @@ interface TaskStatus {
     url: string;
     status: string;
     queue_position: number;
+    created_at: string;
+}
+
+interface CommunitySong {
+    id: number;
+    title: string;
+    artist: string;
+    sharer_name: string;
     created_at: string;
 }
 
@@ -62,7 +73,9 @@ const AdminPage = () => {
   const [cacheInfo, setCacheInfo] = useState<ServerCacheInfo | null>(null);
   const [policies, setPolicies] = useState<ServerPolicies | null>(null);
   const [tasks, setTasks] = useState<TaskStatus[]>([]);
+  const [communitySongs, setCommunitySongs] = useState<CommunitySong[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSongsLoading, setIsSongsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [backendUrl, setBackendUrl] = useState('');
@@ -74,6 +87,22 @@ const AdminPage = () => {
     };
     loadBackendUrl();
   }, []);
+
+  const fetchCommunitySongs = async () => {
+    if (!backendUrl) return;
+    setIsSongsLoading(true);
+    try {
+        const res = await fetch(`${backendUrl}/api/community/songs?limit=100`);
+        if (res.ok) {
+            const data = await res.json();
+            setCommunitySongs(data.songs);
+        }
+    } catch (e) {
+        console.error("Failed to fetch community songs", e);
+    } finally {
+        setIsSongsLoading(false);
+    }
+  };
 
   const fetchAdminData = async (authToken: string) => {
     setIsLoading(true);
@@ -96,27 +125,26 @@ const AdminPage = () => {
       const configData = await configRes.json();
       const tasksData = await tasksRes.json();
 
-      // Map backend data to frontend structure
       setCacheInfo({
           media: cacheData.media_cache,
           tokens: cacheData.token_cache,
           transcription: cacheData.transcription_cache,
           community: {
               db_size_bytes: cacheData.community_db.size_bytes,
-              song_count: 0, // Not provided by this endpoint currently
-              quota_bytes: configData.community_policy?.max_db_size_bytes || 1024 * 1024 * 1024
+              song_count: cacheData.community_db.song_count || 0,
+              quota_bytes: (configData.community_policy?.max_size_mb || 500) * 1024 * 1024
           }
       });
 
       setPolicies({
-          media: configData.media_cache_policy,
-          tokens: configData.token_cache_policy,
-          transcription: configData.transcription_cache_policy,
+          media: configData.media_cache_policy || { max_size_gb: 10, max_age_days: 30 },
+          tokens: configData.token_cache_policy || { max_size_mb: 500, max_age_hours: 24 },
+          transcription: configData.transcription_cache_policy || { max_size_gb: 2, max_age_days: 30 },
+          community: configData.community_policy || { max_size_mb: 500 },
           proxy: configData.proxy,
           admin_token: configData.admin_token
       });
 
-      // Transform tasks map to array
       const tasksList: TaskStatus[] = Object.entries(tasksData).map(([id, info]: [string, any]) => ({
           url: info.display_name || id,
           status: info.status,
@@ -127,6 +155,7 @@ const AdminPage = () => {
 
       setIsAuthenticated(true);
       sessionStorage.setItem('admin_token', authToken);
+      fetchCommunitySongs();
     } catch (err) {
       setError((err as Error).message);
       setIsAuthenticated(false);
@@ -155,7 +184,6 @@ const AdminPage = () => {
   };
 
   const handleClearCache = async (cacheName: string) => {
-    // Map frontend names to backend names if necessary
     const backendCacheName = cacheName === 'transcription' ? 'transcriptions' : cacheName;
     if (!window.confirm(t('admin.confirmClear', { cacheName }))) return;
     
@@ -180,6 +208,24 @@ const AdminPage = () => {
     }
   };
 
+  const handleDeleteCommunitySong = async (songId: number) => {
+      if (!window.confirm(t('admin.communityDeleteConfirm'))) return;
+      
+      const authToken = sessionStorage.getItem('admin_token');
+      try {
+          const res = await fetch(`${backendUrl}/api/admin/community/songs/${songId}`, {
+              method: 'DELETE',
+              headers: { 'Authorization': `Bearer ${authToken}` }
+          });
+          if (!res.ok) throw new Error(t('admin.communityDeleteError'));
+          toast.success(t('admin.communityDeleteSuccess'));
+          fetchCommunitySongs();
+          fetchAdminData(authToken!);
+      } catch (err) {
+          toast.error((err as Error).message);
+      }
+  };
+
   const handleSaveConfig = async () => {
     if (!policies) return;
     setIsSaving(true);
@@ -190,7 +236,8 @@ const AdminPage = () => {
           proxy: policies.proxy,
           media_cache_policy: policies.media,
           token_cache_policy: policies.tokens,
-          transcription_cache_policy: policies.transcription
+          transcription_cache_policy: policies.transcription,
+          community_policy: policies.community
       };
       const res = await fetch(`${backendUrl}/api/admin/config`, {
         method: 'POST',
@@ -316,7 +363,7 @@ const AdminPage = () => {
                             <span className="text-emerald-400"><svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg></span>
                             {t('admin.communityCacheTitle')}
                         </h2>
-                        <div className="space-y-4 flex-grow">
+                        <div className="space-y-6 flex-grow">
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="bg-gray-900/50 p-4 rounded-2xl border border-gray-700/30">
                                     <p className="text-xs text-gray-500 font-bold uppercase mb-1">{t('admin.totalSize')}</p>
@@ -327,16 +374,69 @@ const AdminPage = () => {
                                     <p className="text-xl font-mono font-bold text-white">{cacheInfo.community.song_count} songs</p>
                                 </div>
                             </div>
+                            
+                            <div className="p-5 bg-emerald-900/10 rounded-2xl border border-emerald-500/10 space-y-4">
+                                <p className="text-xs text-emerald-300 font-bold uppercase tracking-widest border-b border-emerald-500/20 pb-2">{t('admin.autoCleanPolicy')}</p>
+                                <div>
+                                    <label className="block text-[10px] text-gray-500 font-bold uppercase mb-1 ml-1">{t('admin.maxSize')} (MB)</label>
+                                    <input
+                                        type="number"
+                                        value={policies.community.max_size_mb}
+                                        onChange={(e) => setPolicies({ ...policies, community: { ...policies.community, max_size_mb: Number(e.target.value) } })}
+                                        className="w-full p-2 bg-gray-900/50 border border-gray-700/50 rounded-xl text-white text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                    />
+                                </div>
+                            </div>
+
                             <div className="p-4 bg-gray-900/30 rounded-2xl border border-gray-700/30">
                                 <p className="text-xs text-gray-500 font-bold uppercase mb-2">{t('admin.communityQuota')}</p>
                                 <div className="w-full bg-gray-700 rounded-full h-2.5 mb-2 overflow-hidden shadow-inner">
-                                    <div className="bg-indigo-500 h-2.5 rounded-full transition-all duration-1000" style={{ width: `${Math.min(100, (cacheInfo.community.db_size_bytes / cacheInfo.community.quota_bytes) * 100)}%` }}></div>
+                                    <div className="bg-emerald-500 h-2.5 rounded-full transition-all duration-1000" style={{ width: `${Math.min(100, (cacheInfo.community.db_size_bytes / cacheInfo.community.quota_bytes) * 100)}%` }}></div>
                                 </div>
                                 <p className="text-[10px] text-gray-400 text-right font-mono">{filesize(cacheInfo.community.db_size_bytes)} / {filesize(cacheInfo.community.quota_bytes)}</p>
                             </div>
                         </div>
                     </div>
                   </div>
+
+                  <SectionCard title={t('admin.communityManageTitle')} icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>}>
+                    <div className="overflow-x-auto max-h-[400px] custom-scrollbar">
+                      <table className="w-full text-sm text-left">
+                        <thead className="text-xs text-gray-500 uppercase border-b border-gray-700/50 sticky top-0 bg-gray-800 z-10">
+                          <tr>
+                            <th className="px-4 py-3 font-bold">{t('songInfoEditor.titleLabel')}</th>
+                            <th className="px-4 py-3 font-bold">{t('songInfoEditor.artistLabel')}</th>
+                            <th className="px-4 py-3 font-bold">{t('explore.preview.sharedBy')}</th>
+                            <th className="px-4 py-3 font-bold text-right">{t('common.action')}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-700/30">
+                          {isSongsLoading ? (
+                              <tr><td colSpan={4} className="px-4 py-10 text-center text-gray-500">Loading...</td></tr>
+                          ) : communitySongs.length > 0 ? communitySongs.map((song) => (
+                            <tr key={song.id} className="hover:bg-gray-700/20 transition-colors group">
+                              <td className="px-4 py-4 font-bold text-indigo-300">{song.title}</td>
+                              <td className="px-4 py-4 text-gray-400">{song.artist}</td>
+                              <td className="px-4 py-4">
+                                <span className="text-xs px-2 py-0.5 rounded bg-gray-900 border border-gray-700 text-gray-500">{song.sharer_name}</span>
+                              </td>
+                              <td className="px-4 py-4 text-right">
+                                <button 
+                                    onClick={() => handleDeleteCommunitySong(song.id)}
+                                    className="p-2 text-red-400 hover:text-white hover:bg-red-600 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                    title={t('common.delete')}
+                                >
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                </button>
+                              </td>
+                            </tr>
+                          )) : (
+                            <tr><td colSpan={4} className="px-4 py-10 text-center text-gray-600 font-medium italic">{t('admin.communityNoSongs')}</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </SectionCard>
 
                   <SectionCard title={t('admin.transcriptionTasksTitle')} icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01m-.01 4h.01" /></svg>}>
                     <div className="overflow-x-auto">
@@ -423,24 +523,50 @@ const CacheCard = ({ title, info, policy, onPolicyChange, onClear, t }: {
         <div className="p-5 bg-indigo-900/10 rounded-2xl border border-indigo-500/10 space-y-4">
             <p className="text-xs text-indigo-300 font-bold uppercase tracking-widest border-b border-indigo-500/20 pb-2">{t('admin.autoCleanPolicy')}</p>
             <div className="grid grid-cols-2 gap-4">
-                <div>
-                    <label className="block text-[10px] text-gray-500 font-bold uppercase mb-1 ml-1">{t('admin.maxSize')} (GB)</label>
-                    <input
-                        type="number"
-                        value={policy.max_size_gb}
-                        onChange={(e) => onPolicyChange({ ...policy, max_size_gb: Number(e.target.value) })}
-                        className="w-full p-2 bg-gray-900/50 border border-gray-700/50 rounded-xl text-white text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    />
-                </div>
-                <div>
-                    <label className="block text-[10px] text-gray-500 font-bold uppercase mb-1 ml-1">{t('admin.maxAge')} (Days)</label>
-                    <input
-                        type="number"
-                        value={policy.max_age_days}
-                        onChange={(e) => onPolicyChange({ ...policy, max_age_days: Number(e.target.value) })}
-                        className="w-full p-2 bg-gray-900/50 border border-gray-700/50 rounded-xl text-white text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    />
-                </div>
+                {policy.max_size_gb !== undefined && (
+                    <div>
+                        <label className="block text-[10px] text-gray-500 font-bold uppercase mb-1 ml-1">{t('admin.maxSize')} (GB)</label>
+                        <input
+                            type="number"
+                            value={policy.max_size_gb}
+                            onChange={(e) => onPolicyChange({ ...policy, max_size_gb: Number(e.target.value) })}
+                            className="w-full p-2 bg-gray-900/50 border border-gray-700/50 rounded-xl text-white text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                    </div>
+                )}
+                {policy.max_size_mb !== undefined && (
+                    <div>
+                        <label className="block text-[10px] text-gray-500 font-bold uppercase mb-1 ml-1">{t('admin.maxSize')} (MB)</label>
+                        <input
+                            type="number"
+                            value={policy.max_size_mb}
+                            onChange={(e) => onPolicyChange({ ...policy, max_size_mb: Number(e.target.value) })}
+                            className="w-full p-2 bg-gray-900/50 border border-gray-700/50 rounded-xl text-white text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                    </div>
+                )}
+                {policy.max_age_days !== undefined && (
+                    <div>
+                        <label className="block text-[10px] text-gray-500 font-bold uppercase mb-1 ml-1">{t('admin.maxAge')} (Days)</label>
+                        <input
+                            type="number"
+                            value={policy.max_age_days}
+                            onChange={(e) => onPolicyChange({ ...policy, max_age_days: Number(e.target.value) })}
+                            className="w-full p-2 bg-gray-900/50 border border-gray-700/50 rounded-xl text-white text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                    </div>
+                )}
+                {policy.max_age_hours !== undefined && (
+                    <div>
+                        <label className="block text-[10px] text-gray-500 font-bold uppercase mb-1 ml-1">{t('admin.maxAge')} (Hours)</label>
+                        <input
+                            type="number"
+                            value={policy.max_age_hours}
+                            onChange={(e) => onPolicyChange({ ...policy, max_age_hours: Number(e.target.value) })}
+                            className="w-full p-2 bg-gray-900/50 border border-gray-700/50 rounded-xl text-white text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                    </div>
+                )}
             </div>
         </div>
     </div>

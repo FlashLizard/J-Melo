@@ -1,7 +1,7 @@
 // src/components/library/SongLibraryView.tsx
 import React, { useMemo, useState } from 'react';
-import { SongRecord } from '@/lib/db';
 import cn from 'classnames';
+import useSettingsStore from '@/stores/useSettingsStore';
 
 interface DisplaySongData {
   id?: number;
@@ -29,8 +29,11 @@ const SongLibraryView: React.FC<SongLibraryViewProps> = ({
     onPointerDown, onPointerMove, onPointerUpOrLeave, handleCardAction, 
     handleSelectSong, setIsSelectMode, t 
 }) => {
+    const { settings, updateSetting } = useSettingsStore();
     const [searchQuery, setSearchQuery] = useState('');
-    const [displayMode, setDisplayMode] = useState<'grid' | 'list'>('grid');
+    
+    const displayMode = settings.libraryDisplayMode || 'grid';
+    const setDisplayMode = (mode: 'grid' | 'list') => updateSetting('libraryDisplayMode', mode);
 
     const filteredSongs = useMemo(() => {
         if (!searchQuery.trim()) return songs;
@@ -43,7 +46,6 @@ const SongLibraryView: React.FC<SongLibraryViewProps> = ({
 
     const handleSearchSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        // Filtering is already handled by useMemo
     };
 
     return (
@@ -138,8 +140,8 @@ const SongLibraryView: React.FC<SongLibraryViewProps> = ({
                                             )}
 
                                             <div className="absolute bottom-0 left-0 right-0 p-4 transform translate-y-1 group-hover:translate-y-0 transition-transform duration-300 ease-out">
-                                                <h2 className="text-base font-bold text-white leading-tight mb-1 line-clamp-2 drop-shadow-md">{song.title}</h2>
-                                                <p className="text-xs text-gray-300 truncate drop-shadow">{song.artist || t('home.unknownArtist')}</p>
+                                                <h2 className="text-sm sm:text-base font-bold text-white leading-tight mb-1 line-clamp-2 drop-shadow-md">{song.title}</h2>
+                                                <p className="text-[10px] sm:text-xs text-gray-300 truncate drop-shadow">{song.artist || t('home.unknownArtist')}</p>
                                             </div>
                                         </div>
                                     </div>
@@ -149,7 +151,7 @@ const SongLibraryView: React.FC<SongLibraryViewProps> = ({
                     })}
                 </div>
             ) : (
-                <div className="flex flex-col gap-2 max-w-5xl mx-auto">
+                <div className="flex flex-col gap-2 max-w-5xl mx-auto w-full">
                     {filteredSongs.map((song) => {
                         const songId = song.id as number;
                         const isSelected = selectedSongIds.includes(songId);
@@ -162,12 +164,12 @@ const SongLibraryView: React.FC<SongLibraryViewProps> = ({
                                 onPointerLeave={onPointerUpOrLeave}
                                 onClick={() => handleCardAction(songId)}
                                 className={cn(
-                                    "flex items-center gap-4 p-3 rounded-2xl bg-gray-800/40 border transition-all duration-200 select-none cursor-pointer group shadow-sm",
+                                    "flex items-center gap-3 sm:gap-4 p-2 sm:p-3 rounded-2xl bg-gray-800/40 border transition-all duration-200 select-none cursor-pointer group shadow-sm w-full overflow-hidden",
                                     isSelected ? "border-indigo-500 bg-indigo-500/10" : "border-gray-700/50 hover:bg-gray-800/60 hover:border-gray-600"
                                 )}
                                 style={{ WebkitTouchCallout: 'none' }}
                             >
-                                <div className="w-14 h-14 rounded-xl bg-gray-700 overflow-hidden flex-shrink-0 shadow-inner">
+                                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gray-700 overflow-hidden flex-shrink-0 shadow-inner">
                                     {song.cover_url ? (
                                         <img src={song.cover_url} alt={song.title} className="w-full h-full object-cover" />
                                     ) : (
@@ -177,18 +179,18 @@ const SongLibraryView: React.FC<SongLibraryViewProps> = ({
                                     )}
                                 </div>
                                 <div className="flex-grow min-w-0">
-                                    <h3 className="font-bold text-white truncate">{song.title}</h3>
-                                    <p className="text-sm text-gray-400 truncate">{song.artist || t('home.unknownArtist')}</p>
+                                    <h3 className="font-bold text-white text-sm sm:text-base truncate">{song.title}</h3>
+                                    <p className="text-xs sm:text-sm text-gray-400 truncate">{song.artist || t('home.unknownArtist')}</p>
                                 </div>
-                                <div className="flex items-center gap-3 shrink-0 pr-2">
+                                <div className="flex items-center gap-2 sm:gap-3 shrink-0 pr-1 sm:pr-2">
                                     {song.is_cached && (
-                                        <div className="bg-green-500/20 p-1.5 rounded-lg border border-green-500/20" title="Audio Cached Offline">
-                                            <svg className="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                                        <div className="bg-green-500/20 p-1 sm:p-1.5 rounded-lg border border-green-500/20" title="Audio Cached Offline">
+                                            <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
                                         </div>
                                     )}
                                     <div 
                                         className={cn(
-                                            "w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all",
+                                            "w-5 h-5 sm:w-6 sm:h-6 rounded-lg border-2 flex items-center justify-center transition-all",
                                             isSelected ? "bg-indigo-600 border-indigo-500" : "bg-gray-900/50 border-gray-600"
                                         )}
                                         onClick={(e) => { 
@@ -199,7 +201,7 @@ const SongLibraryView: React.FC<SongLibraryViewProps> = ({
                                             handleSelectSong(songId);
                                         }}
                                     >
-                                        {isSelected && <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                                        {isSelected && <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
                                     </div>
                                 </div>
                             </div>

@@ -41,6 +41,8 @@
   "common.gridMode": "网格模式",
   "common.listMode": "列表模式",
   "common.search": "搜索",
+  "common.action": "操作",
+  "common.delete": "删除",
   "toolPanel.title": "工具与信息",
   "toolPanel.editInfoButton": "编辑信息",
   "toolPanel.songInformation": "歌曲信息",

@@ -51,6 +51,8 @@ export interface Settings {
   lyricsFontSize?: number; // New: Lyrics font size multiplier
   defaultHomepage?: 'library' | 'player'; // New: Default homepage
   themeMode?: 'light' | 'dark'; // New: Theme mode
+  libraryDisplayMode?: 'grid' | 'list'; // New: Library display mode
+  exploreDisplayMode?: 'grid' | 'list'; // New: Explore display mode
 }
 
 export interface PromptTemplate {

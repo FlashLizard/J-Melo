@@ -33,6 +33,8 @@ const DEFAULT_SETTINGS: Settings = {
   sharerNickname: '', // New: default sharer nickname
   defaultHomepage: 'library', // Default homepage
   themeMode: 'dark', // Default theme
+  libraryDisplayMode: 'grid', // Default library display mode
+  exploreDisplayMode: 'grid', // Default explore display mode
 };
 
 const useSettingsStore = create<SettingsState>()(

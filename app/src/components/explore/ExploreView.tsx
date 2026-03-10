@@ -31,14 +31,16 @@ interface ExploreViewProps {
 
 const ExploreView: React.FC<ExploreViewProps> = ({ onImportSuccess }) => {
     const { t } = useTranslation();
-    const { settings, loadSettings } = useSettingsStore();
+    const { settings, loadSettings, updateSetting } = useSettingsStore();
     const [songs, setSongs] = useState<CommunitySong[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [importState, setImportState] = useState<ImportState | null>(null);
     const [previewSong, setPreviewSong] = useState<CommunitySong | null>(null);
-    const [displayMode, setDisplayMode] = useState<'grid' | 'list'>('grid');
+
+    const displayMode = settings.exploreDisplayMode || 'grid';
+    const setDisplayMode = (mode: 'grid' | 'list') => updateSetting('exploreDisplayMode', mode);
 
     const backendUrl = settings.backendUrl;
     const myNickname = settings.sharerNickname;
@@ -300,15 +302,15 @@ const ExploreView: React.FC<ExploreViewProps> = ({ onImportSuccess }) => {
                     ))}
                 </div>
             ) : (
-                <div className="flex flex-col gap-2 max-w-5xl mx-auto">
+                <div className="flex flex-col gap-2 max-w-5xl mx-auto w-full">
                     {songs.map((song) => (
                         <div 
                             key={song.id}
                             onClick={() => setPreviewSong(song)}
-                            className="flex items-center gap-4 p-3 rounded-2xl bg-gray-800/40 border border-gray-700/50 hover:bg-gray-800/60 hover:border-gray-600 transition-all duration-200 select-none cursor-pointer group"
+                            className="flex items-center gap-3 sm:gap-4 p-2 sm:p-3 rounded-2xl bg-gray-800/40 border border-gray-700/50 hover:bg-gray-800/60 hover:border-gray-600 transition-all duration-200 select-none cursor-pointer group w-full overflow-hidden"
                             style={{ WebkitTouchCallout: 'none' }}
                         >
-                            <div className="w-14 h-14 rounded-xl bg-gray-700 overflow-hidden flex-shrink-0 shadow-inner">
+                            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gray-700 overflow-hidden flex-shrink-0 shadow-inner">
                                 {song.cover_url ? (
                                     <img 
                                         src={song.cover_url.startsWith('/') ? `${backendUrl}${song.cover_url}` : `${backendUrl}/api/media/proxy-image?url=${encodeURIComponent(song.cover_url)}`} 
@@ -322,12 +324,12 @@ const ExploreView: React.FC<ExploreViewProps> = ({ onImportSuccess }) => {
                                 )}
                             </div>
                             <div className="flex-grow min-w-0">
-                                <h3 className="font-bold text-white truncate">{song.title}</h3>
-                                <p className="text-sm text-gray-400 truncate">{song.artist || t('home.unknownArtist')}</p>
+                                <h3 className="font-bold text-white text-sm sm:text-base truncate">{song.title}</h3>
+                                <p className="text-xs sm:text-sm text-gray-400 truncate">{song.artist || t('home.unknownArtist')}</p>
                             </div>
-                            <div className="flex flex-col items-end gap-1 shrink-0 pr-2">
-                                <span className="text-[10px] font-bold text-indigo-400 bg-indigo-900/20 px-2 py-0.5 rounded border border-indigo-800/30">{song.sharer_name}</span>
-                                <span className="text-[9px] text-gray-500 font-mono">{new Date(song.created_at).toLocaleDateString()}</span>
+                            <div className="flex flex-col items-end gap-1 shrink-0 pr-1 sm:pr-2">
+                                <span className="text-[9px] sm:text-[10px] font-bold text-indigo-400 bg-indigo-900/20 px-1.5 sm:px-2 py-0.5 rounded border border-indigo-800/30 truncate max-w-[80px] sm:max-w-none text-center">{song.sharer_name}</span>
+                                <span className="hidden sm:inline text-[9px] text-gray-500 font-mono">{new Date(song.created_at).toLocaleDateString()}</span>
                             </div>
                         </div>
                     ))}

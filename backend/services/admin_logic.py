@@ -12,7 +12,27 @@ token_storage = {}
 
 def get_cache_info():
     mc_s, mc_f = get_dir_size(CACHE_DIR); tc_s, tc_f = get_dir_size(TEMP_DATA_DIR); trc_s, trc_f = get_dir_size(TRANSCRIPTION_CACHE_DIR)
-    return {"media_cache": {"size_bytes": mc_s, "file_count": mc_f}, "token_cache": {"size_bytes": tc_s, "file_count": tc_f}, "transcription_cache": {"size_bytes": trc_s, "file_count": trc_f}, "community_db": {"size_bytes": os.path.getsize("shared_songs.db") if os.path.exists("shared_songs.db") else 0}}
+    
+    song_count = 0
+    if os.path.exists("shared_songs.db"):
+        try:
+            import sqlite3
+            conn = sqlite3.connect("shared_songs.db")
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM shared_songs")
+            song_count = cursor.fetchone()[0]
+            conn.close()
+        except: pass
+
+    return {
+        "media_cache": {"size_bytes": mc_s, "file_count": mc_f}, 
+        "token_cache": {"size_bytes": tc_s, "file_count": tc_f}, 
+        "transcription_cache": {"size_bytes": trc_s, "file_count": trc_f}, 
+        "community_db": {
+            "size_bytes": os.path.getsize("shared_songs.db") if os.path.exists("shared_songs.db") else 0,
+            "song_count": song_count
+        }
+    }
 
 def clear_cache(cache_name: str, transcription_tasks_dict: dict):
     d = {"media": CACHE_DIR, "tokens": TEMP_DATA_DIR, "transcriptions": TRANSCRIPTION_CACHE_DIR}.get(cache_name)

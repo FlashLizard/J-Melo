@@ -15,6 +15,8 @@ export class ApiError extends Error {
 type RequestJsonOptions = RequestInit & {
   params?: Record<string, QueryValue>;
   timeoutMs?: number;
+  retryAttempts?: number;
+  retryDelayMs?: number;
 };
 
 export const buildApiUrl = (backendUrl: string, path: string, params?: Record<string, QueryValue>) => {
@@ -42,34 +44,73 @@ const readErrorMessage = async (response: Response) => {
   }
 };
 
+const RETRYABLE_GATEWAY_STATUSES = new Set([502, 503, 504]);
+const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+const wait = (ms: number) => new Promise<void>((resolve) => globalThis.setTimeout(resolve, ms));
+
+const requestMethod = (method?: string) => (method || 'GET').toUpperCase();
+
+const retryDelay = (baseDelayMs: number, attempt: number) => {
+  if (baseDelayMs <= 0) return 0;
+  return Math.min(baseDelayMs * 2 ** attempt, 5000);
+};
+
 export async function requestJson<T>(
   backendUrl: string,
   path: string,
   options: RequestJsonOptions = {}
 ): Promise<T> {
-  const { params, timeoutMs = 30000, ...fetchOptions } = options;
-  const controller = new AbortController();
-  const timeout = globalThis.setTimeout(() => controller.abort(), timeoutMs);
-  let response: Response;
+  const {
+    params,
+    timeoutMs = 30000,
+    retryAttempts,
+    retryDelayMs = 600,
+    ...fetchOptions
+  } = options;
+  const method = requestMethod(fetchOptions.method);
+  const maxRetries = retryAttempts ?? (IDEMPOTENT_METHODS.has(method) ? 3 : 0);
+  const url = buildApiUrl(backendUrl, path, params);
+  let response: Response | null = null;
 
-  try {
-    response = await fetch(buildApiUrl(backendUrl, path, params), {
-      ...fetchOptions,
-      signal: fetchOptions.signal ?? controller.signal,
-      headers: {
-        ...(fetchOptions.body ? { 'Content-Type': 'application/json' } : {}),
-        ...(fetchOptions.headers || {}),
-      },
-    });
-  } catch (error) {
-    if ((error as Error).name === 'AbortError') {
-      throw new ApiError('Backend request timed out', 408);
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      response = await fetch(url, {
+        ...fetchOptions,
+        signal: fetchOptions.signal ?? controller.signal,
+        headers: {
+          ...(fetchOptions.body ? { 'Content-Type': 'application/json' } : {}),
+          ...(fetchOptions.headers || {}),
+        },
+      });
+    } catch (error) {
+      if ((error as Error).name === 'AbortError') {
+        throw new ApiError('Backend request timed out', 408);
+      }
+      if (attempt < maxRetries) {
+        await wait(retryDelay(retryDelayMs, attempt));
+        continue;
+      }
+      throw new ApiError('Backend request failed. The backend may be offline, waking from idle, blocked by the proxy, or missing CORS headers.', 0, {
+        cause: (error as Error).message,
+      });
+    } finally {
+      globalThis.clearTimeout(timeout);
     }
-    throw new ApiError('Backend request failed. Please check the backend URL, network, proxy, or CORS settings.', 0, {
-      cause: (error as Error).message,
-    });
-  } finally {
-    globalThis.clearTimeout(timeout);
+
+    if (!response.ok && RETRYABLE_GATEWAY_STATUSES.has(response.status) && attempt < maxRetries) {
+      await wait(retryDelay(retryDelayMs, attempt));
+      continue;
+    }
+
+    break;
+  }
+
+  if (!response) {
+    throw new ApiError('Backend request failed before receiving a response.', 0);
   }
 
   if (!response.ok) {
@@ -93,14 +134,23 @@ export const deleteJson = <T>(backendUrl: string, path: string, params?: Record<
   requestJson<T>(backendUrl, path, { method: 'DELETE', params });
 
 export const headOk = async (backendUrl: string, path: string) => {
-  const controller = new AbortController();
-  const timeout = globalThis.setTimeout(() => controller.abort(), 10000);
-  try {
-    const response = await fetch(buildApiUrl(backendUrl, path), { method: 'HEAD', signal: controller.signal });
-    return response.ok;
-  } catch {
-    return false;
-  } finally {
-    globalThis.clearTimeout(timeout);
+  const url = buildApiUrl(backendUrl, path);
+
+  for (let attempt = 0; attempt <= 2; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = globalThis.setTimeout(() => controller.abort(), 10000);
+    try {
+      const response = await fetch(url, { method: 'HEAD', signal: controller.signal });
+      if (response.ok) return true;
+      if (!RETRYABLE_GATEWAY_STATUSES.has(response.status)) return false;
+    } catch {
+      // Treat network/CORS failures like a cold backend and give it a short chance to recover.
+    } finally {
+      globalThis.clearTimeout(timeout);
+    }
+
+    await wait(retryDelay(400, attempt));
   }
+
+  return false;
 };

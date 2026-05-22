@@ -26,6 +26,26 @@ npm run dev
 - `cors_origins` 写明确前端域名。
 - `admin_token` 不要使用示例值。
 - 给 `media_cache/`、`transcription_cache/`、`temp_data/`、SQLite 文件所在目录配置持久卷。
+- 反向代理、容器或进程管理器应探测 `GET /api/health`，发现后端不可达时自动重启。
+
+如果后端运行在 VPS 上，建议使用 systemd、Docker restart policy、PM2 等进程管理方式，而不是直接把 `uvicorn` 留在交互式终端里。一个最小 systemd 服务示例：
+
+```ini
+[Unit]
+Description=J-Melo backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/J-Melo/backend
+Environment=J_MELO_SKIP_MODELS=0
+ExecStart=/opt/J-Melo/backend/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000 --proxy-headers
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
 
 ## 模型与依赖
 
@@ -57,7 +77,8 @@ uvicorn main:app --host 127.0.0.1 --port 8000
 
 ## 故障排查
 
-- 前端连不上后端：检查 `app/public/config.json`、应用设置里的后端 URL、后端 CORS 和反向代理。
+- 前端连不上后端：先直接访问 `https://你的后端域名/api/health`。如果返回 502/504，说明请求没有到 FastAPI，重点检查后端进程、容器、systemd、反向代理 upstream 和平台是否有空闲休眠策略；浏览器里的 CORS 报错只是网关 502 没有应用 CORS 头导致的表象。
+- 后端空闲一段时间后不可用：确认进程不是跑在会断开的 SSH/终端会话里；给 systemd/Docker 配置自动重启；在 Nginx、云平台或外部监控中用 `/api/health` 做健康检查或低频保活。
 - 媒体导入返回 503 或日志出现 `Too many open files`：保持 `media_command_concurrency` 为 1，稍后重试；若长期出现，检查系统文件描述符限制和是否有卡住的 yt-dlp/ffmpeg 进程。
 - Explore 页面加载很慢：适当降低 `image_proxy_concurrency`，并确认反向代理没有禁用浏览器缓存。
 - 转录任务一直排队：检查 `task_worker_enabled`、后端日志和模型是否加载成功。

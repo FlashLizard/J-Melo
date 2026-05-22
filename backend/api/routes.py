@@ -78,6 +78,14 @@ def register_routes(app: FastAPI, runtime: Dict[str, Any]) -> None:
     def read_root():
         return {"message": "J-Melo Backend is running."}
 
+    @app.get("/api/health")
+    def health_check():
+        return {"status": "ok"}
+
+    @app.head("/api/health")
+    def health_check_head():
+        return Response(status_code=204)
+
     @app.get("/api/tasks/{task_id}")
     def get_task(task_id: str):
         task = task_queue.get_task(task_id)

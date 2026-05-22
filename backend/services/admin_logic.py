@@ -3,6 +3,8 @@ import json
 import os
 import secrets
 import shutil
+import sqlite3
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -36,9 +38,7 @@ def _community_song_count() -> int:
     if not COMMUNITY_DB_PATH.exists():
         return 0
     try:
-        import sqlite3
-
-        with sqlite3.connect(COMMUNITY_DB_PATH) as conn:
+        with closing(sqlite3.connect(COMMUNITY_DB_PATH)) as conn, conn:
             return conn.execute("SELECT COUNT(*) FROM shared_songs").fetchone()[0]
     except Exception:
         return 0

@@ -7,6 +7,7 @@ import subprocess
 import sys
 import threading
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urljoin
@@ -197,12 +198,22 @@ def _connect_media_index() -> sqlite3.Connection:
     return conn
 
 
+@contextmanager
+def _media_index_connection():
+    conn = _connect_media_index()
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
+
+
 def init_media_index() -> None:
     global _media_index_initialized
     with _MEDIA_INDEX_LOCK:
         if _media_index_initialized and MEDIA_INDEX_PATH.exists():
             return
-        with _connect_media_index() as conn:
+        with _media_index_connection() as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS media_cache_index (
@@ -233,7 +244,7 @@ def _media_file_available(path_like: str) -> bool:
 
 def get_indexed_media(source_url: str) -> dict | None:
     init_media_index()
-    with _connect_media_index() as conn:
+    with _media_index_connection() as conn:
         row = conn.execute("SELECT * FROM media_cache_index WHERE source_url = ?", (source_url,)).fetchone()
         if not row:
             return None
@@ -253,7 +264,7 @@ def get_indexed_media(source_url: str) -> dict | None:
 
 def save_indexed_media(source_url: str, payload: dict, media_id: str) -> None:
     init_media_index()
-    with _connect_media_index() as conn:
+    with _media_index_connection() as conn:
         conn.execute(
             """
             INSERT OR REPLACE INTO media_cache_index

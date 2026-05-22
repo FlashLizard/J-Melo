@@ -1,6 +1,7 @@
 import base64
 import json
 import sqlite3
+from contextlib import contextmanager
 
 from fastapi import HTTPException
 
@@ -13,8 +14,18 @@ def connect():
     return conn
 
 
+@contextmanager
+def connection():
+    conn = connect()
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
+
+
 def init_db():
-    with connect() as conn:
+    with connection() as conn:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS shared_songs (
@@ -62,7 +73,7 @@ def share_song(payload):
         raise HTTPException(status_code=413, detail="Community database quota exceeded")
 
     cover_blob = _decode_cover_blob(payload.song_data)
-    with connect() as conn:
+    with connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
             """
@@ -104,7 +115,7 @@ def list_songs(q=None, sharer=None, limit=50, offset=0):
     query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
     params.extend([limit, offset])
 
-    with connect() as conn:
+    with connection() as conn:
         cursor = conn.cursor()
         cursor.execute(query, params)
         return [
@@ -122,7 +133,7 @@ def list_songs(q=None, sharer=None, limit=50, offset=0):
 
 def get_song(song_id: int):
     init_db()
-    with connect() as conn:
+    with connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT song_data, words_data, cover_image, cover_url FROM shared_songs WHERE id = ?", (song_id,))
         row = cursor.fetchone()
@@ -139,7 +150,7 @@ def get_song(song_id: int):
 
 def delete_song(song_id: int, sharer_name: str):
     init_db()
-    with connect() as conn:
+    with connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT sharer_name FROM shared_songs WHERE id = ?", (song_id,))
         row = cursor.fetchone()
@@ -151,14 +162,14 @@ def delete_song(song_id: int, sharer_name: str):
 
 def admin_delete_song(song_id: int):
     init_db()
-    with connect() as conn:
+    with connection() as conn:
         conn.execute("DELETE FROM shared_songs WHERE id = ?", (song_id,))
     return {"message": "Deleted"}
 
 
 def get_cover(song_id: int):
     init_db()
-    with connect() as conn:
+    with connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT cover_image FROM shared_songs WHERE id = ?", (song_id,))
         row = cursor.fetchone()

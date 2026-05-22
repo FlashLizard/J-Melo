@@ -2,6 +2,7 @@ import asyncio
 import json
 import sqlite3
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Dict, List, Optional
@@ -43,9 +44,19 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
+@contextmanager
+def connection():
+    conn = connect()
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
+
+
 def init_db() -> None:
     global _db_initialized
-    with connect() as conn:
+    with connection() as conn:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS tasks (
@@ -106,7 +117,7 @@ def create_task(
     now = _utc_now()
     final_task_id = task_id
     task_written = False
-    with connect() as conn:
+    with connection() as conn:
         if task_key:
             existing = conn.execute(
                 "SELECT * FROM tasks WHERE kind = ? AND task_key = ? ORDER BY created_at DESC LIMIT 1",
@@ -148,14 +159,14 @@ def create_task(
 
 def get_task(task_id: str) -> Optional[TaskRecord]:
     init_db()
-    with connect() as conn:
+    with connection() as conn:
         row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
     return _row_to_task(row) if row else None
 
 
 def get_task_by_key(kind: str, task_key: str) -> Optional[TaskRecord]:
     init_db()
-    with connect() as conn:
+    with connection() as conn:
         row = conn.execute(
             "SELECT * FROM tasks WHERE kind = ? AND task_key = ? ORDER BY created_at DESC LIMIT 1",
             (kind, task_key),
@@ -165,7 +176,7 @@ def get_task_by_key(kind: str, task_key: str) -> Optional[TaskRecord]:
 
 def list_tasks(kind: Optional[str] = None, limit: int = 100) -> List[TaskRecord]:
     init_db()
-    with connect() as conn:
+    with connection() as conn:
         if kind:
             rows = conn.execute(
                 "SELECT * FROM tasks WHERE kind = ? ORDER BY created_at DESC LIMIT ?",
@@ -178,7 +189,7 @@ def list_tasks(kind: Optional[str] = None, limit: int = 100) -> List[TaskRecord]
 
 def get_queue_position(task_id: str) -> int:
     init_db()
-    with connect() as conn:
+    with connection() as conn:
         rows = conn.execute(
             "SELECT id FROM tasks WHERE status = 'pending' ORDER BY created_at ASC"
         ).fetchall()
@@ -191,21 +202,22 @@ def get_queue_position(task_id: str) -> int:
 
 def _claim_next_task() -> Optional[TaskRecord]:
     init_db()
-    with connect() as conn:
+    with connection() as conn:
         row = conn.execute(
             "SELECT * FROM tasks WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1"
         ).fetchone()
         if not row:
             return None
+        task_id = row["id"]
         conn.execute(
             "UPDATE tasks SET status = 'processing', started_at = ?, message = 'Processing' WHERE id = ?",
-            (_utc_now(), row["id"]),
+            (_utc_now(), task_id),
         )
-    return get_task(row["id"])
+    return get_task(task_id)
 
 
 def _complete_task(task_id: str, result: Dict[str, Any], message: str = "Success") -> None:
-    with connect() as conn:
+    with connection() as conn:
         conn.execute(
             """
             UPDATE tasks
@@ -217,7 +229,7 @@ def _complete_task(task_id: str, result: Dict[str, Any], message: str = "Success
 
 
 def _fail_task(task_id: str, error: str) -> None:
-    with connect() as conn:
+    with connection() as conn:
         conn.execute(
             """
             UPDATE tasks

@@ -73,3 +73,24 @@ def test_init_db_creates_required_indexes(isolated_queue):
 
     assert "idx_tasks_kind_status" in indexes
     assert "idx_tasks_kind_key" in indexes
+
+
+def test_idle_claim_closes_sqlite_connection(isolated_queue, monkeypatch):
+    closed_connections = []
+
+    class TrackingConnection(sqlite3.Connection):
+        def close(self):
+            closed_connections.append(self)
+            super().close()
+
+    def tracking_connect():
+        conn = sqlite3.connect(isolated_queue, factory=TrackingConnection)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    monkeypatch.setattr(task_queue, "connect", tracking_connect)
+
+    for _ in range(5):
+        assert task_queue._claim_next_task() is None
+
+    assert len(closed_connections) >= 5

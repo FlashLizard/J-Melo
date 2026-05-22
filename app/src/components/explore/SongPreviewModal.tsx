@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { SongRecord, WordRecord, db } from '@/lib/db';
 import useTranslation from '@/hooks/useTranslation';
 import cn from 'classnames';
+import { buildApiUrl, getJson } from '@/lib/backendClient';
 
 interface CommunitySong {
     id: number;
@@ -41,9 +42,10 @@ const SongPreviewModal: React.FC<SongPreviewModalProps> = ({ communitySong, back
         const fetchDetails = async () => {
             setIsLoading(true);
             try {
-                const res = await fetch(`${backendUrl}/api/community/songs/${communitySong.id}`);
-                if (!res.ok) throw new Error('Failed to download song data');
-                const parsedData = await res.json();
+                const parsedData = await getJson<{ songs: SongRecord[]; words: WordRecord[] }>(
+                    backendUrl,
+                    `/api/community/songs/${communitySong.id}`
+                );
                 
                 const fetchedSong = (parsedData.songs || [])[0];
                 if (!fetchedSong) throw new Error("No song data found in this package.");
@@ -78,7 +80,7 @@ const SongPreviewModal: React.FC<SongPreviewModalProps> = ({ communitySong, back
                     <div className="flex items-center gap-4">
                         <div className="w-14 h-14 rounded-lg bg-gray-700 overflow-hidden flex-shrink-0">
                             {communitySong.cover_url ? (
-                                <img src={communitySong.cover_url.startsWith('/') ? `${backendUrl}${communitySong.cover_url}` : communitySong.cover_url} alt="Cover" className="w-full h-full object-cover" />
+                                <img src={communitySong.cover_url.startsWith('/') ? buildApiUrl(backendUrl, communitySong.cover_url) : communitySong.cover_url} alt={t('player.albumCoverAlt')} className="w-full h-full object-cover" />
                             ) : (
                                 <div className="flex items-center justify-center w-full h-full text-gray-500">{t('explore.preview.noCover')}</div>
                             )}
@@ -97,7 +99,7 @@ const SongPreviewModal: React.FC<SongPreviewModalProps> = ({ communitySong, back
                 {/* Content Area */}
                 <div className="flex-grow overflow-hidden flex flex-col min-h-0">
                     {isLoading ? (
-                        <div className="flex-grow flex items-center justify-center text-gray-400">Loading details...</div>
+                        <div className="flex-grow flex items-center justify-center text-gray-400">{t('explore.preview.loadingDetails')}</div>
                     ) : error ? (
                         <div className="flex-grow flex items-center justify-center text-red-400">{error}</div>
                     ) : (
@@ -105,10 +107,10 @@ const SongPreviewModal: React.FC<SongPreviewModalProps> = ({ communitySong, back
                             {/* Audio Preview */}
                             {songData?.media_url && (
                                 <div className="p-4 border-b border-gray-700/50 bg-gray-800/80 flex justify-center flex-shrink-0">
-                                    <audio 
-                                        controls 
+                                    <audio
+                                        controls
                                         onTimeUpdate={handleTimeUpdate}
-                                        src={songData.media_url.startsWith('http') ? songData.media_url : `${backendUrl}${songData.media_url}`} 
+                                        src={songData.media_url.startsWith('http') ? songData.media_url : buildApiUrl(backendUrl, songData.media_url)}
                                         className="w-full max-w-md h-10 outline-none"
                                     />
                                 </div>

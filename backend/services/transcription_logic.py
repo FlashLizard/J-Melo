@@ -1,10 +1,10 @@
-import os
 import json
 import asyncio
 import jaconv
 from datetime import datetime
+from pathlib import Path
 from faster_whisper import WhisperModel
-from core.config import DEVICE, TRANSCRIPTION_CACHE_DIR
+from core.config import resolve_backend_path
 from core.utils import log_info, sudachi_tokenizer, sudachi_split_mode, is_pure_kana_or_punct
 
 TRANSCRIPTION_SEMAPHORE = asyncio.Semaphore(1)
@@ -63,12 +63,24 @@ def run_transcription_blocking(audio_path: str, whisper_model: WhisperModel):
     segments, _ = whisper_model.transcribe(audio_path, language="ja", word_timestamps=True)
     return format_whisper_output(list(segments))
 
+
+def transcribe_to_cache(audio_path: str, cache_path: str, model: WhisperModel):
+    resolved_audio = resolve_backend_path(audio_path)
+    resolved_cache = Path(cache_path)
+    if not resolved_cache.is_absolute():
+        resolved_cache = resolve_backend_path(resolved_cache)
+    resolved_cache.parent.mkdir(parents=True, exist_ok=True)
+    result = run_transcription_blocking(str(resolved_audio), model)
+    with resolved_cache.open("w", encoding="utf-8") as f:
+        json.dump(result, f, ensure_ascii=False)
+    return result
+
+
 async def process_transcription_task(media_id: str, audio_path: str, cache_path: str, model: WhisperModel):
     try:
         async with TRANSCRIPTION_SEMAPHORE:
             TRANSCRIPTION_TASKS[media_id]["status"] = "processing"
-            result = await asyncio.to_thread(lambda: run_transcription_blocking(audio_path, model))
-            with open(cache_path, "w", encoding="utf-8") as f: json.dump(result, f, ensure_ascii=False)
+            result = await asyncio.to_thread(lambda: transcribe_to_cache(audio_path, cache_path, model))
             TRANSCRIPTION_TASKS[media_id].update({
                 "status": "completed", "completed_at": datetime.utcnow().isoformat(), "result_path": cache_path
             })

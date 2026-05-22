@@ -1,219 +1,163 @@
 # J-Melo
-<p align="center">
-  <img src="https://raw.githubusercontent.com/FlashLizard/J-Melo/main/app/public/logo.svg" alt="J-Melo Logo" width="120">
-</p>
 
-<h1 align="center">J-Melo：日语歌学习助手</h1>
+J-Melo 是一个面向“自托管小圈子”的日语歌学习工具：前端负责本地歌曲库、歌词编辑、词卡和复习；后端负责媒体抓取、语音转录、歌词对齐、社区分享与管理。它不假设大型公开平台，也不引入 Redis、Celery 或账号体系，核心目标是轻量、可迁移、可自管。
 
-<p align="center">
-  <strong>一款智能的日语歌学习辅助工具，学唱日语歌的同时帮助你记录词汇。</strong>
-</p>
+## 功能概览
 
-<p align="center">
-  <a href="https://j-melo.flashlizard.top">
-    <img src="https://img.shields.io/badge/立即使用-Web_App-blue?style=for-the-badge&logo=vercel" alt="Web App">
-  </a>
-  <a href="https://www.bilibili.com/video/BV16AADzPExn">
-    <img src="https://img.shields.io/badge/视频介绍-bilibili-red?style=for-the-badge" alt="License">
-  </a>
-  <a href="LICENSE">
-    <img src="https://img.shields.io/badge/开源协议-MIT-green?style=for-the-badge" alt="License">
-  </a>
-</p>
+- 歌曲导入：通过 URL 抓取 YouTube、Bilibili、网易云等 yt-dlp 支持的媒体，并缓存为本地音频。
+- 沉浸式播放器：三栏播放器、歌词高亮、移动端滑动视图、注音和翻译显示开关。
+- 歌词系统：支持转录生成、PetitLyrics/Utaten 导入、无时间轴歌词导入、AI 校正、AI 翻译、手动编辑和 JSON 编辑。
+- 词汇学习：选词生成解释，保存为词卡，按歌曲或全局管理，支持 Anki CSV 导出和 SRS 复习。
+- 社区分享：把歌曲、歌词、词卡和封面分享到自托管社区库，其他用户可搜索并导入。
+- 管理后台：通过 Bearer token 查看缓存、清理数据、配置缓存策略、管理社区内容。
+- 数据迁移：前端 IndexedDB 使用 Dexie 版本迁移；导出 JSON 带 `version`，导入仍兼容旧版无版本数据。
 
-<p align="center">
-  <a href="#项目简介">项目简介</a> •
-  <a href="#核心功能">核心功能</a> •
-  <a href="#使用指南">使用指南</a> •
-  <a href="#部署指南">部署指南</a> •
-  <a href="https://github.com/FlashLizard/J-Melo/issues">反馈建议</a>
-</p>
+## 技术路线
 
-## 项目简介
-[J-Melo] 是一个专为日语歌学习者设计的沉浸式学习平台。它通过结合音乐、歌词编辑、AI辅助工具和词汇管理系统，旨在提供一个多功能、引人入胜的日语歌学习体验。
-该项目全部使用gemini cli编写。
+```mermaid
+flowchart LR
+  Browser["Next.js / React 前端"] --> IndexedDB["Dexie IndexedDB<br/>歌曲、词卡、设置、模板"]
+  Browser --> BackendClient["backendClient<br/>统一后端请求"]
+  Browser --> LLMClient["llmClient<br/>OpenAI 兼容 LLM"]
+  BackendClient --> FastAPI["FastAPI app factory<br/>api/routes.py"]
+  FastAPI --> Services["service 层<br/>media / lyrics / transcription / alignment / admin"]
+  Services --> TaskQueue["SQLite task_queue.db<br/>转录/对齐持久任务"]
+  Services --> CommunityDB["SQLite shared_songs.db<br/>社区分享库"]
+  Services --> Cache["media_cache / transcription_cache / temp_data"]
+  Services --> Models["faster-whisper / stable-ts / Sudachi"]
+```
 
-## 核心功能
-J-Melo 提供以下核心功能：
+前端是 Next.js、React、TypeScript、Zustand、Dexie 和 Tailwind。后端是 FastAPI、SQLite、yt-dlp、faster-whisper、stable-ts、SudachiPy。LLM 请求默认从浏览器直连 OpenAI 兼容接口，后端不代理用户的 LLM Key。
 
-*   **沉浸式播放器**：
-    *   加载视频/音频内容，支持网络url（YouTube,bilibili，网易云）。
-    *   歌词与播放进度同步高亮显示，支持音节级别精准定位。
-    *   可切换平假名注音和中文翻译的显示。
-    *   在歌词面板上单击背景可切换播放/暂停（移动端友好）。
-    *   黑胶唱片风格的旋转封面，提升视觉体验。
-*   **智能歌词系统**：
-    *   **歌词时间轴编辑器**：直观的视觉界面，支持精细调整歌词的开始和结束时间，包括单词级别的拖拽和时间轴编辑。
-    *   **完整歌词JSON编辑器**：提供高级用户直接编辑和验证歌词的原始JSON结构，支持实时预览和错误检查。
-    *   **AI歌词校正**：利用LLM智能修复不准确的歌词时间轴，支持自定义Prompt模板和预览修正结果，确保歌词与音频完美同步。
-    *   **AI歌词翻译**：支持两种灵活的翻译模式：
-        *   **翻译当前歌词**：通过LLM翻译当前歌曲的日语歌词为目标语言，并智能映射到原有歌词的时间轴上。
-        *   **映射提供的翻译**：允许用户输入已有的翻译文本，LLM会将其智能地映射到现有歌词的时间轴上，方便整合外部翻译资源。
-        *   提供翻译预览和保存功能，支持在设置中选择目标翻译语言。
-*   **AI导师与词汇管理**：
-    *   **AI单词解释**：选中歌词中的单词，利用LLM获取详细解释（例如，词义、用法、例句等），支持自定义Prompt模板和结果预览，并将解释直接保存为词汇卡片。
-    *   **词汇卡片管理**：
-        *   提供多种显示模式：查看所有词汇、按歌曲分组查看或通过搜索查找特定词汇。
-        *   支持多选批量删除和导出Anki兼容的CSV格式（包含歌曲名标签），方便与其他学习工具集成。
-        *   **间隔重复系统 (SRS) 复习模式**：根据单词的熟练度（通过每次复习后的反馈调整）智能安排复习，确保用户在遗忘曲线的关键点进行复习，从而高效记忆。词汇列表支持直观的彩色熟练度角标显示。
-*   **社区分享与探索 (Community & Explore)**：
-    *   **分享到社区**：一键将您精心校对的歌曲和相关生词卡片分享到社区服务器，供他人学习。
-    *   **探索社区资源**：在“探索”页面浏览其他用户分享的歌曲，支持搜索和一键导入到本地库。
-    *   **智能导入冲突解决**：从社区或本地导入歌曲时，若检测到重复歌曲，提供交互式面板让您决定是“保留现有”、“完全覆盖”还是“仅合并新词汇”。
-*   **管理后台与缓存控制 (Admin Dashboard)**：
-    *   **可视化控制台**：专为部署者设计的后台管理面板，受安全令牌保护，可实时监控媒体和令牌的存储占用。
-    *   **自动化清理策略**：支持在界面上灵活配置缓存的“最大容量”和“最长保留时间”，后端服务将定期自动清理，保障服务器稳定运行。
-    *   **社区配额与审查**：管理员可设定社区歌曲数据库的总存储配额，并能在后台无视所有权强制删除违规内容。
-*   **移动端响应式设计**：
-    *   全面优化移动设备用户体验，支持在播放器、歌词和工具面板之间通过滑动进行导航。
-    *   所有面板和功能均能自适应不同尺寸的屏幕，提供流畅、一致的用户体验。
-*   **多语言支持**：
-    *   应用界面支持中文和英文切换，未来可轻松扩展更多语言。
-*   **可定制的后端服务**：
-    *   在应用设置中可灵活配置后端API地址，方便部署者根据自己的服务器环境进行调整。
+## 目录结构
 
-## 使用指南
+```text
+app/                     Next.js 前端
+  src/lib/               IndexedDB、backendClient、llmClient、AI JSON 工具
+  src/stores/            Zustand 状态
+  src/components/        播放器、歌词、词汇、社区、工具面板
+  public/config.json     可选的前端部署配置
+backend/                 FastAPI 后端
+  main.py                app factory、模型加载、startup worker
+  api/routes.py          API 路由兼容层
+  core/                  配置、模型、通用工具
+  services/              业务服务和 SQLite 任务队列
+  config.json            可选的后端运行配置
+docs/                    中文专题文档
+```
 
-### 准备工作
+## 开发启动
 
-如果需要使用AI相关功能，请选择以下两种方式：
-1. 在设置中填入OpenAI格式的API Key（推荐在对歌词释意时使用）
-2. 每一个需要使用到AI功能的地方都会提供一个“预览Prompt”的按钮，可以复制Prompt到网页版LLM中，获取其回复中的文本/json结果手动输入。网页版LLM推荐deepseek或aistudio的gemini 3 flash。（推荐在歌词校对/生成歌词时使用）
+后端：
 
-### **1. 导入歌曲**
-支持三种导入方式：
-1. 通过输入视频/音频的URL（支持YouTube、Bilibili、网易云等）直接导入
-2. 通过Youtube直接搜索歌曲，无需vpn也能搜索
-3. 点击“更多-导入”来导入之前导出的歌曲json文件。相应的也可以在“我的歌曲”界面多选歌曲来导出或删除。
+```bash
+cd backend
+python -m venv venv
+.\venv\Scripts\activate
+pip install -r requirements.txt
+copy config.json.example config.json
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
 
-### **2. 生成歌词**
-直接导入的歌曲是没有歌词的，提供两种生成歌词的方式：
-1. 通过后端语音转录来生成歌词：
-    这种方式生成的歌词可能不准确，但是歌词会带有时间轴信息。后端会按顺序处理语音转录任务，一首歌可能需要5mins来转录。
-2. 导入无时间轴歌词：
-    对于不需要歌词时间轴的用户，可以直接输入歌曲文本后调用AI来生成歌词的json文本。不过这里更推荐使用网页提供的Utaten搜索直接获取歌词文本，再点击解析文本来生成。这样快速、准确、无需ai。
-若你觉得当前歌词不合适，可随时通过工具面板的“重新转录”与“导入无时间轴歌词”来重新生成歌词。
-![1](https://raw.githubusercontent.com/FlashLizard/J-Melo/main/images/image.png)
+前端：
 
+```bash
+cd app
+npm install
+copy public\config.json.example public\config.json
+npm run dev
+```
 
-### **3. 优化歌词**
-后端语音转录的歌词通常不够准确，特别是对于汉字读音很可能不准确，有两种校正方式：
-1. 使用AI歌词校正功能来校正：
-    由于Prompt过长，这种方式耗时极长。推荐复制Prompt后在网页版LLM中运行，获取其回复。
-2. 手动调整：
-    在歌词面板中点击单句歌词的空白地方后会出现“编辑句子”按钮（电脑端右键词语也可以），可以对这句歌词的各种信息进行手动修改，包括开始时间、结束时间、文本内容、注音等。也可直接编辑JSON文本。
-![2](https://raw.githubusercontent.com/FlashLizard/J-Melo/main/images/1APMQvWopT.png)
+打开 `http://localhost:3000`。如果后端不在 `http://localhost:8000`，请修改 `app/public/config.json` 或前端设置页里的后端地址。
 
-### **4. 翻译歌词**
-提供两种翻译方式：
-1. 直接通过AI翻译
-2. 输入正确翻译让AI映射到对应歌词
+## 后端配置
 
-### **5. 歌词释义与卡片生成**
-点击单句歌词的空白地方后会出现“解释词语”按钮（电脑端右键词语也可以），点击后可以从句子中选择一个词语，进行AI释义。提示模板支持自定义。AI释义后（不进行这步也可以），可以将结果记录为词汇卡片保存到词汇表。
-词汇卡片的模板也支持自定义。
-![3](https://raw.githubusercontent.com/FlashLizard/J-Melo/main/images/chrome_BEtblS8UYy.png)
-![4](https://raw.githubusercontent.com/FlashLizard/J-Melo/main/images/chrome_YAsWEI39YH.png)
+后端会读取 `backend/config.json`，缺失字段自动使用默认值。路径字段统一相对 `backend/` 解析，避免因为启动目录不同而写到错误位置。
 
-### **6. 词汇管理与复习**
-在最上面的导航栏点击“词汇”可以进入词汇管理界面，在这里可以查看所有的词汇卡片，支持按歌曲分组查看或搜索特定词汇。点击每个词汇卡片可以编辑其内容或删除它。也可以多选词汇卡片来批量删除或导出为Anki兼容的CSV文件。
-在词汇面板点击复习单词可以进行复习。
-在歌曲的工具面板中点击“复习词汇”会直接对从属于该首歌的词汇进行复习。
-![5](https://raw.githubusercontent.com/FlashLizard/J-Melo/main/images/chrome_SOn4ASpWNY.png)
+常用配置：
 
-### **7. 社区分享与探索**
-点击最上面的导航栏的探索可以查看他人分享的歌曲，点击后可以导入到自己的歌曲库，包括歌词和词汇卡片等信息。
-在“我的歌曲”界面多选歌曲可以分享到社区中。在分享前请在设置中配置好“分享昵称”。
-点击“更多-我的分享”可以删除之前分享的歌曲。
-![6](https://raw.githubusercontent.com/FlashLizard/J-Melo/main/images/chrome_8DFIC3LJOF.png)
+```json
+{
+  "admin_token": "your-secret-token-here",
+  "cors_origins": ["http://localhost:3000"],
+  "media_cache_dir": "media_cache",
+  "transcription_cache_dir": "transcription_cache",
+  "community_db_path": "shared_songs.db",
+  "task_db_path": "task_queue.db",
+  "transcription_model": "medium",
+  "transcription_compute_type": "int8",
+  "alignment_model": "base",
+  "load_transcription_model": true,
+  "load_alignment_model": true,
+  "task_worker_enabled": true,
+  "max_upload_mb": 50
+}
+```
 
-### **8. 其他功能**
-歌曲的工具面板提供缓存歌曲音频文件到本地的功能。在设置中缓存设置中可以删除缓存的歌曲。
-如果你想保持多端浏览器的数据同步，可以使用设置中的数据备份与恢复功能，目前支持生成一个24h有效的一次性token，在其他端可以输入这个token来同步数据。
-如果你自己部署了后端服务器，请修改设置中的后端URL为你的后端服务器地址。
-同时你可以在设置中的后台管理面板中方便的管理后台服务器缓存。
+公网部署时建议把 `cors_origins` 写成明确域名；如果需要管理后台，请务必设置 `admin_token`。
+测试或 CI 可以设置环境变量 `J_MELO_SKIP_MODELS=1` 暂时跳过转录和对齐模型加载；如需隔离真实配置，可用 `J_MELO_CONFIG_FILE` 指向临时配置文件。
 
-## 部署指南
+## API 兼容性
 
-J-Melo 项目分为前端（`app` 目录）和后端（`backend` 目录）两部分。请确保两者都能正确运行以获得完整功能。
+保留的主要接口包括：
 
-### **1. 后端部署**
+- `/api/media/*`
+- `/api/transcribe` 和 `/api/transcribe/status/{media_id}`
+- `/api/lyrics/*`
+- `/api/community/*`
+- `/api/admin/*`
+- `/api/export`、`/api/import`
 
-后端是一个基于 Python 的 FastAPI 应用，负责处理媒体抓取、音频转录和图像代理等任务。
+新增 `/api/tasks/{task_id}` 用于统一查询持久任务。旧的转录和对齐状态接口仍可使用，会映射到新的 SQLite 任务表。
 
-**先决条件:**
+## 数据与隐私
 
-*   Python 3.8+
-*   `ffmpeg`：用于处理音频/视频文件。请确保其已安装并可在系统路径中访问。
-*   `yt-dlp`：用于从各种平台下载媒体。后端会自动安装到其虚拟环境中。
-*   `WhisperX`：用于音频转录。后端会自动安装到其虚拟环境中。
+- 歌曲、歌词、词卡、设置和模板主要保存在浏览器 IndexedDB。
+- 后端会保存媒体缓存、转录缓存、社区分享库和任务队列表。
+- 分享到社区时，歌曲数据、词卡、分享昵称和可选封面会写入后端 SQLite。
+- LLM 功能默认由浏览器直接请求你配置的 OpenAI 兼容接口，请自行确认服务商的数据政策。
+- 导出文件包含歌曲元数据、歌词、词卡、设置和模板，不包含音频二进制缓存。
 
-**部署步骤:**
+## 测试与检查
 
-1.  **克隆仓库:**
-    ```bash
-    git clone https://github.com/your-username/J-Melo.git
-    cd J-Melo/backend
-    ```
-    _请将 `your-username` 替换为实际的 GitHub 用户名或组织名。_
-2.  **创建并激活虚拟环境:**
-    ```bash
-    python -m venv venv
-    # 在 Windows 系统上:
-    .\venv\Scripts\activate
-    # 在 macOS/Linux 系统上:
-    source venv/bin/activate
-    ```
-3.  **安装依赖:**
-    ```bash
-    pip install -r requirements.txt
-    ```
-    *   _注意: `yt-dlp` 和 `WhisperX` 及其依赖可能会花费一些时间安装。_
-4.  **启动后端服务:**
-    ```bash
-    uvicorn main:app --reload --host 0.0.0.0 --port 8000
-    ```
-    默认情况下，后端将在 `http://0.0.0.0:8000` 上运行。`--reload` 标志在开发过程中非常有用，生产环境可移除。
+```bash
+cd app
+npm run type-check
+npm test -- --runInBand
 
-### **2. 前端部署**
+cd ../backend
+python -m py_compile main.py api/routes.py core/config.py core/models.py core/utils.py services/*.py
+.\venv\Scripts\python.exe -m pytest
+```
 
-前端是一个基于 Next.js、React 和 TypeScript 的应用程序。
+后端测试依赖 `pytest`，已写入 `backend/requirements.txt`。
 
-**先决条件:**
+## 专题文档
 
-*   Node.js (LTS 版本推荐)
-*   npm 或 yarn
+- [架构总览](docs/architecture.md)
+- [前端本地数据](docs/frontend_local_data.md)
+- [后端任务队列](docs/backend_task_queue.md)
+- [歌词系统](docs/lyrics_system.md)
+- [AI 工具](docs/ai_tools.md)
+- [社区与后台](docs/community_admin.md)
+- [部署与维护](docs/deployment_maintenance.md)
 
-**部署步骤:**
+## 迁移说明
 
-1.  **进入前端目录:**
-    ```bash
-    git clone https://github.com/your-username/J-Melo.git
-    cd J-Melo/app
-    ```
-2.  **安装依赖:**
-    ```bash
-    npm install # 或者 yarn install
-    ```
-3.  **配置后端地址 (可选，推荐):**
-    *   在 `app/public/` 目录下，您会找到一个 `config.json.example` 文件。请复制它并重命名为 `config.json`。
-    *   在此 `config.json` 文件中，您可以指定您的后端服务地址。例如：
-        ```json
-        {
-          "backendUrl": "http://localhost:8000"
-        }
-        ```
-        如果您不创建此文件，前端将默认尝试连接到 `http://localhost:8000`。您也可以在应用内的设置面板中修改此地址。
-        注意，若你将服务器在公网进行了部署，那么这个后端地址也应该能被公网访问，此时就不能是 `localhost` 了。
-4.  **启动开发服务器:**
-    ```bash
-    npm run dev # 或者 yarn dev
-    ```
-    开发服务器将在 `http://localhost:3000` 上运行。
-5.  **构建生产版本:**
-    ```bash
-    npm run build # 或者 yarn build
-    npm start     # 或者 yarn start (启动生产服务器)
-    ```
-    在生产环境中，您可能需要配置环境变量或使用 Docker 来管理后端地址。
+从旧版本升级时通常只需要拉取代码、安装新依赖并重启服务。前端 IndexedDB 会自动执行 Dexie 版本迁移；后端 SQLite 表会在启动时自动创建索引和缺失表。旧的导出 JSON 和社区导入数据仍然被导入器接受。
 
+第一次启动新后端时，`task_queue.db` 会自动创建。若服务器重启时有 `processing` 状态任务，启动后会恢复为 `pending`，由默认单 worker 继续串行处理。
+
+## 常见问题
+
+**转录很慢怎么办？**  
+转录和对齐属于重任务，默认单 worker 串行执行，避免小机器被并发任务压垮。可以降低 `transcription_model`，或调整 `transcription_compute_type`。
+
+**为什么社区没有账号体系？**  
+项目定位是自托管小圈子。删除自己的分享依赖分享昵称，管理员可以用后台 token 强制删除。
+
+**为什么歌词校正/翻译有时失败？**  
+LLM 输出可能不是合法 JSON。前端会尝试提取 fenced/raw JSON，并在失败时保留手动编辑和重试入口。
+
+**可以不使用后端吗？**  
+可以使用部分本地功能，但 URL 导入、媒体缓存、转录、对齐、社区和后台都需要后端。

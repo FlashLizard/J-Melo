@@ -9,7 +9,9 @@ import useTemplateStore from './useTemplateStore';
 import useSettingsStore from './useSettingsStore';
 import useMobileViewStore from './useMobileViewStore'; // Import mobile view store
 import { LyricLine, LyricToken } from '@/interfaces/lyrics';
+import { requestChatCompletion } from '@/lib/llmClient';
 import toast from 'react-hot-toast';
+import { getTokensReadingText, getTokensSurfaceText } from '@/utils/lyricTokenText';
 
 interface TutorState {
   sentence: string;
@@ -69,20 +71,15 @@ const useTutorStore = create<TutorState>()(
           
           if (!apiKey) throw new Error('API key is not set in settings.');
 
-          const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-            body: JSON.stringify({ model: modelType, messages: [{ role: 'user', content: finalPrompt }], temperature: 0.5, max_tokens: maxTokens }),
-          });
-
           if (useUIPanelStore.getState().activePanel !== 'AI_TUTOR') return;
-          if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error?.message || 'Failed to fetch explanation');
-          }
-
-          const result = await response.json();
-          const explanation = result.choices[0]?.message?.content;
+          const explanation = await requestChatCompletion({
+            apiUrl,
+            apiKey,
+            model: modelType,
+            prompt: finalPrompt,
+            temperature: 0.5,
+            maxTokens,
+          });
           set({ explanation, isLoading: false });
         } catch (err) {
           if (useUIPanelStore.getState().activePanel === 'AI_TUTOR') {
@@ -98,8 +95,8 @@ const useTutorStore = create<TutorState>()(
         const song = useSongStore.getState().song;
         if (!song?.id || selectedTokens.length === 0) return;
 
-        const surface = selectedTokens.map(t => t.surface).join('');
-        const reading = selectedTokens.map(t => t.reading).join('');
+        const surface = getTokensSurfaceText(selectedTokens);
+        const reading = getTokensReadingText(selectedTokens);
         const romaji = selectedTokens.map(t => (t as any).romaji || '').join('');
 
         await db.words.add({

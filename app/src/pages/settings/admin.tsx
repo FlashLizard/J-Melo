@@ -1,13 +1,12 @@
-// src/pages/settings/admin.tsx
 import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
 import useTranslation from '@/hooks/useTranslation';
 import { filesize } from 'filesize';
 import { db } from '@/lib/db';
-import Head from 'next/head';
 import cn from 'classnames';
 
 import toast from 'react-hot-toast';
+import { getJson, requestJson } from '@/lib/backendClient';
+import AppPageShell from '@/components/common/AppPageShell';
 
 interface CacheInfo {
   size_bytes: number;
@@ -57,13 +56,13 @@ interface CommunitySong {
 }
 
 const SectionCard: React.FC<{ title: string; icon?: React.ReactNode; children: React.ReactNode }> = ({ title, icon, children }) => (
-  <div className="bg-gray-800/40 backdrop-blur-sm rounded-3xl border border-gray-700/50 p-6 sm:p-8 shadow-lg">
-      <h2 className="text-xl font-bold text-gray-200 uppercase tracking-wider mb-6 flex items-center gap-3">
+  <section className="jm-panel p-5 sm:p-7">
+      <h2 className="text-sm sm:text-base font-bold text-gray-200 uppercase tracking-wide mb-6 flex items-center gap-3">
           {icon && <span className="text-indigo-400">{icon}</span>}
           {title}
       </h2>
       {children}
-  </div>
+  </section>
 );
 
 const AdminPage = () => {
@@ -92,11 +91,8 @@ const AdminPage = () => {
     if (!backendUrl) return;
     setIsSongsLoading(true);
     try {
-        const res = await fetch(`${backendUrl}/api/community/songs?limit=100`);
-        if (res.ok) {
-            const data = await res.json();
-            setCommunitySongs(data.songs);
-        }
+        const data = await getJson<{ songs: CommunitySong[] }>(backendUrl, '/api/community/songs', { limit: 100 });
+        setCommunitySongs(data.songs);
     } catch (e) {
         console.error("Failed to fetch community songs", e);
     } finally {
@@ -110,20 +106,11 @@ const AdminPage = () => {
     try {
       const headers = { 'Authorization': `Bearer ${authToken}` };
       
-      const [cacheRes, configRes, tasksRes] = await Promise.all([
-        fetch(`${backendUrl}/api/admin/cache-info`, { headers }),
-        fetch(`${backendUrl}/api/admin/config`, { headers }),
-        fetch(`${backendUrl}/api/admin/transcription-tasks`, { headers })
+      const [cacheData, configData, tasksData] = await Promise.all([
+        requestJson<any>(backendUrl, '/api/admin/cache-info', { headers }),
+        requestJson<any>(backendUrl, '/api/admin/config', { headers }),
+        requestJson<Record<string, any>>(backendUrl, '/api/admin/transcription-tasks', { headers })
       ]);
-
-      if (!cacheRes.ok || !configRes.ok || !tasksRes.ok) {
-        if (cacheRes.status === 401) throw new Error(t('admin.invalidToken'));
-        throw new Error(t('admin.fetchError'));
-      }
-
-      const cacheData = await cacheRes.json();
-      const configData = await configRes.json();
-      const tasksData = await tasksRes.json();
 
       setCacheInfo({
           media: cacheData.media_cache,
@@ -190,7 +177,7 @@ const AdminPage = () => {
     setIsLoading(true);
     try {
       const authToken = sessionStorage.getItem('admin_token');
-      const res = await fetch(`${backendUrl}/api/admin/clear-cache`, {
+      await requestJson(backendUrl, '/api/admin/clear-cache', {
         method: 'POST',
         headers: { 
             'Authorization': `Bearer ${authToken}`,
@@ -198,7 +185,6 @@ const AdminPage = () => {
         },
         body: JSON.stringify({ cache_name: backendCacheName })
       });
-      if (!res.ok) throw new Error(t('admin.clearError'));
       toast.success(t('admin.clearSuccess', { cacheName }));
       fetchAdminData(authToken!);
     } catch (err) {
@@ -213,11 +199,10 @@ const AdminPage = () => {
       
       const authToken = sessionStorage.getItem('admin_token');
       try {
-          const res = await fetch(`${backendUrl}/api/admin/community/songs/${songId}`, {
+          await requestJson(backendUrl, `/api/admin/community/songs/${songId}`, {
               method: 'DELETE',
               headers: { 'Authorization': `Bearer ${authToken}` }
           });
-          if (!res.ok) throw new Error(t('admin.communityDeleteError'));
           toast.success(t('admin.communityDeleteSuccess'));
           fetchCommunitySongs();
           fetchAdminData(authToken!);
@@ -239,7 +224,7 @@ const AdminPage = () => {
           transcription_cache_policy: policies.transcription,
           community_policy: policies.community
       };
-      const res = await fetch(`${backendUrl}/api/admin/config`, {
+      await requestJson(backendUrl, '/api/admin/config', {
         method: 'POST',
         headers: { 
             'Authorization': `Bearer ${authToken}`,
@@ -247,7 +232,6 @@ const AdminPage = () => {
         },
         body: JSON.stringify(payload)
       });
-      if (!res.ok) throw new Error(t('admin.saveConfigError'));
       toast.success(t('admin.saveConfigSuccess'));
     } catch (err) {
       setError((err as Error).message);
@@ -259,28 +243,9 @@ const AdminPage = () => {
   if (!backendUrl) return null;
 
   return (
-    <>
-      <Head>
-        <title>{`J-Melo - ${t('admin.title')}`}</title>
-      </Head>
-      <div className="bg-[#0f172a] min-h-screen text-white pb-12 selection:bg-indigo-500/30">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-10">
-          <header className="relative z-[100] flex flex-row justify-between items-center gap-2 sm:gap-6 mb-8 bg-gray-800/40 p-3 sm:p-5 rounded-[2rem] border border-gray-700/50 shadow-lg backdrop-blur-sm flex-shrink-0">
-            <div className="flex items-center gap-2 sm:gap-4 min-w-0">
-                <div className="bg-gray-900/50 p-1.5 sm:p-2.5 rounded-2xl shadow-inner border border-gray-700/50 flex-shrink-0">
-                    <img src="/logo.svg" alt="J-Melo Logo" className="w-6 h-6 sm:w-8 sm:h-8 drop-shadow-md" />
-                </div>
-                <h1 className="text-lg sm:text-2xl font-extrabold tracking-tight bg-gradient-to-br from-white to-gray-400 bg-clip-text text-transparent truncate">{t('admin.title')}</h1>
-            </div>
-            <Link href="/settings" className="p-2 sm:p-2.5 bg-gray-700/80 text-gray-200 rounded-xl hover:bg-gray-600 hover:text-white transition-all flex items-center justify-center border border-gray-600/50 shadow-sm flex-shrink-0" title={t('admin.backToSettings')}>
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.75 19.5L8.25 12l7.5-7.5" />
-                </svg>
-            </Link>
-          </header>
-
+    <AppPageShell title={t('admin.title')} documentTitle={`J-Melo - ${t('admin.title')}`} backHref="/settings" backLabel={t('admin.backToSettings')}>
           {error && (
-            <div className="bg-red-900/40 border border-red-800 p-4 rounded-2xl mb-8 text-center text-red-200 shadow-sm">
+            <div className="jm-panel border-red-800/70 bg-red-950/30 p-4 mb-8 text-center text-red-200">
               <p>{error}</p>
             </div>
           )}
@@ -294,7 +259,7 @@ const AdminPage = () => {
                   value={token}
                   onChange={(e) => setToken(e.target.value)}
                   placeholder={t('admin.tokenPlaceholder')}
-                  className="flex-grow p-3 rounded-xl bg-gray-900/50 border border-gray-700/50 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-inner"
+                  className="jm-input flex-grow p-3"
                 />
                 <button type="submit" className="px-8 py-3 bg-indigo-600 rounded-xl hover:bg-indigo-500 font-bold transition-all shadow-md shadow-indigo-900/20 active:scale-95">{t('admin.loginButton')}</button>
               </form>
@@ -316,8 +281,8 @@ const AdminPage = () => {
                           type="text"
                           value={policies.proxy || ''}
                           onChange={(e) => setPolicies({ ...policies, proxy: e.target.value })}
-                          placeholder="e.g., http://127.0.0.1:7890"
-                          className="w-full p-3 rounded-xl bg-gray-900/50 border border-gray-700/50 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-inner"
+                          placeholder={t('admin.proxyPlaceholder')}
+                          className="jm-input w-full p-3"
                         />
                       </div>
                       <div>
@@ -326,7 +291,7 @@ const AdminPage = () => {
                           type="password"
                           value={policies.admin_token}
                           onChange={(e) => setPolicies({ ...policies, admin_token: e.target.value })}
-                          className="w-full p-3 rounded-xl bg-gray-900/50 border border-gray-700/50 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-inner"
+                          className="jm-input w-full p-3"
                         />
                       </div>
                     </div>
@@ -358,7 +323,7 @@ const AdminPage = () => {
                         t={t}
                     />
                     
-                    <div className="bg-gray-800/40 backdrop-blur-sm rounded-3xl border border-gray-700/50 p-6 sm:p-8 shadow-lg flex flex-col">
+                    <div className="jm-panel p-5 sm:p-7 flex flex-col">
                         <h2 className="text-xl font-bold text-gray-200 uppercase tracking-wider mb-6 flex items-center gap-3">
                             <span className="text-emerald-400"><svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg></span>
                             {t('admin.communityCacheTitle')}
@@ -371,14 +336,14 @@ const AdminPage = () => {
                                 </div>
                                 <div className="bg-gray-900/50 p-4 rounded-2xl border border-gray-700/30">
                                     <p className="text-xs text-gray-500 font-bold uppercase mb-1">{t('toolPanel.sectionCommunity')}</p>
-                                    <p className="text-xl font-mono font-bold text-white">{cacheInfo.community.song_count} songs</p>
+                                    <p className="text-xl font-mono font-bold text-white">{t('admin.songCount', { count: cacheInfo.community.song_count })}</p>
                                 </div>
                             </div>
                             
                             <div className="p-5 bg-emerald-900/10 rounded-2xl border border-emerald-500/10 space-y-4">
                                 <p className="text-xs text-emerald-300 font-bold uppercase tracking-widest border-b border-emerald-500/20 pb-2">{t('admin.autoCleanPolicy')}</p>
                                 <div>
-                                    <label className="block text-[10px] text-gray-500 font-bold uppercase mb-1 ml-1">{t('admin.maxSize')} (MB)</label>
+                                    <label className="block text-[10px] text-gray-500 font-bold uppercase mb-1 ml-1">{t('admin.maxSizeWithUnit', { unit: 'MB' })}</label>
                                     <input
                                         type="number"
                                         value={policies.community.max_size_mb}
@@ -412,7 +377,7 @@ const AdminPage = () => {
                         </thead>
                         <tbody className="divide-y divide-gray-700/30">
                           {isSongsLoading ? (
-                              <tr><td colSpan={4} className="px-4 py-10 text-center text-gray-500">Loading...</td></tr>
+                              <tr><td colSpan={4} className="px-4 py-10 text-center text-gray-500">{t('common.loading')}</td></tr>
                           ) : communitySongs.length > 0 ? communitySongs.map((song) => (
                             <tr key={song.id} className="hover:bg-gray-700/20 transition-colors group">
                               <td className="px-4 py-4 font-bold text-indigo-300">{song.title}</td>
@@ -444,8 +409,8 @@ const AdminPage = () => {
                         <thead className="text-xs text-gray-500 uppercase border-b border-gray-700/50">
                           <tr>
                             <th className="px-4 py-3 font-bold">URL</th>
-                            <th className="px-4 py-3 font-bold text-center">Status</th>
-                            <th className="px-4 py-3 font-bold text-right">Time</th>
+                            <th className="px-4 py-3 font-bold text-center">{t('admin.taskStatus')}</th>
+                            <th className="px-4 py-3 font-bold text-right">{t('admin.taskTime')}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-700/30">
@@ -490,9 +455,7 @@ const AdminPage = () => {
               )}
             </div>
           )}
-        </div>
-      </div>
-    </>
+    </AppPageShell>
   );
 };
 
@@ -501,8 +464,8 @@ const CacheCard = ({ title, info, policy, onPolicyChange, onClear, t }: {
     onPolicyChange: (p: CleanupPolicy) => void, onClear: () => void,
     t: (k: string, o?: any) => string 
 }) => (
-  <div className="bg-gray-800/40 backdrop-blur-sm rounded-3xl border border-gray-700/50 p-6 sm:p-8 shadow-lg flex flex-col">
-    <h2 className="text-xl font-bold text-gray-200 uppercase tracking-wider mb-6 flex items-center gap-3">
+  <div className="jm-panel p-5 sm:p-7 flex flex-col">
+    <h2 className="text-sm sm:text-base font-bold text-gray-200 uppercase tracking-wide mb-6 flex items-center gap-3">
         <span className="text-indigo-400"><svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" /></svg></span>
         {title}
     </h2>
@@ -525,40 +488,40 @@ const CacheCard = ({ title, info, policy, onPolicyChange, onClear, t }: {
             <div className="grid grid-cols-2 gap-4">
                 {policy.max_size_gb !== undefined && (
                     <div>
-                        <label className="block text-[10px] text-gray-500 font-bold uppercase mb-1 ml-1">{t('admin.maxSize')} (GB)</label>
+                        <label className="block text-[10px] text-gray-500 font-bold uppercase mb-1 ml-1">{t('admin.maxSizeWithUnit', { unit: 'GB' })}</label>
                         <input
                             type="number"
                             value={policy.max_size_gb}
                             onChange={(e) => onPolicyChange({ ...policy, max_size_gb: Number(e.target.value) })}
-                            className="w-full p-2 bg-gray-900/50 border border-gray-700/50 rounded-xl text-white text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            className="jm-input w-full p-2 text-sm"
                         />
                     </div>
                 )}
                 {policy.max_size_mb !== undefined && (
                     <div>
-                        <label className="block text-[10px] text-gray-500 font-bold uppercase mb-1 ml-1">{t('admin.maxSize')} (MB)</label>
+                        <label className="block text-[10px] text-gray-500 font-bold uppercase mb-1 ml-1">{t('admin.maxSizeWithUnit', { unit: 'MB' })}</label>
                         <input
                             type="number"
                             value={policy.max_size_mb}
                             onChange={(e) => onPolicyChange({ ...policy, max_size_mb: Number(e.target.value) })}
-                            className="w-full p-2 bg-gray-900/50 border border-gray-700/50 rounded-xl text-white text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            className="jm-input w-full p-2 text-sm"
                         />
                     </div>
                 )}
                 {policy.max_age_days !== undefined && (
                     <div>
-                        <label className="block text-[10px] text-gray-500 font-bold uppercase mb-1 ml-1">{t('admin.maxAge')} (Days)</label>
+                        <label className="block text-[10px] text-gray-500 font-bold uppercase mb-1 ml-1">{t('admin.maxAgeWithUnit', { unit: t('admin.daysUnit') })}</label>
                         <input
                             type="number"
                             value={policy.max_age_days}
                             onChange={(e) => onPolicyChange({ ...policy, max_age_days: Number(e.target.value) })}
-                            className="w-full p-2 bg-gray-900/50 border border-gray-700/50 rounded-xl text-white text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            className="jm-input w-full p-2 text-sm"
                         />
                     </div>
                 )}
                 {policy.max_age_hours !== undefined && (
                     <div>
-                        <label className="block text-[10px] text-gray-500 font-bold uppercase mb-1 ml-1">{t('admin.maxAge')} (Hours)</label>
+                        <label className="block text-[10px] text-gray-500 font-bold uppercase mb-1 ml-1">{t('admin.maxAgeWithUnit', { unit: t('admin.hoursUnit') })}</label>
                         <input
                             type="number"
                             value={policy.max_age_hours}

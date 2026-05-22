@@ -1,7 +1,4 @@
-// src/pages/settings.tsx
 import React, { useEffect, useState, useRef } from 'react';
-import Link from 'next/head';
-import NextLink from 'next/link';
 import { useRouter } from 'next/router';
 import useSettingsStore from '@/stores/useSettingsStore';
 import useTranslation from '@/hooks/useTranslation';
@@ -9,16 +6,17 @@ import { exportAllData, importAllData, blobToBase64 } from '@/lib/db';
 import { copyToClipboard } from '@/utils/copyToClipboard';
 import { saveAs } from 'file-saver';
 import toast from 'react-hot-toast';
-import Head from 'next/head';
+import { getJson, postJson } from '@/lib/backendClient';
+import AppPageShell from '@/components/common/AppPageShell';
 
 const SectionCard: React.FC<{ title: string; icon: React.ReactNode; children: React.ReactNode }> = ({ title, icon, children }) => (
-  <div className="bg-gray-800/40 backdrop-blur-sm rounded-3xl border border-gray-700/50 p-6 sm:p-8 shadow-lg">
-      <h2 className="text-lg font-bold text-gray-200 uppercase tracking-wider mb-6 flex items-center gap-3">
+  <section className="jm-panel p-5 sm:p-7">
+      <h2 className="text-sm sm:text-base font-bold text-gray-200 uppercase tracking-wide mb-6 flex items-center gap-3">
           <span className="text-indigo-400">{icon}</span>
           {title}
       </h2>
       {children}
-  </div>
+  </section>
 );
 
 const InputField: React.FC<{ 
@@ -38,7 +36,7 @@ const InputField: React.FC<{
           value={value || ''}
           onChange={onChange}
           placeholder={placeholder}
-          className="w-full p-3 rounded-2xl bg-gray-900/50 border border-gray-700/50 text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all placeholder-gray-600 shadow-inner"
+          className="jm-input w-full p-3 placeholder-gray-600"
       />
   </div>
 );
@@ -80,13 +78,7 @@ const SettingsPage: React.FC = () => {
         return { ...rest, coverImageData: coverImageBase64 };
       }));
 
-      const response = await fetch(`${settings.backendUrl}/api/export`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...data, songs: sanitizedSongs }),
-      });
-      if (!response.ok) throw new Error('Failed to export data.');
-      const result = await response.json();
+      const result = await postJson(settings.backendUrl, '/api/export', { ...data, songs: sanitizedSongs });
       setExportToken(result);
       toast.success(t('settings.exportSuccess'));
     } catch (error) {
@@ -114,7 +106,7 @@ const SettingsPage: React.FC = () => {
         saveAs(blob, `j-melo-backup-${new Date().toISOString().split('T')[0]}.json`);
         toast.success(t('settings.exportSuccess'));
     } catch (error) {
-        toast.error('Error exporting JSON: ' + (error as Error).message);
+        toast.error(t('settings.exportJsonError', { error: (error as Error).message }));
     } finally {
         setIsExporting(false);
     }
@@ -122,17 +114,12 @@ const SettingsPage: React.FC = () => {
 
   const handleImportByToken = async () => {
     if (!importToken.trim()) {
-      toast.error('Please enter a token.');
+      toast.error(t('settings.enterTokenAlert'));
       return;
     }
     setIsImporting(true);
     try {
-      const response = await fetch(`${settings.backendUrl}/api/import?token=${importToken}`);
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to import data.');
-      }
-      const data = await response.json();
+      const data = await getJson(settings.backendUrl, '/api/import', { token: importToken });
       await importAllData(data, importMode);
       toast.success(t('settings.importSuccess'));
       setTimeout(() => window.location.reload(), 1500);
@@ -165,50 +152,29 @@ const SettingsPage: React.FC = () => {
   };
 
   return (
-    <>
-      <Head>
-        <title>{`J-Melo - ${t('settings.title')}`}</title>
-      </Head>
-      <main className="bg-[#0f172a] min-h-screen text-white pb-12 selection:bg-indigo-500/30">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-10">
-          
-          {/* Header */}
-          <header className="relative z-[100] flex flex-row justify-between items-center gap-2 sm:gap-6 mb-8 bg-gray-800/40 p-3 sm:p-5 rounded-[2rem] border border-gray-700/50 shadow-lg backdrop-blur-sm">
-              <div className="flex items-center gap-2 sm:gap-4 min-w-0">
-                  <div className="bg-gray-900/50 p-1.5 sm:p-2.5 rounded-2xl shadow-inner border border-gray-700/50 flex-shrink-0">
-                      <img src="/logo.svg" alt="J-Melo Logo" className="w-6 h-6 sm:w-8 sm:h-8 drop-shadow-md" />
-                  </div>
-                  <h1 className="text-lg sm:text-2xl font-extrabold tracking-tight bg-gradient-to-br from-white to-gray-400 bg-clip-text text-transparent truncate">{t('settings.title')}</h1>
-              </div>
-              <NextLink href="/" className="p-2 sm:p-2.5 bg-gray-700/80 text-gray-200 rounded-2xl hover:bg-gray-600 hover:text-white transition-all flex items-center justify-center border border-gray-600/50 shadow-sm flex-shrink-0" title={t('settings.backToPlayer')}>
-                  <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.75 19.5L8.25 12l7.5-7.5" />
-                  </svg>
-              </NextLink>
-          </header>
-
+    <AppPageShell title={t('settings.title')} backLabel={t('settings.backToPlayer')}>
           <div className="space-y-6">
               <SectionCard title={t('settings.interfaceLanguage')} icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" /></svg>}>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-2xl">
                     <div>
                         <label htmlFor="uiLanguage" className="block text-sm font-medium text-gray-400 mb-2 ml-1">{t('settings.interfaceLanguage')}</label>
-                        <select name="uiLanguage" id="uiLanguage" value={settings.uiLanguage || 'en'} onChange={handleInputChange} className="w-full p-3 rounded-2xl bg-gray-900/50 border border-gray-700/50 text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors shadow-inner">
+                        <select name="uiLanguage" id="uiLanguage" value={settings.uiLanguage || 'en'} onChange={handleInputChange} className="jm-input w-full p-3">
                             <option value="en">{t('language.english')}</option>
                             <option value="zh">{t('language.chinese')}</option>
                         </select>
                     </div>
                     <div>
                         <label htmlFor="themeMode" className="block text-sm font-medium text-gray-400 mb-2 ml-1">{t('settings.themeMode')}</label>
-                        <select name="themeMode" id="themeMode" value={settings.themeMode || 'dark'} onChange={handleInputChange} className="w-full p-3 rounded-2xl bg-gray-900/50 border border-gray-700/50 text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors shadow-inner">
+                        <select name="themeMode" id="themeMode" value={settings.themeMode || 'dark'} onChange={handleInputChange} className="jm-input w-full p-3">
                             <option value="dark">{t('settings.themeDark')}</option>
                             <option value="light">{t('settings.themeLight')}</option>
                         </select>
                     </div>
                     <div>
                         <label htmlFor="defaultHomepage" className="block text-sm font-medium text-gray-400 mb-2 ml-1">{t('settings.defaultHomepage')}</label>
-                        <select name="defaultHomepage" id="defaultHomepage" value={settings.defaultHomepage || 'library'} onChange={handleInputChange} className="w-full p-3 rounded-2xl bg-gray-900/50 border border-gray-700/50 text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors shadow-inner">
+                        <select name="defaultHomepage" id="defaultHomepage" value={settings.defaultHomepage || 'library'} onChange={handleInputChange} className="jm-input w-full p-3">
                             <option value="library">{t('home.title')}</option>
-                            <option value="player">Player</option>
+                            <option value="player">{t('settings.homepagePlayer')}</option>
                         </select>
                     </div>
                   </div>
@@ -233,8 +199,8 @@ const SettingsPage: React.FC = () => {
                               name="backendUrl"
                               value={settings.backendUrl || ''}
                               onChange={handleInputChange}
-                              placeholder="e.g., http://localhost:8000"
-                              className="w-full p-3 rounded-2xl bg-gray-900/50 border border-gray-700/50 text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all placeholder-gray-600 shadow-inner"
+                              placeholder={t('settings.backendUrlPlaceholder')}
+                              className="jm-input w-full p-3 placeholder-gray-600"
                           />
                           <p className="text-xs text-gray-500 mt-2 ml-1 italic">{t('settings.backendUrlHint')}</p>
                       </div>
@@ -270,8 +236,8 @@ const SettingsPage: React.FC = () => {
                                           onClick={() => {
                                               copyToClipboard(exportToken.token).then(() => {
                                                   toast.success(t('settings.tokenCopied') || 'Copied!');
-                                              }).catch(err => {
-                                                  toast.error('Failed to copy token.');
+                                              }).catch(() => {
+                                                  toast.error(t('settings.copyTokenError'));
                                               });
                                           }}
                                           className="p-3 bg-gray-800 rounded-xl hover:bg-gray-700 text-gray-300 transition-colors flex-shrink-0 shadow-sm"
@@ -356,16 +322,16 @@ const SettingsPage: React.FC = () => {
                   <div className="space-y-6">
                       <div className="max-w-md">
                           <label htmlFor="aiResponseLanguage" className="block text-sm font-medium text-gray-400 mb-2 ml-1">{t('settings.llmReplyLanguage')}</label>
-                          <select name="aiResponseLanguage" id="aiResponseLanguage" value={settings.aiResponseLanguage || 'en'} onChange={handleInputChange} className="w-full p-3 rounded-2xl bg-gray-900/50 border border-gray-700/50 text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors shadow-inner">
+                          <select name="aiResponseLanguage" id="aiResponseLanguage" value={settings.aiResponseLanguage || 'en'} onChange={handleInputChange} className="jm-input w-full p-3">
                               <option value="en">{t('language.english')}</option>
                               <option value="zh">{t('language.chinese')}</option>
                           </select>
                       </div>
                       <InputField label={t('settings.apiKey')} name="openaiApiKey" type="password" value={settings.openaiApiKey} onChange={handleInputChange} />
-                      <InputField label={t('settings.llmApiUrl')} name="llmApiUrl" value={settings.llmApiUrl} placeholder="e.g., https://api.openai.com/v1/chat/completions" onChange={handleInputChange} />
+                      <InputField label={t('settings.llmApiUrl')} name="llmApiUrl" value={settings.llmApiUrl} placeholder={t('settings.llmApiUrlPlaceholder')} onChange={handleInputChange} />
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                          <InputField label={t('settings.llmModelType')} name="llmModelType" value={settings.llmModelType} placeholder="e.g., gpt-3.5-turbo" onChange={handleInputChange} />
-                          <InputField label={t('settings.llmMaxTokens')} name="llmMaxTokens" type="number" value={settings.llmMaxTokens} placeholder="e.g., 32768" onChange={handleInputChange} />
+                          <InputField label={t('settings.llmModelType')} name="llmModelType" value={settings.llmModelType} placeholder={t('settings.llmModelPlaceholder')} onChange={handleInputChange} />
+                          <InputField label={t('settings.llmMaxTokens')} name="llmMaxTokens" type="number" value={settings.llmMaxTokens} placeholder={t('settings.llmMaxTokensPlaceholder')} onChange={handleInputChange} />
                       </div>
                   </div>
               </SectionCard>
@@ -386,7 +352,7 @@ const SettingsPage: React.FC = () => {
                   <div className="space-y-6">
                       <div className="max-w-md">
                           <label htmlFor="targetTranslationLanguage" className="block text-sm font-medium text-gray-400 mb-2 ml-1">{t('settings.targetTranslationLanguage')}</label>
-                          <select name="targetTranslationLanguage" id="targetTranslationLanguage" value={settings.targetTranslationLanguage || 'en'} onChange={handleInputChange} className="w-full p-3 rounded-2xl bg-gray-900/50 border border-gray-700/50 text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors shadow-inner">
+                          <select name="targetTranslationLanguage" id="targetTranslationLanguage" value={settings.targetTranslationLanguage || 'en'} onChange={handleInputChange} className="jm-input w-full p-3">
                               <option value="en">{t('language.english')}</option>
                               <option value="zh">{t('language.chinese')}</option>
                               <option value="ja">{t('language.japanese')}</option>
@@ -406,9 +372,7 @@ const SettingsPage: React.FC = () => {
                   </div>
               </SectionCard>
           </div>
-        </div>
-      </main>
-    </>
+    </AppPageShell>
   );
 };
 

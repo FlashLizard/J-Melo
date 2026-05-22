@@ -7,8 +7,11 @@ import CardViewer from '@/components/vocabulary/CardViewer';
 import ReviewSetup from '@/components/vocabulary/ReviewSetup';
 import Reviewer from '@/components/vocabulary/Reviewer';
 import useTranslation from '@/hooks/useTranslation';
+import EmptyState from '@/components/common/EmptyState';
 
 import toast from 'react-hot-toast';
+
+type TFunction = (key: string, options?: Record<string, unknown>) => string;
 
 const VocabularyView = () => {
   const { 
@@ -51,7 +54,7 @@ const VocabularyView = () => {
 
   if (isReviewing) {
     return (
-      <div className="fixed inset-0 z-[200] bg-[#0f172a] h-screen text-white overflow-hidden">
+      <div className="jm-page fixed inset-0 z-[200] h-screen overflow-hidden">
         <Reviewer />
       </div>
     );
@@ -74,15 +77,13 @@ const VocabularyView = () => {
       {isReviewSetupOpen && <ReviewSetup onClose={() => setIsReviewSetupOpen(false)} />}
       
       {/* Controls Bar */}
-      <div className="bg-gray-800/60 backdrop-blur-md p-4 rounded-2xl mb-6 flex flex-col md:flex-row gap-4 items-center justify-between border border-gray-700/50 shadow-md flex-shrink-0">
-        {/* View Modes */}
-        <div className="flex bg-gray-900/80 p-1 rounded-xl w-full md:w-auto">
+      <div className="jm-panel p-4 mb-6 flex flex-col md:flex-row gap-4 items-center justify-between flex-shrink-0">
+        <div className="jm-segment w-full md:w-auto">
           <DisplayModeButton mode="all" current={displayMode} set={setDisplayMode} label={t('vocabularyPage.allMode')} />
           <DisplayModeButton mode="bySong" current={displayMode} set={setDisplayMode} label={t('vocabularyPage.bySongMode')} />
           <DisplayModeButton mode="search" current={displayMode} set={setDisplayMode} label={t('vocabularyPage.searchMode')} />
         </div>
 
-        {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
           {isSelectionMode ? (
             <>
@@ -113,7 +114,7 @@ const VocabularyView = () => {
             type="text"
             autoFocus
             placeholder={t('vocabularyPage.searchWordsPlaceholder')}
-            className="w-full p-4 rounded-2xl bg-gray-800/40 border border-gray-700/50 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 backdrop-blur-sm shadow-inner"
+            className="jm-input w-full p-4"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -123,10 +124,7 @@ const VocabularyView = () => {
       {/* Main Content List */}
       <div className="flex-grow overflow-y-auto custom-scrollbar pr-2 pb-10">
         {filteredWords.length === 0 ? (
-          <div className="text-center py-20 bg-gray-800/20 rounded-3xl border border-gray-700/30 border-dashed w-full">
-            <svg className="w-16 h-16 text-gray-700 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
-            <p className="text-gray-500 font-medium">{t('reviewSetup.noWordsToReviewAlert')}</p>
-          </div>
+          <EmptyState title={t('reviewSetup.noWordsToReviewAlert')} icon={displayMode === 'search' ? 'search' : 'book'} />
         ) : (
           <div className="space-y-2">
             {displayMode !== 'bySong' && (
@@ -151,9 +149,10 @@ const DisplayModeButton = ({ mode, current, set, label }: { mode: VocabDisplayMo
   <button
     onClick={() => set(mode)}
     className={cn(
-      "flex-1 px-4 py-2 rounded-lg text-xs font-bold transition-all duration-200 whitespace-nowrap",
-      current === mode ? "bg-gray-700 text-white shadow-sm" : "text-gray-500 hover:text-gray-300"
+      "jm-segment-button flex-1 px-4 text-xs font-bold whitespace-nowrap",
+      current === mode && "is-active text-white"
     )}
+    aria-pressed={current === mode}
   >
     {label}
   </button>
@@ -166,7 +165,7 @@ const getProficiencyStyle = (p: number) => {
   return "text-rose-400 border-red-500/30 bg-red-500/10";
 };
 
-const WordCard = ({ word, song, t }: { word: WordRecord, song?: SongRecord, t: (key: string) => string }) => {
+const WordCard = ({ word, song, t }: { word: WordRecord, song?: SongRecord, t: TFunction }) => {
   const { isSelectionMode, selectedIds, toggleIdSelection, openViewer, words } = useVocabularyStore();
   
   const handleClick = () => {
@@ -214,7 +213,7 @@ const WordCard = ({ word, song, t }: { word: WordRecord, song?: SongRecord, t: (
   );
 };
 
-const SongGroup = ({ song, words, t }: { song?: SongRecord, words: WordRecord[], t: (key: string) => string }) => {
+const SongGroup = ({ song, words, t }: { song?: SongRecord, words: WordRecord[], t: TFunction }) => {
   const [isOpen, setIsOpen] = useState(true);
   const { isSelectionMode, selectedIds, selectBySongId } = useVocabularyStore();
   
@@ -226,7 +225,7 @@ const SongGroup = ({ song, words, t }: { song?: SongRecord, words: WordRecord[],
   };
   
   return (
-    <div className="bg-gray-800/40 backdrop-blur-sm rounded-3xl border border-gray-700/50 overflow-hidden mb-6 shadow-lg">
+    <div className="jm-panel overflow-hidden mb-6">
       <header 
         onClick={() => setIsOpen(!isOpen)} 
         className="p-4 sm:p-5 flex items-center justify-between cursor-pointer md:hover:bg-gray-700/50 transition-colors border-b border-gray-700/30 group"
@@ -248,7 +247,11 @@ const SongGroup = ({ song, words, t }: { song?: SongRecord, words: WordRecord[],
             </div>
             <div className="truncate">
                 <h3 className="font-bold text-lg text-white truncate drop-shadow-sm">{song?.title || t('vocabularyPage.unknownSong')}</h3>
-                <p className="text-sm text-gray-400 truncate mt-0.5">{song?.artist || t('vocabularyPage.unknownArtist')} <span className="mx-2 text-gray-600">•</span> <span className="text-indigo-300 font-medium">{words.length} words</span></p>
+                <p className="text-sm text-gray-400 truncate mt-0.5">
+                  {song?.artist || t('vocabularyPage.unknownArtist')}
+                  <span className="mx-2 text-gray-600">•</span>
+                  <span className="text-indigo-300 font-medium">{t('vocabularyPage.wordCount', { count: words.length })}</span>
+                </p>
             </div>
           </div>
         </div>
@@ -259,7 +262,7 @@ const SongGroup = ({ song, words, t }: { song?: SongRecord, words: WordRecord[],
         </div>
       </header>
       {isOpen && (
-        <div className="p-4 sm:p-6 bg-[#0f172a]/30">
+        <div className="p-4 sm:p-6 bg-gray-950/20">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
              {words.map(word => <WordCard key={word.id} word={word} t={t} />)}
           </div>

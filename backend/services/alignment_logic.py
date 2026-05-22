@@ -4,7 +4,7 @@ import subprocess
 import shutil
 import sys
 from pathlib import Path
-from core.config import CACHE_DIR, TEMP_DATA_DIR
+from core.config import CACHE_PATH, TEMP_DATA_PATH, resolve_backend_path
 from core.utils import log_info
 from services.media_logic import fetch_media_info, download_media
 
@@ -25,21 +25,21 @@ def run_alignment_task(task_id, song_id, lyrics_data, align_mode, stable_whisper
     try:
         ALIGNMENT_TASKS[task_id]["status"] = "processing"
         
-        audio_path = Path(local_path) if local_path and os.path.exists(local_path) else None
+        audio_path = resolve_backend_path(local_path) if local_path and resolve_backend_path(local_path).exists() else None
         if not audio_path:
             for ext in ['mp3', 'wav']:
-                p = Path(CACHE_DIR) / f"{song_id}.{ext}"
+                p = CACHE_PATH / f"{song_id}.{ext}"
                 if p.exists(): audio_path = p; break
         
         if not audio_path and source_url:
             info = fetch_media_info(source_url); mid = info.get("id")
             if mid:
-                audio_path = Path(CACHE_DIR) / f"{mid}.mp3"
+                audio_path = CACHE_PATH / f"{mid}.mp3"
                 if not audio_path.exists(): download_media(info, str(audio_path))
         
         if not audio_path or not audio_path.exists(): raise FileNotFoundError("Audio not found")
 
-        temp_dir = Path(TEMP_DATA_DIR) / f"align_{task_id}"; temp_dir.mkdir(parents=True, exist_ok=True)
+        temp_dir = TEMP_DATA_PATH / f"align_{task_id}"; temp_dir.mkdir(parents=True, exist_ok=True)
         vocals_path = extract_vocals(audio_path, temp_dir) if extract_vocals_flag else str(audio_path)
 
         input_text_parts = []; char_to_token_map = []
@@ -54,12 +54,12 @@ def run_alignment_task(task_id, song_id, lyrics_data, align_mode, stable_whisper
             input_text_parts.append(line_text_for_model); char_to_token_map.append(None)
         
         full_text_for_align = "。".join(input_text_parts) + "。"
-        with open(os.path.join(TEMP_DATA_DIR, f"align_in_{task_id}.txt"), "w", encoding="utf-8") as f: f.write(full_text_for_align)
+        with open(TEMP_DATA_PATH / f"align_in_{task_id}.txt", "w", encoding="utf-8") as f: f.write(full_text_for_align)
 
         if not stable_whisper_model: raise ImportError("Model not loaded")
         result = stable_whisper_model.align(vocals_path, full_text_for_align, language='ja')
         
-        debug_output_path = os.path.join(TEMP_DATA_DIR, f"align_debug_out_{task_id}.json")
+        debug_output_path = TEMP_DATA_PATH / f"align_debug_out_{task_id}.json"
         try:
             debug_data = []
             for s in result.segments:

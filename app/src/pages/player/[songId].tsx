@@ -72,6 +72,7 @@ const RightHandPanel = () => {
 
 const MobileNavDots = () => {
     const { activeView, setActiveView, goToNextView, goToPrevView } = useMobileViewStore();
+    const { t } = useTranslation();
     const currentIndex = MOBILE_VIEWS.indexOf(activeView);
     
     return (
@@ -80,7 +81,7 @@ const MobileNavDots = () => {
           onClick={goToPrevView}
           disabled={currentIndex === 0}
           className="p-2 text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors rounded-full hover:bg-gray-800"
-          aria-label="Previous View"
+          aria-label={t('player.previousView')}
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" /></svg>
         </button>
@@ -102,7 +103,7 @@ const MobileNavDots = () => {
           onClick={goToNextView}
           disabled={currentIndex === MOBILE_VIEWS.length - 1}
           className="p-2 text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors rounded-full hover:bg-gray-800"
-          aria-label="Next View"
+          aria-label={t('player.nextView')}
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" /></svg>
         </button>
@@ -253,14 +254,21 @@ const PlayerPage = () => {
 
   // Handle the autoplay query parameter (only for initial external entry)
   useEffect(() => {
-    if (router.isReady && router.query.autoplay === '1' && song && !isLoading) {
+    const routeSongId = typeof router.query.songId === 'string' ? Number(router.query.songId) : null;
+    if (
+      router.isReady &&
+      router.query.autoplay === '1' &&
+      song?.id &&
+      routeSongId === song.id &&
+      !isLoading
+    ) {
         const playTimer = setTimeout(() => {
             playerStoreActions.play();
             router.replace(`/player/${song.id}`, undefined, { shallow: true });
         }, 300);
         return () => clearTimeout(playTimer);
     }
-  }, [router.isReady, router.query.autoplay, song, isLoading, router]);
+  }, [router.isReady, router.query.autoplay, router.query.songId, song, isLoading, router]);
 
   const displayLyrics = previewLyrics || lyrics || [];
 
@@ -275,7 +283,7 @@ const PlayerPage = () => {
             <div className="bg-gray-900/50 p-1.5 rounded-xl border border-gray-700/50 flex-shrink-0">
                 <img src="/logo.svg" alt="J-Melo Logo" className="w-6 h-6 sm:w-7 sm:h-7 drop-shadow-md" />
             </div>
-            <h1 className="text-white text-base sm:text-lg font-bold tracking-tight truncate">J-Melo Player</h1>
+            <h1 className="text-white text-base sm:text-lg font-bold tracking-tight truncate">{t('player.title')}</h1>
           </Link>
           <Link href="/" className="p-2 sm:p-2.5 bg-gray-700/80 text-gray-200 rounded-xl hover:bg-gray-600 hover:text-white transition-all flex items-center justify-center border border-gray-600/50 shadow-sm flex-shrink-0" title={t('player.backToHome')}>
             <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">

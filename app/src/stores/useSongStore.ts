@@ -6,7 +6,19 @@ import { LyricLine, WhisperXOutput } from '@/interfaces/lyrics';
 import { db, SongRecord, WordRecord, base64ToBlob } from '@/lib/db';
 import useSettingsStore from './useSettingsStore';
 import { processWhisperXOutput } from '@/utils/lyricsProcessor';
+import { buildApiUrl, getJson, headOk, postJson } from '@/lib/backendClient';
 import toast from 'react-hot-toast';
+
+const songStoreMessage = (key: 'cacheSuccess' | 'cacheError' | 'uncacheSuccess' | 'uncacheError', title?: string) => {
+  const isZh = useSettingsStore.getState().settings.uiLanguage === 'zh';
+  const messages = {
+    cacheSuccess: isZh ? `已缓存 "${title}" 的音频。` : `Successfully cached audio for "${title}"`,
+    cacheError: isZh ? '缓存音频失败。' : 'Failed to cache audio.',
+    uncacheSuccess: isZh ? `已移除 "${title}" 的本地音频缓存。` : `Successfully removed cached audio for "${title}"`,
+    uncacheError: isZh ? '移除本地音频缓存失败。' : 'Failed to remove cached audio.',
+  };
+  return messages[key];
+};
 
 interface SongState {
   song: SongData | null;
@@ -61,19 +73,17 @@ const useSongStore = create<SongState>()(
             }
 
             // If it's a new song, fetch its info, create a DB entry, then use the robust loader.
-            const mediaResponse = await fetch(`${BACKEND_URL}/api/media/fetch?url=${encodeURIComponent(url)}`);
-            if (!mediaResponse.ok) {
-                const errorDetail = (await mediaResponse.json()).detail || 'Failed to fetch media from backend';
-                throw new Error(errorDetail);
-            }
-            
-            const songData: Omit<SongData, 'sourceUrl'> & {cover_url?: string} = await mediaResponse.json();
+            const songData = await getJson<Omit<SongData, 'sourceUrl'> & {cover_url?: string}>(
+              BACKEND_URL,
+              '/api/media/fetch',
+              { url }
+            );
             
             // Fetch cover image and create a blob for it to be stored
             let coverImageBlob: Blob | undefined;
             if (songData.cover_url) {
                 try {
-                    const proxiedCoverUrl = `${BACKEND_URL}/api/media/proxy-image?url=${encodeURIComponent(songData.cover_url)}`;
+                    const proxiedCoverUrl = buildApiUrl(BACKEND_URL, '/api/media/proxy-image', { url: songData.cover_url });
                     const coverResponse = await fetch(proxiedCoverUrl);
                     if(coverResponse.ok) {
                         coverImageBlob = await coverResponse.blob();
@@ -131,22 +141,14 @@ const useSongStore = create<SongState>()(
           }
 
           // Path 2: Relying on backend cache. Verify it exists.
-          const backendMediaUrl = `${BACKEND_URL}${songFromDb.media_url}`;
-          const headResponse = await fetch(backendMediaUrl, { method: 'HEAD' });
+          const isBackendMediaAvailable = await headOk(BACKEND_URL, songFromDb.media_url);
 
           let finalSongRecord = songFromDb;
 
           // If backend cache is missing, re-fetch it
-          if (headResponse.status === 404) {
+          if (!isBackendMediaAvailable) {
             console.warn(`Backend cache missing for ${songFromDb.title}. Re-fetching...`);
-            const reFetchResponse = await fetch(`${BACKEND_URL}/api/media/fetch?url=${encodeURIComponent(songFromDb.sourceUrl)}`);
-            
-            if (!reFetchResponse.ok) {
-                const errorDetail = (await reFetchResponse.json()).detail || 'Failed to re-cache song on backend.';
-                throw new Error(errorDetail);
-            }
-
-            const newMediaInfo = await reFetchResponse.json();
+            const newMediaInfo = await getJson<any>(BACKEND_URL, '/api/media/fetch', { url: songFromDb.sourceUrl });
             const updatePayload = {
                 media_url: newMediaInfo.media_url,
                 local_path: newMediaInfo.local_path,
@@ -157,8 +159,6 @@ const useSongStore = create<SongState>()(
 
             await db.songs.update(id, updatePayload);
             finalSongRecord = { ...songFromDb, ...updatePayload }; // Use updated info for this session
-          } else if (!headResponse.ok) {
-            throw new Error(`Backend cache check failed for ${songFromDb.title} with status: ${headResponse.status}`);
           }
 
           // Proceed with verified or re-cached data
@@ -205,11 +205,10 @@ const useSongStore = create<SongState>()(
           if (!songRecord) throw new Error("Song not found in DB for transcription.");
   
           // Check status first
-          const statusUrl = new URL(`${BACKEND_URL}/api/transcribe/status/${mediaId}`);
-          statusUrl.searchParams.append('local_path', songRecord.local_path);
-          let statusResponse = await fetch(statusUrl.toString());
-          if (statusResponse.ok) {
-              const statusData = await statusResponse.json();
+          try {
+              const statusData = await getJson<any>(BACKEND_URL, `/api/transcribe/status/${mediaId}`, {
+                local_path: songRecord.local_path,
+              });
               if (statusData.status === 'completed') {
                   const useCache = window.confirm(t('transcription.cacheFoundConfirm'));
                   if (useCache) {
@@ -218,17 +217,12 @@ const useSongStore = create<SongState>()(
                       return;
                   } else {
                       // Force re-transcribe
-                      const newTranscriptionResponse = await fetch(`${BACKEND_URL}/api/transcribe`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ 
-                              local_path: songRecord.local_path, 
-                              media_id: mediaId, 
+                      const newData = await postJson<any>(BACKEND_URL, '/api/transcribe', {
+                              local_path: songRecord.local_path,
+                              media_id: mediaId,
                               display_name: song.title,
                               force_retranscribe: true 
-                          }),
-                      });
-                      const newData = await newTranscriptionResponse.json();
+                          });
                       set({ isLoading: false });
                       toast.success(t('transcription.startedAlert').replace('{{queue_position}}', newData.queue_position));
                       return;
@@ -238,29 +232,22 @@ const useSongStore = create<SongState>()(
                   toast.success(t('transcription.inProgressAlert').replace('{{queue_position}}', statusData.queue_position));
                   return;
               }
+          } catch {
+              // If status lookup fails, continue and try to start a fresh task below.
           }
 
           // Start a new one
-          const transcribeResponse = await fetch(`${BACKEND_URL}/api/transcribe`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ 
-                  local_path: songRecord.local_path, 
-                  media_id: mediaId, 
+          const startData = await postJson<any>(BACKEND_URL, '/api/transcribe', {
+                  local_path: songRecord.local_path,
+                  media_id: mediaId,
                   display_name: song.title,
                   force_retranscribe: false 
-              }),
-          });
-          
-          if (!transcribeResponse.ok) throw new Error((await transcribeResponse.json()).detail || t('transcription.failedStartError'));
-          
-          const startData = await transcribeResponse.json();
+              });
           if (startData.status === 'cached' || startData.status === 'completed') {
               // Edge case: it finished instantly or was cached right as we asked
-              const verifyUrl = new URL(`${BACKEND_URL}/api/transcribe/status/${mediaId}`);
-              verifyUrl.searchParams.append('local_path', songRecord.local_path);
-              statusResponse = await fetch(verifyUrl.toString());
-              const statusData = await statusResponse.json();
+              const statusData = await getJson<any>(BACKEND_URL, `/api/transcribe/status/${mediaId}`, {
+                local_path: songRecord.local_path,
+              });
               const tempLyrics = await processWhisperXOutput(statusData.data);
               set({ previewLyrics: tempLyrics, isLoading: false });
           } else {
@@ -310,7 +297,7 @@ const useSongStore = create<SongState>()(
             const songRecord = await db.songs.get(song.id);
             if (!songRecord) throw new Error("Song record not found in DB.");
             const { settings } = useSettingsStore.getState();
-            const audioUrlToFetch = `${settings.backendUrl}${songRecord.media_url}`;
+            const audioUrlToFetch = buildApiUrl(settings.backendUrl, songRecord.media_url);
             const audioResponse = await fetch(audioUrlToFetch);
             if (!audioResponse.ok) throw new Error('Failed to download audio.');
             const audioBlob = await audioResponse.blob();
@@ -322,10 +309,10 @@ const useSongStore = create<SongState>()(
                 state.song.media_url = objectUrl;
               }
             });
-            toast.success(`Successfully cached audio for "${song.title}"`);
+            toast.success(songStoreMessage('cacheSuccess', song.title));
             } catch (err) {
             console.error("Failed to cache audio:", err);
-            toast.error("Failed to cache audio.");
+            toast.error(songStoreMessage('cacheError'));
         }
     },
     uncacheCurrentSongAudio: async () => {
@@ -348,10 +335,10 @@ const useSongStore = create<SongState>()(
                 state.song.media_url = backendMediaUrl;
               }
             });
-            toast.success(`Successfully removed cached audio for "${song.title}"`);
+            toast.success(songStoreMessage('uncacheSuccess', song.title));
             } catch (err) {
             console.error("Failed to remove cache:", err);
-            toast.error("Failed to remove cached audio.");
+            toast.error(songStoreMessage('uncacheError'));
         }
     },    updateLyricTranslations: async (newTranslatedLyrics) => {
         const { song, lyrics } = get();

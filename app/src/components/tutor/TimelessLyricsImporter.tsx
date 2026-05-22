@@ -10,7 +10,10 @@ import { LyricLine } from '@/interfaces/lyrics';
 import { formatLyricTimings, parseFuriganaText } from '@/utils/lyricsProcessor';
 import cn from 'classnames';
 import { copyToClipboard } from '@/utils/copyToClipboard';
+import { parseLyricsFromLlmOutput } from '@/lib/aiJson';
+import { requestChatCompletion } from '@/lib/llmClient';
 import toast from 'react-hot-toast';
+import { getJson, postJson } from '@/lib/backendClient';
 
 const Modal: React.FC<{ 
   title: string;
@@ -42,7 +45,7 @@ const Modal: React.FC<{
                   copyToClipboard(content).then(() => {
                       toast.success(t('settings.tokenCopied') || 'Copied to clipboard');
                   }).catch(err => {
-                      toast.error('Failed to copy content.');
+                      toast.error(t('common.copyFailed'));
                   });
               }}
               className="p-2 bg-gray-600 rounded-lg hover:bg-gray-500 transition-colors"
@@ -136,12 +139,7 @@ const UtatenSearchModal: React.FC<{
         try {
             const storedSettings = await db.settings.get(0);
             const backendUrl = storedSettings?.backendUrl || 'http://localhost:8000';
-            const response = await fetch(`${backendUrl}/api/lyrics/search-utaten?q=${encodeURIComponent(query)}`);
-            if (!response.ok) {
-                const errData = await response.json();
-                throw new Error(errData.detail || 'Search failed');
-            }
-            const data = await response.json();
+            const data = await getJson<{ results: any[] }>(backendUrl, '/api/lyrics/search-utaten', { q: query });
             setSearchResults(data.results);
         } catch (err) {
             setError((err as Error).message);
@@ -231,12 +229,7 @@ const TimelessLyricsImporter: React.FC = () => {
     try {
         const storedSettings = await db.settings.get(0);
         const backendUrl = storedSettings?.backendUrl || 'http://localhost:8000';
-        const response = await fetch(`${backendUrl}/api/lyrics/fetch-utaten?url=${encodeURIComponent(url)}`);
-        if (!response.ok) {
-            const errData = await response.json();
-            throw new Error(errData.detail || 'Failed to fetch from Utaten');
-        }
-        const data = await response.json();
+        const data = await getJson<{ furigana_text: string }>(backendUrl, '/api/lyrics/fetch-utaten', { url });
         setPlaintextLyrics(data.furigana_text);
     } catch (err) {
         setError(t('aiLyricCorrector.fetchError', { error: (err as Error).message }));
@@ -245,14 +238,7 @@ const TimelessLyricsImporter: React.FC = () => {
     }
   };
 
-  const parseLlmOutput = (output: string) => {
-    const jsonRegex = /```json\n([\s\S]*?)\n```/;
-    const match = output.match(jsonRegex);
-    if (!match || !match[1]) {
-      throw new Error(t('aiLyricCorrector.jsonNotFoundInResponse'));
-    }
-    return JSON.parse(match[1]) as LyricLine[];
-  };
+  const parseLlmOutput = (output: string) => parseLyricsFromLlmOutput(output);
 
   const handleGenerate = async () => {
     setIsLoading(true);
@@ -268,25 +254,18 @@ const TimelessLyricsImporter: React.FC = () => {
       const maxTokens = storedSettings?.llmMaxTokens || 32768;
 
       if (!apiKey) throw new Error(t('aiLyricCorrector.apiKeyNotSet'));
-      if (!plaintextLyrics.trim()) throw new Error("Please paste lyrics first.");
+      if (!plaintextLyrics.trim()) throw new Error(t('timelessLyricsImporter.pasteLyricsFirst'));
 
       const finalPrompt = promptTemplate.replace('{plaintext_lyrics}', plaintextLyrics);
 
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: modelType, messages: [{ role: 'user', content: finalPrompt }], temperature: 0.3, max_tokens: maxTokens }),
+      const llmOutput = await requestChatCompletion({
+        apiUrl,
+        apiKey,
+        model: modelType,
+        prompt: finalPrompt,
+        temperature: 0.3,
+        maxTokens,
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`${t('aiLyricCorrector.llmApiError')}: ${errorData.error?.message || t('aiLyricCorrector.failedToFetch')}`);
-      }
-
-      const result = await response.json();
-      const llmOutput = result.choices[0]?.message?.content;
-
-      if (!llmOutput) throw new Error(t('aiLyricCorrector.llmEmptyResponse'));
 
       try {
         const parsedJson = parseLlmOutput(llmOutput);
@@ -321,7 +300,7 @@ const TimelessLyricsImporter: React.FC = () => {
 
   const handleParseText = async () => {
     if (!plaintextLyrics.trim()) {
-        toast.error("Please paste lyrics first.");
+        toast.error(t('timelessLyricsImporter.pasteLyricsFirst'));
         return;
     }
     setIsLoading(true);
@@ -329,16 +308,11 @@ const TimelessLyricsImporter: React.FC = () => {
         const storedSettings = await db.settings.get(0);
         const backendUrl = storedSettings?.backendUrl || 'http://localhost:8000';
         
-        // Call backend for high-precision r1/r2 parsing
-        const response = await fetch(`${backendUrl}/api/lyrics/parse-to-tokens`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: plaintextLyrics })
-        });
-        
-        if (!response.ok) throw new Error('Backend parsing failed');
-        
-        const { lyrics_data } = await response.json();
+        const { lyrics_data } = await postJson<{ lyrics_data: LyricLine[] }>(
+            backendUrl,
+            '/api/lyrics/parse-to-tokens',
+            { text: plaintextLyrics }
+        );
         setProcessedLyrics(formatLyricTimings(lyrics_data));
         
         toast.success(t('aiLyricCorrector.fetchSuccess') || "Parsed successfully!");

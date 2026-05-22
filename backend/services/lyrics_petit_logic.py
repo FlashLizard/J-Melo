@@ -10,8 +10,8 @@ import html  # 新增：用于处理网页元数据中的 HTML 转义符
 import jaconv
 from sudachipy import dictionary, tokenizer
 from fastapi import HTTPException
-from core.config import ADMIN_CONFIG
 from core.utils import log_info
+from services.network import async_client, normalize_non_empty_query
 
 PETIT_LYRICS_API_URL = 'https://on.petitlyrics.com/api/GetPetitLyricsData.php'
 
@@ -31,6 +31,13 @@ REQUEST_HEADERS = {
     'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
     'User-Agent': 'Dalvik/2.1.0 (Linux; U; Android 5.1.1; LM-G820UM Build/LMY48Z)'
 }
+
+
+def _validate_lyrics_id(lyrics_id: str) -> str:
+    normalized = (lyrics_id or "").strip()
+    if not normalized.isdigit():
+        raise HTTPException(status_code=400, detail="PetitLyrics lyrics_id must be numeric")
+    return normalized
 
 # --- Sudachi Initialization ---
 try:
@@ -173,8 +180,9 @@ async def _fetch_from_api(client: httpx.AsyncClient, title: str, artist: str, ly
         return[]
 
 async def search_petitlyrics(title: str, artist: str = ""):
-    proxy_url = ADMIN_CONFIG.get("proxy") or None
-    async with httpx.AsyncClient(proxy=proxy_url) as client:
+    title = normalize_non_empty_query(title)
+    artist = (artist or "").strip()[:200]
+    async with async_client(timeout_seconds=20.0) as client:
         try:
             songs = await _fetch_from_api(client, title, artist, '1', max_items=15)
             results =[]
@@ -205,11 +213,12 @@ async def search_petitlyrics(title: str, artist: str = ""):
                 
             return results
         except Exception as e:
+            if isinstance(e, HTTPException): raise e
             raise HTTPException(status_code=500, detail=str(e))
 
 async def fetch_petitlyrics_data(lyrics_id: str):
-    proxy_url = ADMIN_CONFIG.get("proxy") or None
-    async with httpx.AsyncClient(proxy=proxy_url) as client:
+    lyrics_id = _validate_lyrics_id(lyrics_id)
+    async with async_client(timeout_seconds=20.0) as client:
         try:
             # 1. Get Metadata
             web_url = f"https://petitlyrics.com/lyrics/{lyrics_id}"

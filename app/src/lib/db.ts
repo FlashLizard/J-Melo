@@ -218,7 +218,26 @@ class JeloDB extends Dexie {
   }
 }
 
-export const db = new JeloDB();
+const createDatabase = () => {
+  if (typeof window === 'undefined') {
+    const noop = new Proxy(() => undefined, {
+      get(_target, prop) {
+        return prop === 'then' ? undefined : noop;
+      },
+      apply() {
+        return Promise.resolve(undefined);
+      },
+    });
+    return new Proxy({} as JeloDB, {
+      get() {
+        return noop;
+      },
+    });
+  }
+  return new JeloDB();
+};
+
+export const db = createDatabase();
 
 export async function exportAllData() {
   const songs = await db.songs.toArray();
@@ -241,6 +260,8 @@ export async function exportAllData() {
   });
 
   return {
+    version: 2,
+    exportedAt: new Date().toISOString(),
     songs: sanitizedSongs,
     words,
     settings: settingsData,

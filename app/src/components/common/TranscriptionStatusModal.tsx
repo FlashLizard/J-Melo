@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import useTranslation from '@/hooks/useTranslation';
 import useSettingsStore from '@/stores/useSettingsStore';
+import { getJson } from '@/lib/backendClient';
 
 interface TranscriptionTask {
     id: string;
@@ -42,9 +43,7 @@ const TranscriptionStatusModal: React.FC<{ isOpen: boolean; onClose: () => void;
         setIsLoading(true);
         setError(null);
         try {
-            const response = await fetch(`${backendUrl}/api/public/transcription-tasks`);
-            if (!response.ok) throw new Error('Failed to fetch transcription queue.');
-            const data = await response.json();
+            const data = await getJson<{ tasks: TranscriptionTask[] }>(backendUrl, '/api/public/transcription-tasks');
             setTasks(data.tasks);
         } catch (err) {
             setError((err as Error).message);

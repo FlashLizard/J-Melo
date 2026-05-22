@@ -7,6 +7,7 @@ import useTranslation from '@/hooks/useTranslation';
 import { formatLyricTimings } from '@/utils/lyricsProcessor';
 import toast from 'react-hot-toast';
 import cn from 'classnames';
+import { getJson, postJson } from '@/lib/backendClient';
 
 const LyricsWizardPanel: React.FC = () => {
   const { isLyricsWizardOpen, setIsLyricsWizardOpen } = useUIPanelStore();
@@ -40,12 +41,11 @@ const LyricsWizardPanel: React.FC = () => {
     await updateSongInfo({ title: editedTitle });
     setIsSearching(true);
     try {
-      const res = await fetch(`${settings.backendUrl}/api/lyrics/search-utaten?q=${encodeURIComponent(editedTitle)}`);
-      const data = await res.json();
+      const data = await getJson<{ results: any[] }>(settings.backendUrl, '/api/lyrics/search-utaten', { q: editedTitle });
       setSearchResults(data.results || []);
       setStep(2);
     } catch (e) {
-      toast.error('Search failed');
+      toast.error(t('index.searchError'));
     } finally {
       setIsSearching(false);
     }
@@ -55,13 +55,11 @@ const LyricsWizardPanel: React.FC = () => {
     setFetchUrl(url);
     setIsFetching(true);
     try {
-      const res = await fetch(`${settings.backendUrl}/api/lyrics/fetch-utaten?url=${encodeURIComponent(url)}`);
-      if (!res.ok) throw new Error('Fetch failed');
-      const data = await res.json();
+      const data = await getJson<{ lyrics_data: any[] }>(settings.backendUrl, '/api/lyrics/fetch-utaten', { url });
       setProcessedLyrics(data.lyrics_data);
       setStep(3);
     } catch (e) {
-      toast.error('Failed to fetch lyrics');
+      toast.error(t('lyricsWizard.fetchLyricsFailed'));
     } finally {
       setIsFetching(false);
     }
@@ -69,12 +67,12 @@ const LyricsWizardPanel: React.FC = () => {
 
   const handleStartAlignment = async () => {
     setIsSearchingAlign(true);
-    setAlignStatus('Initializing...');
+    setAlignStatus(t('lyricsAlignment.initializingTask'));
     try {
-      const res = await fetch(`${settings.backendUrl}/api/lyrics/align`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const { task_id } = await postJson<{ task_id: string }>(
+        settings.backendUrl,
+        '/api/lyrics/align',
+        {
           song_id: song.id,
           source_url: song.sourceUrl,
           local_path: (song as any).local_path,
@@ -82,13 +80,11 @@ const LyricsWizardPanel: React.FC = () => {
           align_mode: 'word',
           extract_vocals: extractVocals,
           replace_with_kana: replaceWithKana
-        })
-      });
-      const { task_id } = await res.json();
+        }
+      );
       
       const checkStatus = setInterval(async () => {
-        const sRes = await fetch(`${settings.backendUrl}/api/lyrics/align-status/${task_id}`);
-        const sData = await sRes.json();
+        const sData = await getJson<any>(settings.backendUrl, `/api/lyrics/align-status/${task_id}`);
         setAlignStatus(sData.message);
         if (sData.status === 'completed') {
           clearInterval(checkStatus);
@@ -99,12 +95,12 @@ const LyricsWizardPanel: React.FC = () => {
         } else if (sData.status === 'failed') {
           clearInterval(checkStatus);
           setIsSearchingAlign(false);
-          toast.error('Alignment failed: ' + sData.message);
+          toast.error(t('lyricsAlignment.failed', { message: sData.message }));
         }
       }, 2000);
     } catch (e) {
       setIsSearchingAlign(false);
-      toast.error('Failed to start alignment');
+      toast.error(t('lyricsAlignment.startTaskFailed'));
     }
   };
 
@@ -156,7 +152,7 @@ const LyricsWizardPanel: React.FC = () => {
                   value={editedTitle} 
                   onChange={e => setEditedTitle(e.target.value)}
                   className="w-full bg-gray-800 border border-gray-700 rounded-2xl px-5 py-4 text-lg text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                  placeholder="Song Title"
+                  placeholder={t('lyricsWizard.songTitlePlaceholder')}
                 />
               </div>
               <button 

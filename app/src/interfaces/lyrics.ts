@@ -1,5 +1,10 @@
 // src/interfaces/lyrics.ts
 
+export interface LyricRubySegment {
+    text: string;
+    reading?: string;
+}
+
 export interface LyricToken {
     surface: string;
     reading: string;
@@ -7,6 +12,7 @@ export interface LyricToken {
     startTime: number;
     endTime: number;
     partOfSpeech?: string;
+    rubySegments?: LyricRubySegment[];
 }
   
 export interface LyricLine {

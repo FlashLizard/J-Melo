@@ -13,6 +13,7 @@ import { copyToClipboard } from '@/utils/copyToClipboard'; // Import the utility
 import cn from 'classnames';
 import VocabCardEditor from './VocabCardEditor';
 import toast from 'react-hot-toast';
+import { getTokensReadingText, getTokensSurfaceText } from '@/utils/lyricTokenText';
 
 // Define the Modal component within this file for simplicity, passing t prop
 const Modal: React.FC<{ title: string; content: string; onClose: () => void; t: (key: string) => string }> = ({ title, content, onClose, t }) => {
@@ -37,7 +38,7 @@ const Modal: React.FC<{ title: string; content: string; onClose: () => void; t: 
                   copyToClipboard(content).then(() => {
                       toast.success(t('settings.tokenCopied') || 'Copied!');
                   }).catch(err => {
-                      toast.error('Failed to copy content.');
+                      toast.error(t('common.copyFailed'));
                   });
               }}
               className="p-2 bg-gray-600 rounded-lg hover:bg-gray-500"
@@ -135,8 +136,8 @@ const AIPanel: React.FC = () => {
   };
 
   const generateFinalPrompt = () => {
-    const word = selectedTokens.map(t => t.surface).join('');
-    const reading = selectedTokens.map(t => t.reading).join('');
+    const word = getTokensSurfaceText(selectedTokens);
+    const reading = getTokensReadingText(selectedTokens);
     return currentPromptContent
       .replace(/{word}/g, word)
       .replace(/{reading}/g, reading)
@@ -152,7 +153,7 @@ const AIPanel: React.FC = () => {
     getExplanation(finalPrompt);
   };
 
-  const selectedWord = useMemo(() => (selectedTokens || []).map(t => t.surface).join(''), [selectedTokens]);
+  const selectedWord = useMemo(() => getTokensSurfaceText(selectedTokens || []), [selectedTokens]);
 
   return (
     <>

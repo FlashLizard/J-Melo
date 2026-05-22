@@ -46,7 +46,7 @@ const FullLyricsEditor: React.FC = () => {
   const handleCopy = () => {
     copyToClipboard(jsonString)
       .then(() => toast.success(t('settings.tokenCopied') || 'Copied!'))
-      .catch(err => toast.error('Failed to copy JSON.'));
+      .catch(() => toast.error(t('common.copyFailed')));
   };
 
   const handleSave = () => {
@@ -64,7 +64,7 @@ const FullLyricsEditor: React.FC = () => {
         toast.success(t('fullLyricsEditor.lyricsSavedSuccess'));
         setActivePanel('TOOL_PANEL');
     } catch (e) {
-        toast.error('Invalid JSON. Please fix before saving.');
+        toast.error(t('fullLyricsEditor.invalidJsonBeforeSave'));
     }
   };
 

@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { LyricToken } from '@/interfaces/lyrics';
 import cn from 'classnames';
+import useTranslation from '@/hooks/useTranslation';
 
 interface EditableWordRowProps {
   token: LyricToken;
@@ -12,6 +13,7 @@ interface EditableWordRowProps {
 const EditableWordRow: React.FC<EditableWordRowProps> = ({ token, index, onTokenChange }) => {
   const [startTimeStr, setStartTimeStr] = useState(token.startTime.toFixed(2));
   const [endTimeStr, setEndTimeStr] = useState(token.endTime.toFixed(2));
+  const { t } = useTranslation();
 
   // Sync external changes to local state, but only if they differ significantly 
   // to avoid overwriting user typing in progress.
@@ -61,7 +63,7 @@ const EditableWordRow: React.FC<EditableWordRowProps> = ({ token, index, onToken
           value={token.surface}
           onChange={(e) => handleInputChange('surface', e.target.value)}
           className={inputClasses}
-          placeholder="Surface"
+          placeholder={t('sentenceEditor.surfaceHeader')}
         />
       </div>
       <div className="col-span-2">
@@ -70,7 +72,7 @@ const EditableWordRow: React.FC<EditableWordRowProps> = ({ token, index, onToken
           value={token.reading}
           onChange={(e) => handleInputChange('reading', e.target.value)}
           className={inputClasses}
-          placeholder="Reading"
+          placeholder={t('sentenceEditor.readingHeader')}
         />
       </div>
       <div className="col-span-3 relative">

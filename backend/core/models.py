@@ -35,6 +35,19 @@ class CachePolicy(BaseModel):
 class UpdateConfigRequest(BaseModel):
     admin_token: Optional[str] = None
     proxy: Optional[str] = None
+    cors_origins: Optional[List[str]] = None
+    media_cache_dir: Optional[str] = None
+    temp_data_dir: Optional[str] = None
+    transcription_cache_dir: Optional[str] = None
+    community_db_path: Optional[str] = None
+    task_db_path: Optional[str] = None
+    task_worker_enabled: Optional[bool] = None
+    max_upload_mb: Optional[int] = None
+    transcription_model: Optional[str] = None
+    transcription_compute_type: Optional[str] = None
+    alignment_model: Optional[str] = None
+    load_transcription_model: Optional[bool] = None
+    load_alignment_model: Optional[bool] = None
     media_cache_policy: Optional[CachePolicy] = None
     token_cache_policy: Optional[CachePolicy] = None
     transcription_cache_policy: Optional[CachePolicy] = None

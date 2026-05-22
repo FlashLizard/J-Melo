@@ -2,6 +2,7 @@
 import { create } from 'zustand';
 import { db } from '@/lib/db';
 import useSettingsStore from './useSettingsStore';
+import { buildApiUrl, getJson, headOk } from '@/lib/backendClient';
 
 export type PlayMode = 'sequential' | 'shuffle' | 'loop-single';
 
@@ -32,9 +33,26 @@ let mediaElement: HTMLAudioElement | HTMLVideoElement | null = null;
 let rafId: number | null = null;
 let isSeeking = false;
 let isSwitchingSource = false;
+let switchPlaybackRequestId = 0;
 
 // Singleton Audio for iOS stability
 let globalAudioInstance: HTMLAudioElement | null = null;
+const AUDIO_ATTACH_EVENTS = ['click', 'touchstart', 'pointerdown'] as const;
+
+const removeAudioAttachListeners = () => {
+    AUDIO_ATTACH_EVENTS.forEach((eventName) => {
+        document.removeEventListener(eventName, ensureGlobalAudioAttached);
+    });
+};
+
+const ensureGlobalAudioAttached = () => {
+    if (typeof document === 'undefined' || !globalAudioInstance || globalAudioInstance.parentElement) return;
+    if (document.body) {
+        document.body.appendChild(globalAudioInstance);
+        removeAudioAttachListeners();
+    }
+};
+
 if (typeof window !== 'undefined') {
     globalAudioInstance = new Audio();
     globalAudioInstance.preload = 'auto';
@@ -42,16 +60,10 @@ if (typeof window !== 'undefined') {
     globalAudioInstance.setAttribute('webkit-playsinline', 'true');
     globalAudioInstance.crossOrigin = 'anonymous';
     globalAudioInstance.style.display = 'none';
-    
-    const attach = () => {
-        if (document.body && globalAudioInstance && !globalAudioInstance.parentElement) {
-            document.body.appendChild(globalAudioInstance);
-            document.removeEventListener('click', attach);
-            document.removeEventListener('touchstart', attach);
-        }
-    };
-    document.addEventListener('click', attach);
-    document.addEventListener('touchstart', attach);
+
+    AUDIO_ATTACH_EVENTS.forEach((eventName) => {
+        document.addEventListener(eventName, ensureGlobalAudioAttached);
+    });
 }
 
 const usePlayerStore = create<PlayerState>(() => ({
@@ -139,7 +151,6 @@ const handleLoadedMetadata = () => {
 };
 
 const handlePlay = () => {
-    console.log("PlayerStore: Audio started playing");
     usePlayerStore.setState({ isPlaying: true, hasEnded: false });
     startAnimationLoop();
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
@@ -148,7 +159,6 @@ const handlePlay = () => {
 
 const handlePause = () => {
     if (isSwitchingSource) return;
-    console.log("PlayerStore: Audio paused");
     usePlayerStore.setState({ isPlaying: false });
     if (rafId) cancelAnimationFrame(rafId);
     rafId = null;
@@ -161,7 +171,6 @@ const handlePause = () => {
 
 const handleEnded = () => {
     if (isSwitchingSource) return;
-    console.log("PlayerStore: Audio ended");
     const { playMode, nextTrack } = usePlayerStore.getState();
     if (playMode === 'loop-single') {
         playerStoreActions.seek(0);
@@ -190,11 +199,74 @@ const handleSeeked = () => {
     }
 };
 
-const blobUrls = new Set<string>();
-const createSafeBlobUrl = (blob: Blob) => {
+const blobUrlCache = new Map<string, string>();
+const getCachedBlobUrl = (songId: number, kind: 'audio' | 'cover', blob: Blob) => {
+    const prefix = `${kind}:${songId}:`;
+    const cacheKey = `${prefix}${blob.size}:${blob.type}`;
+    const existingUrl = blobUrlCache.get(cacheKey);
+    if (existingUrl) return existingUrl;
+
+    Array.from(blobUrlCache.entries()).forEach(([key, url]) => {
+        if (key.startsWith(prefix)) {
+            URL.revokeObjectURL(url);
+            blobUrlCache.delete(key);
+        }
+    });
+
     const url = URL.createObjectURL(blob);
-    blobUrls.add(url);
+    blobUrlCache.set(cacheKey, url);
     return url;
+};
+
+const getLocalizedUnknownArtist = () => (
+    useSettingsStore.getState().settings.uiLanguage === 'zh' ? '未知艺术家' : 'Unknown Artist'
+);
+
+const resolvePlaylistItem = async (id: number): Promise<PlaylistItem | null> => {
+    const song = await db.songs.get(id);
+    if (!song) return null;
+
+    const backendUrl = useSettingsStore.getState().settings.backendUrl;
+    let playableSong = song;
+    let mediaUrl: string | null = null;
+
+    if (song.audioData) {
+        mediaUrl = getCachedBlobUrl(id, 'audio', song.audioData);
+    } else if (song.media_url) {
+        let isBackendMediaAvailable = await headOk(backendUrl, song.media_url);
+        if (!isBackendMediaAvailable) {
+            try {
+                const newMediaInfo = await getJson<any>(backendUrl, '/api/media/fetch', { url: song.sourceUrl });
+                const updatePayload = {
+                    media_url: newMediaInfo.media_url,
+                    local_path: newMediaInfo.local_path,
+                    duration: newMediaInfo.duration,
+                    title: newMediaInfo.title,
+                    artist: newMediaInfo.artist,
+                };
+                await db.songs.update(id, updatePayload);
+                playableSong = { ...song, ...updatePayload };
+                isBackendMediaAvailable = Boolean(playableSong.media_url);
+            } catch (error) {
+                console.error(`Failed to refresh media before switching to song ${id}:`, error);
+                isBackendMediaAvailable = false;
+            }
+        }
+        mediaUrl = isBackendMediaAvailable && playableSong.media_url
+            ? buildApiUrl(backendUrl, playableSong.media_url)
+            : null;
+    }
+
+    let coverUrl = playableSong.cover_url;
+    if (playableSong.coverImageData) coverUrl = getCachedBlobUrl(id, 'cover', playableSong.coverImageData);
+
+    return {
+        id,
+        title: playableSong.title,
+        artist: playableSong.artist,
+        cover_url: coverUrl || '',
+        media_url: mediaUrl,
+    };
 };
 
 export const playerStoreActions = {
@@ -204,6 +276,7 @@ export const playerStoreActions = {
 
   setMediaElement: (element: HTMLAudioElement | HTMLVideoElement | null) => {
     if (mediaElement === element) return;
+    if (element === globalAudioInstance) ensureGlobalAudioAttached();
     if (mediaElement) {
         mediaElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
         mediaElement.removeEventListener('play', handlePlay);
@@ -261,73 +334,129 @@ export const playerStoreActions = {
     const { playlist, playMode } = usePlayerStore.getState();
     if (playlist.length === 0) return;
 
-    const findNeighborId = (direction: 'next' | 'prev'): number | null => {
+    const findNeighborCandidates = (direction: 'next' | 'prev'): number[] => {
         const currentIndex = playlist.indexOf(currentId);
-        if (currentIndex === -1) return null;
-        if (playMode === 'shuffle' && playlist.length > 1) {
-            let randomIndex;
-            do { randomIndex = Math.floor(Math.random() * playlist.length); } 
-            while (playlist[randomIndex] === currentId || (playlist.length > 1 && randomIndex === currentIndex));
-            return playlist[randomIndex];
+        if (currentIndex === -1 || playlist.length <= 1) return [];
+
+        if (playMode === 'shuffle') {
+            return playlist
+                .filter(id => id !== currentId)
+                .map(id => ({ id, sort: Math.random() }))
+                .sort((a, b) => a.sort - b.sort)
+                .map(item => item.id);
         }
-        if (direction === 'next') return playlist[(currentIndex + 1) % playlist.length];
-        return playlist[(currentIndex - 1 + playlist.length) % playlist.length];
+
+        const candidates: number[] = [];
+        for (let offset = 1; offset < playlist.length; offset++) {
+            const index = direction === 'next'
+                ? (currentIndex + offset) % playlist.length
+                : (currentIndex - offset + playlist.length) % playlist.length;
+            candidates.push(playlist[index]);
+        }
+        return candidates;
     };
 
-    const nextId = findNeighborId('next');
-    const prevId = findNeighborId('prev');
-
-    const fetchMetadata = async (id: number | null): Promise<PlaylistItem | null> => {
-        if (id === null) return null;
-        const song = await db.songs.get(id);
-        if (!song) return null;
-        const backendUrl = useSettingsStore.getState().settings.backendUrl;
-        let mUrl = song.media_url ? `${backendUrl}${song.media_url}` : null;
-        if (song.audioData) mUrl = createSafeBlobUrl(song.audioData);
-        let cUrl = song.cover_url;
-        if (song.coverImageData) cUrl = createSafeBlobUrl(song.coverImageData);
-        return { id, title: song.title, artist: song.artist, cover_url: cUrl || '', media_url: mUrl };
+    const fetchFirstPlayable = async (ids: number[]): Promise<PlaylistItem | null> => {
+        for (const id of ids) {
+            const item = await resolvePlaylistItem(id);
+            if (item?.media_url) return item;
+        }
+        return null;
     };
 
-    const [next, prev] = await Promise.all([fetchMetadata(nextId), fetchMetadata(prevId)]);
+    const [next, prev] = await Promise.all([
+        fetchFirstPlayable(findNeighborCandidates('next')),
+        fetchFirstPlayable(findNeighborCandidates('prev')),
+    ]);
     usePlayerStore.setState({ nextTrack: next, prevTrack: prev });
   },
 
-  switchTrack: (song: PlaylistItem) => {
-    if (!mediaElement || !song.media_url) return;
+  switchTrack: async (song: PlaylistItem) => {
+    if (!mediaElement) return;
+    const playbackRequestId = ++switchPlaybackRequestId;
+    const resolvedSong = await resolvePlaylistItem(song.id);
+    if (playbackRequestId !== switchPlaybackRequestId) return;
+
+    if (!resolvedSong?.media_url) {
+        console.error(`Cannot switch to song ${song.id}: no playable media URL.`);
+        mediaElement.pause();
+        isSwitchingSource = false;
+        usePlayerStore.setState({ isPlaying: false, hasEnded: true });
+        return;
+    }
+
+    song = resolvedSong;
+    if (mediaElement === globalAudioInstance) ensureGlobalAudioAttached();
     
     isSwitchingSource = true;
     usePlayerStore.setState({ 
         currentSongId: song.id, 
+        isPlaying: true,
         hasEnded: false, 
-        isPlaying: true, 
         currentTime: 0,
         duration: 0 
     });
     
     const absoluteTargetUrl = new URL(song.media_url, window.location.href).href;
+    const switchedElement = mediaElement;
     if (mediaElement.src !== absoluteTargetUrl) {
-        mediaElement.src = song.media_url;
+        mediaElement.autoplay = true;
+        mediaElement.src = absoluteTargetUrl;
         mediaElement.load();
     }
     
     mediaElement.muted = false;
     mediaElement.volume = 1.0;
     
-    const playPromise = mediaElement.play();
-    if (playPromise !== undefined) {
-        playPromise.then(() => {
-            isSwitchingSource = false;
-            syncPositionState();
-        }).catch(e => {
-            console.error("Switch play failed", e);
-            isSwitchingSource = false;
-        });
-    } else {
+    const markSwitchPlaying = () => {
+        if (playbackRequestId !== switchPlaybackRequestId || mediaElement !== switchedElement) return;
         isSwitchingSource = false;
+        usePlayerStore.setState({ isPlaying: true, hasEnded: false });
+        syncPositionState();
+    };
+
+    const markSwitchFailed = (error: unknown) => {
+        if (playbackRequestId !== switchPlaybackRequestId || mediaElement !== switchedElement) return;
+        console.error("Switch play failed", error);
+        isSwitchingSource = false;
+        usePlayerStore.setState({ isPlaying: false, hasEnded: true });
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+    };
+
+    const playSwitchedTrack = (attempt = 0) => {
+        if (playbackRequestId !== switchPlaybackRequestId || mediaElement !== switchedElement) return;
+        const playPromise = switchedElement.play();
+        if (playPromise !== undefined) {
+            playPromise.then(markSwitchPlaying).catch((error) => {
+                if (attempt < 2 && switchedElement.readyState < 3) {
+                    let didRetry = false;
+                    const retry = () => {
+                        if (didRetry) return;
+                        didRetry = true;
+                        playSwitchedTrack(attempt + 1);
+                    };
+                    switchedElement.addEventListener('canplay', retry, { once: true });
+                    window.setTimeout(retry, 350);
+                    return;
+                }
+                markSwitchFailed(error);
+            });
+        } else {
+            markSwitchPlaying();
+        }
+    };
+
+    playSwitchedTrack();
+
+    if (mediaElement.autoplay) {
+        mediaElement.addEventListener('playing', () => {
+            if (playbackRequestId === switchPlaybackRequestId) {
+                isSwitchingSource = false;
+            }
+        }, { once: true });
     }
     
-    playerStoreActions.updateMetadata(song.title, song.artist || 'Unknown', song.cover_url || '');
+    playerStoreActions.updateMetadata(song.title, song.artist || getLocalizedUnknownArtist(), song.cover_url || '');
     playerStoreActions.prepareNeighbors(song.id);
     
     if (playerStoreActions.onSongSwitch) playerStoreActions.onSongSwitch(song.id);
@@ -357,8 +486,17 @@ export const playerStoreActions = {
 
   play: () => { 
       if (mediaElement) {
-          mediaElement.play().catch(e => console.error("Play error", e));
-          usePlayerStore.setState({ isPlaying: true });
+          if (mediaElement === globalAudioInstance) ensureGlobalAudioAttached();
+          const playPromise = mediaElement.play();
+          if (playPromise !== undefined) {
+              playPromise.catch(e => {
+                  console.error("Play error", e);
+                  usePlayerStore.setState({ isPlaying: false });
+                  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+              });
+          } else {
+              usePlayerStore.setState({ isPlaying: true });
+          }
           startAnimationLoop();
           syncPositionState();
       }

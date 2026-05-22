@@ -9,6 +9,8 @@ import { formatLyricTimings } from '@/utils/lyricsProcessor';
 import useTranslation from '@/hooks/useTranslation';
 import { db } from '@/lib/db';
 import { copyToClipboard } from '@/utils/copyToClipboard';
+import { parseLyricsFromLlmOutput } from '@/lib/aiJson';
+import { requestChatCompletion } from '@/lib/llmClient';
 import cn from 'classnames';
 import toast from 'react-hot-toast';
 
@@ -46,7 +48,7 @@ const Modal: React.FC<{
                   copyToClipboard(content).then(() => {
                       toast.success(t('settings.tokenCopied') || 'Copied!');
                   }).catch(err => {
-                      toast.error('Failed to copy content.');
+                      toast.error(t('common.copyFailed'));
                   });
               }}
               className="p-2 bg-gray-600 rounded-lg hover:bg-gray-500 transition-colors"
@@ -148,14 +150,7 @@ const LyricTranslationPanel: React.FC = () => {
     }
   }, [translationMode, t, isPromptDirty]);
 
-  const parseLlmOutput = (output: string) => {
-    const jsonRegex = /```json\n([\s\S]*?)\n```/;
-    const match = output.match(jsonRegex);
-    if (!match || !match[1]) {
-      throw new Error(t('lyricTranslationPanel.jsonNotFoundInResponse'));
-    }
-    return JSON.parse(match[1]) as LyricLine[];
-  };
+  const parseLlmOutput = (output: string) => parseLyricsFromLlmOutput(output);
 
   const handleTranslate = async () => {
     if (!lyrics || lyrics.length === 0) {
@@ -191,26 +186,14 @@ const LyricTranslationPanel: React.FC = () => {
         finalPrompt = finalPrompt.replace('{provided_lyrics}', providedLyrics);
       }
 
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({ 
-            model: modelType, 
-            messages: [{ role: 'user', content: finalPrompt }], 
-            temperature: 0.3, 
-            max_tokens: maxTokens 
-        }),
+      const llmOutput = await requestChatCompletion({
+        apiUrl,
+        apiKey,
+        model: modelType,
+        prompt: finalPrompt,
+        temperature: 0.3,
+        maxTokens,
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`${t('lyricTranslationPanel.llmApiError')}: ${errorData.error?.message || t('lyricTranslationPanel.failedToFetch')}`);
-      }
-
-      const result = await response.json();
-      const llmOutput = result.choices[0]?.message?.content;
-
-      if (!llmOutput) throw new Error(t('lyricTranslationPanel.llmEmptyResponse'));
 
       try {
         const parsedJson = parseLlmOutput(llmOutput);

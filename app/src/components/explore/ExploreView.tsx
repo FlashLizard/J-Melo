@@ -9,6 +9,9 @@ import SongPreviewModal from '@/components/explore/SongPreviewModal';
 import useSettingsStore from '@/stores/useSettingsStore';
 import toast from 'react-hot-toast';
 import cn from 'classnames';
+import { buildApiUrl, deleteJson, getJson, postJson } from '@/lib/backendClient';
+import EmptyState from '@/components/common/EmptyState';
+import SearchDisplayToolbar, { DisplayMode } from '@/components/common/SearchDisplayToolbar';
 
 interface CommunitySong {
     id: number;
@@ -40,7 +43,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({ onImportSuccess }) => {
     const [previewSong, setPreviewSong] = useState<CommunitySong | null>(null);
 
     const displayMode = settings.exploreDisplayMode || 'grid';
-    const setDisplayMode = (mode: 'grid' | 'list') => updateSetting('exploreDisplayMode', mode);
+    const setDisplayMode = (mode: DisplayMode) => updateSetting('exploreDisplayMode', mode);
 
     const backendUrl = settings.backendUrl;
     const myNickname = settings.sharerNickname;
@@ -50,11 +53,11 @@ const ExploreView: React.FC<ExploreViewProps> = ({ onImportSuccess }) => {
         setIsLoading(true);
         setError(null);
         try {
-            const url = new URL(`${backendUrl}/api/community/songs`);
-            if (query) url.searchParams.append('q', query);
-            const res = await fetch(url.toString());
-            if (!res.ok) throw new Error('Failed to fetch community songs');
-            const data = await res.json();
+            const data = await getJson<{ songs: CommunitySong[] }>(
+                backendUrl,
+                '/api/community/songs',
+                query ? { q: query } : undefined
+            );
             setSongs(data.songs);
         } catch (err) {
             setError((err as Error).message);
@@ -73,9 +76,13 @@ const ExploreView: React.FC<ExploreViewProps> = ({ onImportSuccess }) => {
         }
     }, [backendUrl, fetchSongs]);
 
-    const handleSearch = (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleSearch = () => {
         fetchSongs(searchQuery);
+    };
+
+    const handleClearSearch = () => {
+        setSearchQuery('');
+        fetchSongs();
     };
 
     const handleImport = async (songData: SongRecord, wordsData: WordRecord[]) => {
@@ -124,10 +131,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({ onImportSuccess }) => {
             const localSong = localSongs[0];
             const localWords = await db.words.where('sourceSongId').equals(localSong.id!).toArray();
 
-            const delRes = await fetch(`${backendUrl}/api/community/songs/${previewSong.id}?sharer_name=${encodeURIComponent(myNickname)}`, {
-                method: 'DELETE'
-            });
-            if (!delRes.ok) throw new Error("Failed to delete old community version.");
+            await deleteJson(backendUrl, `/api/community/songs/${previewSong.id}`, { sharer_name: myNickname });
 
             const { audioData, ...rest } = localSong;
             let coverImageBase64 = '';
@@ -145,15 +149,9 @@ const ExploreView: React.FC<ExploreViewProps> = ({ onImportSuccess }) => {
                 words_data: localWords
             };
 
-            const postRes = await fetch(`${backendUrl}/api/community/share`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
+            await postJson(backendUrl, '/api/community/share', payload);
 
-            if (!postRes.ok) throw new Error("Failed to upload new version.");
-
-            toast.success("Community version updated!");
+            toast.success(t('explore.communityVersionUpdated'));
             setPreviewSong(null);
             fetchSongs(searchQuery);
         } catch (e) {
@@ -165,10 +163,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({ onImportSuccess }) => {
         if (!myNickname) return;
         if (!window.confirm(t('toolPanel.communityDeleteConfirm'))) return;
         try {
-            const delRes = await fetch(`${backendUrl}/api/community/songs/${songId}?sharer_name=${encodeURIComponent(myNickname)}`, {
-                method: 'DELETE'
-            });
-            if (!delRes.ok) throw new Error("Failed to delete from community server.");
+            await deleteJson(backendUrl, `/api/community/songs/${songId}`, { sharer_name: myNickname });
             
             toast.success(t('myShared.deleteSuccess'));
             setPreviewSong(null);
@@ -207,47 +202,21 @@ const ExploreView: React.FC<ExploreViewProps> = ({ onImportSuccess }) => {
                 />
             )}
 
-            {/* Unified Top Bar: Search, Search Icon Button, and Mode Toggle */}
-            <div className="mb-8 flex flex-row items-center gap-2 sm:gap-3 max-w-5xl mx-auto w-full">
-                <form onSubmit={handleSearch} className="flex-grow flex gap-2 sm:gap-3 min-w-0">
-                    <div className="relative flex-grow min-w-0">
-                        <div className="absolute inset-y-0 left-0 pl-3 sm:pl-4 flex items-center pointer-events-none text-gray-500">
-                            <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                        </div>
-                        <input
-                            type="text"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder={t('explore.searchPlaceholder')}
-                            className="w-full pl-9 sm:pl-12 pr-3 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl bg-gray-800/60 border border-gray-700/50 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-white text-sm sm:text-base placeholder-gray-500 shadow-inner"
-                        />
-                    </div>
-                    <button 
-                        type="submit"
-                        className="p-2.5 sm:p-3 bg-indigo-600/90 rounded-xl sm:rounded-2xl hover:bg-indigo-500 text-white transition-all border border-indigo-500/30 shadow-md active:scale-95 shrink-0"
-                        title={t('explore.searchButton')}
-                    >
-                        <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                    </button>
-                </form>
-                
-                <div className="flex bg-gray-800/60 p-1 rounded-xl sm:rounded-2xl border border-gray-700/50 shadow-inner shrink-0">
-                    <button 
-                        onClick={() => setDisplayMode('grid')}
-                        className={cn("p-1.5 sm:p-2 rounded-lg sm:rounded-xl transition-all", displayMode === 'grid' ? "bg-gray-700 text-indigo-400 shadow-sm" : "text-gray-500 hover:text-gray-300")}
-                        title="Grid Mode"
-                    >
-                        <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
-                    </button>
-                    <button 
-                        onClick={() => setDisplayMode('list')}
-                        className={cn("p-1.5 sm:p-2 rounded-lg sm:rounded-xl transition-all", displayMode === 'list' ? "bg-gray-700 text-indigo-400 shadow-sm" : "text-gray-500 hover:text-gray-300")}
-                        title="List Mode"
-                    >
-                        <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
-                    </button>
-                </div>
-            </div>
+            <SearchDisplayToolbar
+                query={searchQuery}
+                onQueryChange={setSearchQuery}
+                onSubmit={handleSearch}
+                onClear={handleClearSearch}
+                placeholder={t('explore.searchPlaceholder')}
+                searchLabel={t('explore.searchButton')}
+                clearLabel={t('common.clearSearch') || 'Clear search'}
+                displayMode={displayMode}
+                onDisplayModeChange={setDisplayMode}
+                displayModeLabel={t('common.displayMode')}
+                gridLabel={t('common.gridMode')}
+                listLabel={t('common.listMode')}
+                isLoading={isLoading}
+            />
 
             {error && (
                 <div className="bg-red-900/40 border border-red-800 p-4 rounded-2xl mb-8 text-center text-red-200 shadow-sm">
@@ -261,12 +230,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({ onImportSuccess }) => {
                     <p className="text-gray-400 font-medium tracking-wide animate-pulse">{t('home.loadingSongs')}</p>
                 </div>
             ) : songs.length === 0 ? (
-                <div className="text-center py-20 bg-gray-800/30 rounded-3xl border border-gray-700/30 border-dashed max-w-2xl mx-auto">
-                    <div className="bg-gray-900/50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
-                        <svg className="w-10 h-10 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>
-                    </div>
-                    <p className="text-xl text-gray-300 font-medium mb-2">{t('explore.noSongsFound')}</p>
-                </div>
+                <EmptyState title={t('explore.noSongsFound')} icon={searchQuery ? 'search' : 'music'} />
             ) : displayMode === 'grid' ? (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 sm:gap-6">
                     {songs.map((song) => (
@@ -278,10 +242,10 @@ const ExploreView: React.FC<ExploreViewProps> = ({ onImportSuccess }) => {
                         >
                             <div className="relative aspect-square bg-gray-700 overflow-hidden">
                                 {song.cover_url ? (
-                                    <img 
-                                        src={song.cover_url.startsWith('/') ? `${backendUrl}${song.cover_url}` : `${backendUrl}/api/media/proxy-image?url=${encodeURIComponent(song.cover_url)}`} 
-                                        alt={song.title} 
-                                        className="w-full h-full object-cover md:group-hover:scale-105 transition-transform duration-500 ease-out" 
+                                    <img
+                                        src={song.cover_url.startsWith('/') ? buildApiUrl(backendUrl, song.cover_url) : buildApiUrl(backendUrl, '/api/media/proxy-image', { url: song.cover_url })}
+                                        alt={song.title}
+                                        className="w-full h-full object-cover md:group-hover:scale-105 transition-transform duration-500 ease-out"
                                     />
                                 ) : (
                                     <div className="flex items-center justify-center w-full h-full bg-gradient-to-br from-gray-700 to-gray-800 text-gray-500">
@@ -312,10 +276,10 @@ const ExploreView: React.FC<ExploreViewProps> = ({ onImportSuccess }) => {
                         >
                             <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gray-700 overflow-hidden flex-shrink-0 shadow-inner">
                                 {song.cover_url ? (
-                                    <img 
-                                        src={song.cover_url.startsWith('/') ? `${backendUrl}${song.cover_url}` : `${backendUrl}/api/media/proxy-image?url=${encodeURIComponent(song.cover_url)}`} 
-                                        alt={song.title} 
-                                        className="w-full h-full object-cover" 
+                                    <img
+                                        src={song.cover_url.startsWith('/') ? buildApiUrl(backendUrl, song.cover_url) : buildApiUrl(backendUrl, '/api/media/proxy-image', { url: song.cover_url })}
+                                        alt={song.title}
+                                        className="w-full h-full object-cover"
                                     />
                                 ) : (
                                     <div className="w-full h-full flex items-center justify-center text-gray-500">

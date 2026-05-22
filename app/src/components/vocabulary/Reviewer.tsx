@@ -22,7 +22,7 @@ const Reviewer: React.FC = () => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <h2 className="text-2xl font-bold mb-2 text-white">{t('reviewer.reviewCompleteTitle')}</h2>
-            <p className="text-gray-400 mb-8">You have completed all cards for this session.</p>
+            <p className="text-gray-400 mb-8">{t('reviewer.completedDescription')}</p>
             <button onClick={endReview} className="w-full px-6 py-3 bg-blue-600 rounded-xl hover:bg-blue-500 text-white font-bold transition-transform active:scale-95 shadow-md">
             {t('reviewer.returnToVocabularyButton')}
             </button>
@@ -41,7 +41,7 @@ const Reviewer: React.FC = () => {
       {/* Header */}
       <div className="flex justify-between items-center mb-4 flex-shrink-0">
         <div className="text-xs font-bold text-gray-400 bg-gray-900/50 px-3 py-1 rounded-full border border-gray-700 uppercase tracking-widest">
-          Review Session
+          {t('reviewer.reviewSession')}
         </div>
         <button 
             onClick={endReview} 
@@ -72,7 +72,7 @@ const Reviewer: React.FC = () => {
               </div>
               <div className="absolute bottom-8 text-gray-500 text-sm font-bold uppercase tracking-[0.2em] animate-pulse flex items-center gap-2 opacity-60 group-hover:opacity-100 transition-opacity">
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" /></svg>
-                  Tap to flip
+                  {t('reviewer.tapToFlip')}
               </div>
             </div>
 
@@ -116,28 +116,28 @@ const Reviewer: React.FC = () => {
                 onClick={() => handleProficiencyUpdate(-5)} 
                 className="p-4 bg-orange-900/40 border-2 border-orange-700/50 text-orange-300 rounded-2xl hover:bg-orange-600 hover:text-white hover:border-orange-500 transition-all flex flex-col items-center justify-center active:scale-95 shadow-sm"
             >
-                <span className="font-bold text-sm sm:text-base">Hard</span>
+                <span className="font-bold text-sm sm:text-base">{t('reviewer.hardButton')}</span>
                 <span className="text-xs opacity-60 font-mono mt-1">-5</span>
             </button>
             <button 
                 onClick={() => handleProficiencyUpdate(-1)} 
                 className="p-4 bg-yellow-900/40 border-2 border-yellow-700/50 text-yellow-300 rounded-2xl hover:bg-yellow-600 hover:text-white hover:border-yellow-500 transition-all flex flex-col items-center justify-center active:scale-95 shadow-sm"
             >
-                <span className="font-bold text-sm sm:text-base">Okay</span>
+                <span className="font-bold text-sm sm:text-base">{t('reviewer.okayButton')}</span>
                 <span className="text-xs opacity-60 font-mono mt-1">-1</span>
             </button>
             <button 
                 onClick={() => handleProficiencyUpdate(1)} 
                 className="p-4 bg-teal-900/40 border-2 border-teal-700/50 text-teal-300 rounded-2xl hover:bg-teal-600 hover:text-white hover:border-teal-500 transition-all flex flex-col items-center justify-center active:scale-95 shadow-sm"
             >
-                <span className="font-bold text-sm sm:text-base">Good</span>
+                <span className="font-bold text-sm sm:text-base">{t('reviewer.goodButton')}</span>
                 <span className="text-xs opacity-60 font-mono mt-1">+1</span>
             </button>
             <button 
                 onClick={() => handleProficiencyUpdate(5)} 
                 className="p-4 bg-green-900/40 border-2 border-green-700/50 text-green-300 rounded-2xl hover:bg-green-600 hover:text-white hover:border-green-500 transition-all flex flex-col items-center justify-center active:scale-95 shadow-sm"
             >
-                <span className="font-bold text-sm sm:text-base">Easy</span>
+                <span className="font-bold text-sm sm:text-base">{t('reviewer.easyButton')}</span>
                 <span className="text-xs opacity-60 font-mono mt-1">+5</span>
             </button>
             <button 

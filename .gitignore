@@ -32,6 +32,7 @@ build/
 .next/
 __pycache__/
 app/public/config.json
+backend/*.db
 
 # Environment variables
 .env

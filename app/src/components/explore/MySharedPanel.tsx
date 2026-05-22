@@ -6,6 +6,7 @@ import { db } from '@/lib/db';
 import { motion, AnimatePresence } from 'framer-motion';
 import useSettingsStore from '@/stores/useSettingsStore';
 import toast from 'react-hot-toast';
+import { buildApiUrl, deleteJson, getJson } from '@/lib/backendClient';
 
 interface CommunitySong {
     id: number;
@@ -43,9 +44,7 @@ const MySharedPanel: React.FC<MySharedPanelProps> = ({ onClose }) => {
             setIsLoading(true);
             setError(null);
             try {
-                const res = await fetch(`${backendUrl}/api/community/songs?sharer=${encodeURIComponent(sharerNickname)}`);
-                if (!res.ok) throw new Error('Failed to fetch your shared songs');
-                const data = await res.json();
+                const data = await getJson<{ songs: CommunitySong[] }>(backendUrl, '/api/community/songs', { sharer: sharerNickname });
                 setSongs(data.songs);
             } catch (err) {
                 setError((err as Error).message);
@@ -59,10 +58,7 @@ const MySharedPanel: React.FC<MySharedPanelProps> = ({ onClose }) => {
     const handleDelete = async (songId: number) => {
         if (!window.confirm(t('myShared.deleteConfirm'))) return;
         try {
-            const res = await fetch(`${backendUrl}/api/community/songs/${songId}?sharer_name=${encodeURIComponent(sharerNickname)}`, {
-                method: 'DELETE'
-            });
-            if (!res.ok) throw new Error('Failed to delete song');
+            await deleteJson(backendUrl, `/api/community/songs/${songId}`, { sharer_name: sharerNickname });
             toast.success(t('myShared.deleteSuccess'));
             setSongs(prev => prev.filter(s => s.id !== songId));
         } catch (err) {
@@ -130,7 +126,7 @@ const MySharedPanel: React.FC<MySharedPanelProps> = ({ onClose }) => {
                                         <div className="w-16 h-16 bg-gray-700 flex-shrink-0 rounded-xl overflow-hidden shadow-inner">
                                             {song.cover_url ? (
                                                 <img
-                                                    src={song.cover_url.startsWith('/') ? `${backendUrl}${song.cover_url}` : `${backendUrl}/api/media/proxy-image?url=${encodeURIComponent(song.cover_url)}`}
+                                                    src={song.cover_url.startsWith('/') ? buildApiUrl(backendUrl, song.cover_url) : buildApiUrl(backendUrl, '/api/media/proxy-image', { url: song.cover_url })}
                                                     alt={song.title}
                                                     className="w-full h-full object-cover"
                                                 />

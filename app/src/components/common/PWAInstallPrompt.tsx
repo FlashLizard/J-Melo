@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import useTranslation from '@/hooks/useTranslation';
 
-// Define the beforeinstallprompt event type
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms: string[];
   readonly userChoice: Promise<{
@@ -17,17 +16,13 @@ const PWAInstallPrompt: React.FC = () => {
   const { t } = useTranslation();
 
   useEffect(() => {
-    // Check if app is already installed/standalone
     if (window.matchMedia('(display-mode: standalone)').matches) {
       return;
     }
 
     const handleBeforeInstallPrompt = (e: Event) => {
-      // Prevent the mini-infobar from appearing on mobile
       e.preventDefault();
-      // Stash the event so it can be triggered later.
       setDeferredPrompt(e as BeforeInstallPromptEvent);
-      // Update UI notify the user they can install the PWA
       setIsVisible(true);
     };
 
@@ -41,20 +36,9 @@ const PWAInstallPrompt: React.FC = () => {
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
 
-    // Show the install prompt
     deferredPrompt.prompt();
-
-    // Wait for the user to respond to the prompt
-    const { outcome } = await deferredPrompt.userChoice;
-    
-    if (outcome === 'accepted') {
-      console.log('User accepted the install prompt');
-      setIsVisible(false);
-    } else {
-      console.log('User dismissed the install prompt');
-    }
-
-    // We've used the prompt, and can't use it again, throw it away
+    await deferredPrompt.userChoice;
+    setIsVisible(false);
     setDeferredPrompt(null);
   };
 

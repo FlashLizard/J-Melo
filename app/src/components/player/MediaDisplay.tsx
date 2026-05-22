@@ -1,10 +1,12 @@
-import React, { useRef, useEffect, RefObject } from 'react';
+import React, { useRef, useEffect } from 'react';
 import usePlayerStore from '@/stores/usePlayerStore';
 import { playerStoreActions } from '@/stores/usePlayerStore';
 import cn from 'classnames';
 import Marquee from 'react-fast-marquee';
+import useTranslation from '@/hooks/useTranslation';
 
 interface Props {
+  songId?: number;
   mediaType: string;
   mediaUrl?: string;
   coverUrl: string;
@@ -41,9 +43,11 @@ const ScrollingText: React.FC<{ text: string, className?: string }> = ({ text, c
     );
 };
 
-const MediaDisplay: React.FC<Props> = ({ mediaType, mediaUrl, coverUrl, title, artist }) => {
+const MediaDisplay: React.FC<Props> = ({ songId, mediaType, mediaUrl, coverUrl, title, artist }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const { isPlaying } = usePlayerStore();
+  const isPlaying = usePlayerStore((state) => state.isPlaying);
+  const currentSongId = usePlayerStore((state) => state.currentSongId);
+  const { t } = useTranslation();
 
   // Sync isPlaying state to the actual media element
   useEffect(() => {
@@ -70,9 +74,14 @@ const MediaDisplay: React.FC<Props> = ({ mediaType, mediaUrl, coverUrl, title, a
         if (audio) {
             playerStoreActions.setMediaElement(audio);
             if (mediaUrl) {
+                const ownsCurrentAudioSource =
+                    songId !== undefined &&
+                    (currentSongId === null || currentSongId === songId);
+                if (!ownsCurrentAudioSource) return;
+
                 const targetUrl = new URL(mediaUrl, window.location.href).href;
                 if (audio.src !== targetUrl) {
-                    audio.src = mediaUrl;
+                    audio.src = targetUrl;
                     audio.load();
                     if (isPlaying) {
                         audio.play().catch(e => console.warn("Initial load play failed", e));
@@ -81,7 +90,7 @@ const MediaDisplay: React.FC<Props> = ({ mediaType, mediaUrl, coverUrl, title, a
             }
         }
     }
-  }, [mediaType, mediaUrl]);
+  }, [mediaType, mediaUrl, songId, currentSongId, isPlaying]);
 
   const rotationStyle = `
     @keyframes rotate {
@@ -109,7 +118,7 @@ const MediaDisplay: React.FC<Props> = ({ mediaType, mediaUrl, coverUrl, title, a
             {coverUrl && (
               <img 
                 src={coverUrl} 
-                alt="Album Cover" 
+                alt={t('player.albumCoverAlt')}
                 className="w-full h-full object-cover rounded-full"
                 style={{ 
                     animation: isPlaying ? 'rotate 10s linear infinite' : 'none' 
@@ -124,13 +133,13 @@ const MediaDisplay: React.FC<Props> = ({ mediaType, mediaUrl, coverUrl, title, a
       )}
 
       {mediaUrl && (
-        <div className="absolute bottom-8 left-0 right-0 text-center px-4 pointer-events-none z-10 w-full max-w-sm mx-auto flex flex-col items-center">
+        <div className="jm-media-overlay absolute bottom-8 left-0 right-0 text-center px-4 pointer-events-none z-10 w-full max-w-sm mx-auto flex flex-col items-center">
           <ScrollingText 
-             text={title || "Unknown Title"} 
+             text={title || t('player.unknownTitle')}
              className="text-xl font-bold text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]" 
           />
           <ScrollingText 
-             text={artist || "Unknown Artist"} 
+             text={artist || t('home.unknownArtist')}
              className="text-sm text-gray-300 mt-1 drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]" 
           />
         </div>
@@ -138,7 +147,7 @@ const MediaDisplay: React.FC<Props> = ({ mediaType, mediaUrl, coverUrl, title, a
 
       {!mediaUrl && (
         <div className="absolute inset-0 flex items-center justify-center text-gray-500">
-          No Media Loaded
+          {t('player.noMediaLoaded')}
         </div>
       )}
     </div>

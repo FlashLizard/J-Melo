@@ -22,6 +22,7 @@ import VocabularyView from '@/components/vocabulary/VocabularyView';
 import MySharedPanel from '@/components/explore/MySharedPanel';
 import useVocabularyStore from '@/stores/useVocabularyStore';
 import useSettingsStore from '@/stores/useSettingsStore';
+import { deleteJson, getJson, postJson } from '@/lib/backendClient';
 
 interface DisplaySongData {
   id?: number;
@@ -39,10 +40,10 @@ interface ImportState {
 
 type MainTab = 'library' | 'explore' | 'vocabulary';
 
-// Move TabButton outside to prevent re-creation and jarring Framer Motion animations
 const TabButton = ({ isActive, onClick, label }: { isActive: boolean, onClick: () => void, label: string }) => (
     <button 
         onClick={onClick}
+        aria-pressed={isActive}
         className={cn(
             "relative px-4 sm:px-6 py-2 text-sm font-bold transition-colors duration-300 flex-shrink-0 z-10",
             isActive ? "text-white" : "text-gray-500 hover:text-gray-300"
@@ -179,6 +180,8 @@ const HomePage = () => {
         }));
         
         const exportData = {
+            version: 2,
+            exportedAt: new Date().toISOString(),
             songs: sanitizedSongs,
             words: wordsToShare
         };
@@ -210,23 +213,22 @@ const HomePage = () => {
         let successCount = 0;
         let updateCount = 0;
 
-        const existingRemoteSongsRes = await fetch(`${backendUrl}/api/community/songs?sharer=${encodeURIComponent(sharerNickname)}`);
         let remoteSongsMap = new Map<string, number>();
-        if (existingRemoteSongsRes.ok) {
-            const remoteData = await existingRemoteSongsRes.json();
-            remoteData.songs.forEach((s: any) => {
-                remoteSongsMap.set(s.title, s.id);
-            });
-        }
+        const remoteData = await getJson<{ songs: Array<{ id: number; title: string }> }>(
+            backendUrl,
+            '/api/community/songs',
+            { sharer: sharerNickname }
+        );
+        remoteData.songs.forEach((s) => {
+            remoteSongsMap.set(s.title, s.id);
+        });
 
         for (const song of songsToShare) {
             const wordsToShare = await db.words.where('sourceSongId').equals(song.id!).toArray();       
 
             if (remoteSongsMap.has(song.title)) {
                 const remoteId = remoteSongsMap.get(song.title);
-                await fetch(`${backendUrl}/api/community/songs/${remoteId}?sharer_name=${encodeURIComponent(sharerNickname)}`, {
-                    method: 'DELETE'
-                });
+                await deleteJson(backendUrl, `/api/community/songs/${remoteId}`, { sharer_name: sharerNickname });
                 updateCount++;
             }
 
@@ -246,18 +248,9 @@ const HomePage = () => {
                 words_data: wordsToShare
             };
 
-            const response = await fetch(`${backendUrl}/api/community/share`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            if (!response.ok) {
-                console.error(`Failed to upload ${song.title}`);
-            } else {
-                if (!remoteSongsMap.has(song.title)) {
-                    successCount++;
-                }
+            await postJson(backendUrl, '/api/community/share', payload);
+            if (!remoteSongsMap.has(song.title)) {
+                successCount++;
             }
         }
 
@@ -379,7 +372,7 @@ const HomePage = () => {
   
   if (isLoading && songs.length === 0) {
     return (
-      <div className="bg-[#0f172a] min-h-screen text-white flex items-center justify-center">
+      <div className="jm-page min-h-screen flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
             <svg className="animate-spin h-10 w-10 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
             <p className="text-gray-400 font-medium tracking-wide animate-pulse">{t('home.loadingSongs')}</p>
@@ -411,43 +404,41 @@ const HomePage = () => {
 
       {isMySharedOpen && <MySharedPanel onClose={() => setIsMySharedOpen(false)} />}
 
-      <main className="bg-[#0f172a] min-h-screen text-white pb-24 selection:bg-indigo-500/30 overflow-x-hidden">
-        {/* Unified Fixed Navigation Bar */}
-        <div className="fixed top-0 left-0 right-0 z-[100] w-full bg-[#0f172a]/95 backdrop-blur-xl border-b border-gray-700/50 shadow-2xl">
+      <main className="jm-page min-h-screen pb-24 selection:bg-indigo-500/30 overflow-x-hidden">
+        <div className="jm-topbar">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex flex-row justify-between items-center h-16 sm:h-20 gap-2 sm:gap-6">
-                    {/* Logo & Title */}
                     <div className="flex items-center gap-2 sm:gap-4 min-w-0">
-                        <div className="bg-gray-900/50 p-1.5 sm:p-2 rounded-xl border border-gray-700/50 flex-shrink-0 shadow-inner">
+                        <div className="jm-logo-tile">
                             <img src="/logo.svg" alt="J-Melo Logo" className="w-6 h-6 sm:w-7 sm:h-7 drop-shadow-md" />
                         </div>
-                        <h1 className="hidden xs:block text-lg sm:text-2xl font-extrabold tracking-tight bg-gradient-to-br from-white to-gray-400 bg-clip-text text-transparent truncate">J-Melo</h1>
+                        <h1 className="hidden xs:block text-lg sm:text-2xl font-extrabold tracking-tight text-white truncate">J-Melo</h1>
                     </div>
 
-                    {/* Tabs Area */}
-                    <div className="flex items-center bg-gray-900/40 p-1 rounded-2xl border border-gray-700/30 relative flex-shrink-0">
+                    <div className="jm-segment relative flex-shrink-0">
                         <TabButton 
                             isActive={activeTab === 'library'}
                             onClick={() => { setActiveTab('library'); setIsSelectMode(false); }}
-                            label="曲库"
+                            label={t('home.title')}
                         />
                         <TabButton 
                             isActive={activeTab === 'explore'}
                             onClick={() => { setActiveTab('explore'); setIsSelectMode(false); }}
-                            label="探索"
+                            label={t('home.exploreTab')}
                         />
                         <TabButton 
                             isActive={activeTab === 'vocabulary'}
                             onClick={() => { setActiveTab('vocabulary'); setIsSelectMode(false); }}
-                            label="词库"
+                            label={t('index.vocabularyButton')}
                         />
                     </div>
                     
-                    {/* More Menu */}
                     <div className="relative flex-shrink-0" ref={menuRef}>
                         <button 
                             onClick={() => setIsMenuOpen(!isMenuOpen)} 
-                            className={cn("p-2.5 sm:px-4 sm:py-2 bg-gray-800 rounded-xl hover:bg-gray-700 text-white flex items-center justify-center transition-colors border border-gray-700/50 shadow-sm", isMenuOpen && "bg-gray-700")}
+                            className={cn("jm-icon-button", isMenuOpen && "bg-gray-700")}
+                            aria-label={t('common.action')}
+                            aria-expanded={isMenuOpen}
                         >
                             <svg className="w-5 h-5 sm:w-4 sm:h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6h16M4 12h16M4 18h16" />
@@ -460,20 +451,20 @@ const HomePage = () => {
                                     initial={{ opacity: 0, y: 10, scale: 0.95 }}
                                     animate={{ opacity: 1, y: 0, scale: 1 }}
                                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                                    className="absolute right-0 mt-3 w-56 bg-gray-800 rounded-2xl shadow-2xl border border-gray-700/50 z-[110] overflow-hidden"
+                                    className="jm-menu absolute right-0 mt-3 w-56 z-[110]"
                                 >
-                                    <button onClick={() => { setIsAboutOpen(true); setIsMenuOpen(false); }} className="block w-full text-left px-5 py-3 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
+                                    <button onClick={() => { setIsAboutOpen(true); setIsMenuOpen(false); }} className="jm-menu-item">
                                         {t('home.aboutButton')}
                                     </button>
                                     <div className="border-t border-gray-700/50"></div>
-                                    <button onClick={() => { setTranscriptionModalOpen(true); setIsMenuOpen(false); }} className="block w-full text-left px-5 py-3 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
+                                    <button onClick={() => { setTranscriptionModalOpen(true); setIsMenuOpen(false); }} className="jm-menu-item">
                                         {t('index.transcriptionQueue')}
                                     </button>
-                                    <button onClick={() => { setIsMySharedOpen(true); setIsMenuOpen(false); }} className="block w-full text-left px-5 py-3 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
+                                    <button onClick={() => { setIsMySharedOpen(true); setIsMenuOpen(false); }} className="jm-menu-item">
                                         {t('home.mySharedButton')}
                                     </button>
                                     <div className="border-t border-gray-700/50"></div>
-                                    <Link href="/settings" onClick={() => setIsMenuOpen(false)} className="block w-full text-left px-5 py-3 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
+                                    <Link href="/settings" onClick={() => setIsMenuOpen(false)} className="jm-menu-item">
                                         {t('index.settingsButton')}
                                     </Link>
                                 </motion.div>
@@ -616,6 +607,8 @@ const HomePage = () => {
                 </AnimatePresence>
 
                 <motion.button
+                    aria-label={isFabOpen || activeInputMode !== 'none' ? t('common.close') || 'Close' : t('home.addSongsHint') || 'Add song'}
+                    title={isFabOpen || activeInputMode !== 'none' ? t('common.close') || 'Close' : t('home.addSongsHint') || 'Add song'}
                     onClick={() => {
                         if (activeInputMode !== 'none') {
                             setActiveInputMode('none');

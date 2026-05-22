@@ -1,6 +1,5 @@
-// src/components/common/ContextMenu.tsx
 import React, { useEffect, useRef } from 'react';
-import ReactDOM from 'react-dom'; // Import ReactDOM for createPortal
+import ReactDOM from 'react-dom';
 
 export interface MenuItem {
   label: string;
@@ -25,29 +24,26 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }) => {
       }
     };
 
-    // Use mousedown instead of click to capture events before potential drag selections
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [onClose]);
 
-  // Render the menu using a portal to escape parent DOM structure
   return ReactDOM.createPortal(
     <div
       ref={menuRef}
       className="absolute bg-gray-800 border border-gray-700 rounded-md shadow-lg z-50 py-1"
       style={{ top: y, left: x }}
-      // Prevent clicks on the menu from bubbling to parent container (LyricsDisplay) and triggering play/pause
-      onClick={(e) => e.stopPropagation()} 
-      onContextMenu={(e) => e.stopPropagation()} // Also stop context menu event if right-clicked on menu itself
+      onClick={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.stopPropagation()}
     >
       <ul>
         {items.map((item, index) => (
           <li key={index}>
             <button
               onClick={(e) => {
-                e.stopPropagation(); // Stop propagation for individual menu item clicks
+                e.stopPropagation();
                 item.action();
                 onClose();
               }}
@@ -60,7 +56,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }) => {
         ))}
       </ul>
     </div>,
-    document.body // Render into document.body
+    document.body
   );
 };
 

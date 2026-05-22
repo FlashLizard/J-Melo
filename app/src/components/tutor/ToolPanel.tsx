@@ -11,6 +11,7 @@ import { db, blobToBase64 } from '@/lib/db';
 import cn from 'classnames';
 import { saveAs } from 'file-saver';
 import toast from 'react-hot-toast';
+import { deleteJson, getJson, postJson } from '@/lib/backendClient';
 
 const ToolButton: React.FC<{
   onClick: () => void;
@@ -81,17 +82,14 @@ const ToolPanel: React.FC = () => {
           }
           setCommunityStatus('loading');
           try {
-              // We search by title and artist to see if we uploaded it
-              const url = new URL(`${backendUrl}/api/community/songs`);
-              url.searchParams.append('q', song.title);
-              url.searchParams.append('sharer', myNickname);
-              
-              const res = await fetch(url.toString());
-              if (!res.ok) throw new Error('Failed');
-              const data = await res.json();
+              const data = await getJson<{ songs: Array<{ id: number; title: string }> }>(
+                  backendUrl,
+                  '/api/community/songs',
+                  { q: song.title, sharer: myNickname }
+              );
               
               // Verify it's the exact same local song by comparing sourceUrl or just assuming match
-              const match = data.songs.find((s: any) => s.title === song.title);
+              const match = data.songs.find((s) => s.title === song.title);
               if (match) {
                   setCommunityStatus('shared-by-me');
                   setCommunitySongId(match.id);
@@ -127,7 +125,7 @@ const ToolPanel: React.FC = () => {
       if (!song || !song.id) return;
       try {
         const fullSong = await db.songs.get(song.id);
-        if (!fullSong) throw new Error("Song not found in DB.");
+        if (!fullSong) throw new Error(t('toolPanel.songNotFound'));
 
         const wordsToShare = await db.words.where('sourceSongId').equals(song.id).toArray();
         const { audioData, ...rest } = fullSong;
@@ -138,15 +136,17 @@ const ToolPanel: React.FC = () => {
         const songPayload = { ...rest, coverImageData: coverImageBase64 };
 
         const exportData = {
+            version: 2,
+            exportedAt: new Date().toISOString(),
             songs: [songPayload],
             words: wordsToShare
         };
 
         const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
         saveAs(blob, `j-melo-${song.title}.json`);
-        toast.success(t('toolPanel.exportSongData') + ' Success');
+        toast.success(t('toolPanel.exportSuccess'));
       } catch (e) {
-          toast.error('Export failed: ' + (e as Error).message);
+          toast.error(t('toolPanel.exportFailed', { error: (e as Error).message }));
       }
   };
 
@@ -171,14 +171,11 @@ const ToolPanel: React.FC = () => {
       try {
         // If it's an update, delete the existing remote version first
         if (isUpdate && communitySongId) {
-             const delRes = await fetch(`${backendUrl}/api/community/songs/${communitySongId}?sharer_name=${encodeURIComponent(myNickname)}`, {
-                 method: 'DELETE'
-             });
-             if (!delRes.ok) throw new Error("Failed to delete old community version.");
+             await deleteJson(backendUrl, `/api/community/songs/${communitySongId}`, { sharer_name: myNickname });
         }
 
         const fullSong = await db.songs.get(song.id);
-        if (!fullSong) throw new Error("Song not found in DB.");
+        if (!fullSong) throw new Error(t('toolPanel.songNotFound'));
 
         const wordsToShare = await db.words.where('sourceSongId').equals(song.id).toArray();
         const { audioData, ...rest } = fullSong;
@@ -197,22 +194,14 @@ const ToolPanel: React.FC = () => {
             words_data: wordsToShare
         };
 
-        const response = await fetch(`${backendUrl}/api/community/share`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) throw new Error(await response.text());
-        
-        const resData = await response.json();
+        const resData = await postJson<{ id?: number }>(backendUrl, '/api/community/share', payload);
         setCommunityStatus('shared-by-me');
         if (resData && resData.id) {
             setCommunitySongId(resData.id);
         }
-        toast.success(isUpdate ? "Community data updated!" : "Shared to community!");
+        toast.success(isUpdate ? t('toolPanel.communityUpdateSuccess') : t('toolPanel.communityShareSuccess'));
       } catch (e) {
-        toast.error(`Failed to ${isUpdate ? 'update' : 'share'}: ` + (e as Error).message);
+        toast.error(t(isUpdate ? 'toolPanel.communityUpdateError' : 'toolPanel.communityShareError', { error: (e as Error).message }));
       } finally {
           setIsProcessing(false);
       }
@@ -223,15 +212,12 @@ const ToolPanel: React.FC = () => {
       if (!window.confirm(t('toolPanel.communityDeleteConfirm'))) return;
       setIsProcessing(true);
       try {
-          const delRes = await fetch(`${backendUrl}/api/community/songs/${communitySongId}?sharer_name=${encodeURIComponent(myNickname)}`, {
-              method: 'DELETE'
-          });
-          if (!delRes.ok) throw new Error("Failed to delete from community server.");
-          toast.success("Deleted from community.");
+          await deleteJson(backendUrl, `/api/community/songs/${communitySongId}`, { sharer_name: myNickname });
+          toast.success(t('toolPanel.communityDeleteSuccess'));
           setCommunityStatus('not-shared');
           setCommunitySongId(null);
       } catch (e) {
-          toast.error("Delete failed: " + (e as Error).message);
+          toast.error(t('toolPanel.communityDeleteError', { error: (e as Error).message }));
       } finally {
           setIsProcessing(false);
       }

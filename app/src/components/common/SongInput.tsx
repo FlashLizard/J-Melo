@@ -5,6 +5,7 @@ import useTranslation from '@/hooks/useTranslation';
 import cn from 'classnames';
 import useSettingsStore from '@/stores/useSettingsStore';
 import toast from 'react-hot-toast';
+import { buildApiUrl, getJson } from '@/lib/backendClient';
 
 const formatDuration = (seconds: number) => {
     if (!seconds) return '';
@@ -56,15 +57,14 @@ const SongInput: React.FC<SongInputProps> = ({ initialMode = 'url', onComplete }
         if (!searchQuery.trim()) return;
         setIsSearching(true);
         try {
-            const res = await fetch(`${backendUrl}/api/media/search?q=${encodeURIComponent(searchQuery)}`);
-            const data = await res.json();
+            const data = await getJson<{ results: any[] }>(backendUrl, '/api/media/search', { q: searchQuery });
             setSearchResults(data.results || []);
             if (data.results && data.results.length > 0) {
                 toast.success(t('index.searchTitle') + ' success');
             }
         } catch (error) {
             console.error("Search failed", error);
-            toast.error('Search failed.');
+            toast.error(t('index.searchError'));
         } finally {
             setIsSearching(false);
         }
@@ -148,10 +148,10 @@ const SongInput: React.FC<SongInputProps> = ({ initialMode = 'url', onComplete }
                                   className="flex items-center gap-4 p-3 rounded-2xl bg-gray-900/40 border border-gray-700/30 hover:bg-gray-700/50 hover:border-gray-600 cursor-pointer transition-all group"
                               >
                                   <div className="w-24 h-16 bg-gray-800 rounded-lg overflow-hidden flex-shrink-0 shadow-sm border border-gray-700/50">
-                                      <img 
-                                        src={result.thumbnail ? `${backendUrl}/api/media/proxy-image?url=${encodeURIComponent(result.thumbnail)}` : ''} 
-                                        alt="" 
-                                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 
+                                      <img
+                                        src={result.thumbnail ? buildApiUrl(backendUrl, '/api/media/proxy-image', { url: result.thumbnail }) : ''}
+                                        alt=""
+                                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                                       />
                                   </div>
                                   <div className="flex-grow min-w-0 pr-2">

@@ -7,6 +7,7 @@ import useTranslation from '@/hooks/useTranslation';
 import { formatLyricTimings } from '@/utils/lyricsProcessor';
 import toast from 'react-hot-toast';
 import cn from 'classnames';
+import { getJson } from '@/lib/backendClient';
 
 const PetitLyricsImporter: React.FC = () => {
   const { song, setProcessedLyrics, updateSongInfo } = useSongStore();
@@ -47,9 +48,10 @@ const PetitLyricsImporter: React.FC = () => {
     setIsSearching(true);
     setError(null);
     try {
-      const res = await fetch(`${settings.backendUrl}/api/lyrics/search-petitlyrics?q=${encodeURIComponent(songTitle)}&artist=${encodeURIComponent(songArtist)}`);
-      if (!res.ok) throw new Error('Search failed');
-      const data = await res.json();
+      const data = await getJson<{ results: any[] }>(settings.backendUrl, '/api/lyrics/search-petitlyrics', {
+        q: songTitle,
+        artist: songArtist,
+      });
       setResults(data.results);
     } catch (err) {
       setError((err as Error).message);
@@ -62,9 +64,9 @@ const PetitLyricsImporter: React.FC = () => {
     setStep('loading');
     setError(null);
     try {
-      const res = await fetch(`${settings.backendUrl}/api/lyrics/fetch-petitlyrics?lyrics_id=${lyricsId}`);
-      if (!res.ok) throw new Error('Failed to fetch lyrics');
-      const data = await res.json();
+      const data = await getJson<{ lyrics_data: any[] }>(settings.backendUrl, '/api/lyrics/fetch-petitlyrics', {
+        lyrics_id: lyricsId,
+      });
       
       const processed = formatLyricTimings(data.lyrics_data);
       setProcessedLyrics(processed);
@@ -199,13 +201,13 @@ const PetitLyricsImporter: React.FC = () => {
             </div>
             <div className="text-center">
               <h3 className="text-2xl font-bold">{t('petitLyrics.success')}</h3>
-              <p className="text-gray-400 mt-2 px-6">Lyrics with timeline and furigana have been added to your song.</p>
+              <p className="text-gray-400 mt-2 px-6">{t('petitLyrics.successDescription')}</p>
             </div>
             <button 
               onClick={() => setActivePanel('TOOL_PANEL')}
               className="px-10 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-xl font-bold shadow-lg shadow-emerald-900/20 transition-all active:scale-95"
             >
-              Done
+              {t('common.done')}
             </button>
           </div>
         )}

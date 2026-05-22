@@ -1,6 +1,22 @@
 {
     "admin_token": "your-secret-token-here",
     "proxy": "http://127.0.0.1:7890",
+    "cors_origins": [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000"
+    ],
+    "media_cache_dir": "media_cache",
+    "temp_data_dir": "temp_data",
+    "transcription_cache_dir": "transcription_cache",
+    "community_db_path": "shared_songs.db",
+    "task_db_path": "task_queue.db",
+    "transcription_model": "medium",
+    "transcription_compute_type": "int8",
+    "alignment_model": "base",
+    "load_transcription_model": true,
+    "load_alignment_model": true,
+    "task_worker_enabled": true,
+    "max_upload_mb": 50,
     "media_cache_policy": {
         "max_size_gb": 10,
         "max_age_days": 30

@@ -8,6 +8,7 @@ import useTranslation from '@/hooks/useTranslation';
 import ReactMarkdown from 'react-markdown';
 import cn from 'classnames';
 import toast from 'react-hot-toast';
+import { getTokensReadingText, getTokensSurfaceText } from '@/utils/lyricTokenText';
 
 interface VocabCardEditorProps {
   onClose: () => void;
@@ -25,8 +26,8 @@ const VocabCardEditor: React.FC<VocabCardEditorProps> = ({ onClose, t }) => {
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | undefined>();
   const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit');
 
-  const selectedWord = useMemo(() => selectedTokens.map(t => t.surface).join(''), [selectedTokens]);
-  const selectedReading = useMemo(() => selectedTokens.map(t => t.reading).join(''), [selectedTokens]);
+  const selectedWord = useMemo(() => getTokensSurfaceText(selectedTokens), [selectedTokens]);
+  const selectedReading = useMemo(() => getTokensReadingText(selectedTokens), [selectedTokens]);
   const boldedSentence = useMemo(() => sentence.replace(selectedWord, `**${selectedWord}**`), [sentence, selectedWord]);
   
   useEffect(() => {

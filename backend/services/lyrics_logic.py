@@ -1,27 +1,37 @@
 import re
-import httpx
 from bs4 import BeautifulSoup
 from fastapi import HTTPException
-from core.config import ADMIN_CONFIG
 from core.utils import parse_utaten_line_to_tokens
+from services.network import DEFAULT_USER_AGENT, async_client, normalize_non_empty_query, validate_external_http_url
 
 async def search_utaten(q: str):
-    async with httpx.AsyncClient(proxy=ADMIN_CONFIG.get("proxy")) as client:
+    query = normalize_non_empty_query(q)
+    async with async_client(timeout_seconds=15.0, follow_redirects=True) as client:
         try:
-            res = await client.get(f"https://utaten.com/search?sort=popular_sort_asc&artist_name=&title={q}", headers={"User-Agent": "Mozilla/5.0"}, follow_redirects=True)
+            res = await client.get(
+                "https://utaten.com/search",
+                params={"sort": "popular_sort_asc", "artist_name": "", "title": query},
+                headers={"User-Agent": DEFAULT_USER_AGENT},
+            )
+            res.raise_for_status()
             soup = BeautifulSoup(res.text, 'html.parser'); results = []
             for row in soup.select("tr"):
                 t_a = row.select_one(".searchResult__title a"); a_td = row.select_one(".searchResult__artist")
                 if t_a and a_td: results.append({"title": t_a.get_text(strip=True), "artist": a_td.get_text(strip=True), "url": "https://utaten.com" + t_a.get("href")})
             return results
-        except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Failed to search Utaten: {str(e)}")
 
 async def fetch_utaten(url: str):
-    async with httpx.AsyncClient(proxy=ADMIN_CONFIG.get("proxy")) as client:
+    lyrics_url = validate_external_http_url(url, allowed_hosts=["utaten.com"])
+    async with async_client(timeout_seconds=15.0, follow_redirects=True) as client:
         try:
-            res = await client.get(url, headers={"User-Agent": "Mozilla/5.0"}, follow_redirects=True)
+            res = await client.get(lyrics_url, headers={"User-Agent": DEFAULT_USER_AGENT})
+            res.raise_for_status()
             soup = BeautifulSoup(res.text, 'html5lib'); div = soup.select_one(".hiragana")
-            if not div: raise HTTPException(status_code=404)
+            if not div: raise HTTPException(status_code=404, detail="Utaten lyrics block not found")
             def process(e):
                 c, f = "", ""
                 for child in e.children:
@@ -40,4 +50,7 @@ async def fetch_utaten(url: str):
             for l in furi_clean.split('\n'):
                 if l.strip(): data.append({"text": re.sub(r'\[[^\]]+\]', '', l), "tokens": parse_utaten_line_to_tokens(l), "startTime": 0, "endTime": 0, "translation": ""})
             return {"lyrics_data": data, "furigana_text": furi_clean}
-        except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Failed to fetch Utaten lyrics: {str(e)}")

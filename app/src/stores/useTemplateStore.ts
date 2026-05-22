@@ -97,14 +97,12 @@ const useTemplateStore = create<TemplateState>()(
 (async () => {
     const promptTemplateCount = await db.promptTemplates.count();
     if (promptTemplateCount === 0) {
-        console.log('Initializing default prompt template...');
         const defaultPrompt = `请用中文解释一下日语单词“{word}”在句子“{sentence}”中的意思，并简单分析一下它的用法。请将回复限制在50字以内。`;
         await db.promptTemplates.add({ name: '默认解释模板', content: defaultPrompt, createdAt: new Date() });
     }
 
     const cardTemplateCount = await db.cardTemplates.count();
     if (cardTemplateCount === 0) {
-        console.log('Initializing default card template...');
         const defaultCardFront = `{sentence}
 
 **{word}**`;

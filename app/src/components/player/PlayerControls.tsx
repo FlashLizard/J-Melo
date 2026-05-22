@@ -6,6 +6,7 @@ import cn from 'classnames';
 import { useRouter } from 'next/router';
 import { SongRecord } from '@/lib/db';
 import useSongStore from '@/stores/useSongStore';
+import useTranslation from '@/hooks/useTranslation';
 
 // A simple set of SVG icons for the controls
 const PauseIcon = () => (
@@ -36,7 +37,12 @@ const PlayerControls: React.FC = () => {
   const isPlaying = usePlayerStore((state) => state.isPlaying);
   const currentTime = usePlayerStore((state) => state.currentTime);
   const duration = usePlayerStore((state) => state.duration);
-  const { loopA, loopB, playMode } = usePlayerStore();
+  const nextTrack = usePlayerStore((state) => state.nextTrack);
+  const prevTrack = usePlayerStore((state) => state.prevTrack);
+  const loopA = usePlayerStore((state) => state.loopA);
+  const loopB = usePlayerStore((state) => state.loopB);
+  const playMode = usePlayerStore((state) => state.playMode);
+  const { t } = useTranslation();
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [allSongs, setAllSongs] = useState<SongRecord[]>([]);
@@ -187,7 +193,7 @@ const PlayerControls: React.FC = () => {
         <button 
             onClick={playerStoreActions.togglePlayMode}
             className="p-2 text-gray-400 hover:text-white transition-colors"
-            title={`Mode: ${playMode}`}
+            title={t(`player.playMode.${playMode}`)}
         >
             {playMode === 'sequential' && <SequentialIcon />}
             {playMode === 'shuffle' && <RealShuffleIcon />}
@@ -209,9 +215,9 @@ const PlayerControls: React.FC = () => {
             </div>
             
             <button 
-                onClick={() => playerStoreActions.onPrevTrack?.()}
+                onClick={() => prevTrack ? playerStoreActions.onPrevTrack() : navigateToSong('prev')}
                 className="p-2 text-gray-300 hover:text-white transition-colors active:scale-95"
-                title="Previous Song"
+                title={t('player.previousSong')}
             >
                 <PrevIcon />
             </button>
@@ -219,15 +225,16 @@ const PlayerControls: React.FC = () => {
             <button
             onClick={playerStoreActions.togglePlay}
             className="p-3.5 sm:p-4 rounded-full bg-white hover:bg-gray-200 text-indigo-600 shadow-lg transform hover:scale-105 active:scale-95 transition-all flex-shrink-0"
-            aria-label={isPlaying ? 'Pause' : 'Play'}
+            aria-label={isPlaying ? t('player.pause') : t('player.play')}
+            title={isPlaying ? t('player.pause') : t('player.play')}
             >
             {isPlaying ? <PauseIcon /> : <PlayIcon />}
             </button>
 
             <button 
-                onClick={() => playerStoreActions.onNextTrack?.()}
+                onClick={() => nextTrack ? playerStoreActions.onNextTrack() : navigateToSong('next')}
                 className="p-2 text-gray-300 hover:text-white transition-colors active:scale-95"
-                title="Next Song"
+                title={t('player.nextSong')}
             >
                 <NextIcon />
             </button>
@@ -252,7 +259,7 @@ const PlayerControls: React.FC = () => {
         <button 
             onClick={() => setIsModalOpen(true)}
             className="p-2 text-gray-400 hover:text-white transition-colors"
-            title="Quick Select Song"
+            title={t('player.quickSelectSong')}
         >
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
         </button>
@@ -263,7 +270,7 @@ const PlayerControls: React.FC = () => {
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-gray-900/80 backdrop-blur-sm p-4 sm:p-6" style={{ margin: 0, padding: '16px' }}>
               <div className="bg-gray-800 border border-gray-700 w-full max-w-lg max-h-[80vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
                   <div className="flex justify-between items-center p-5 border-b border-gray-700/50 bg-gray-800/90 z-10">
-                      <h2 className="text-xl font-bold text-white tracking-wide">Quick Select</h2>
+                      <h2 className="text-xl font-bold text-white tracking-wide">{t('player.quickSelect')}</h2>
                       <button onClick={() => setIsModalOpen(false)} className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-full transition-colors">
                           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                       </button>
@@ -273,7 +280,7 @@ const PlayerControls: React.FC = () => {
                           <div 
                             key={s.id} 
                             onClick={() => {
-                                router.push(`/player/${s.id}`);
+                                router.push(`/player/${s.id}${isPlaying ? '?autoplay=1' : ''}`);
                                 setIsModalOpen(false);
                             }}
                             className={cn(
@@ -285,14 +292,14 @@ const PlayerControls: React.FC = () => {
                           >
                             <div className="w-12 h-12 rounded-lg bg-gray-700 overflow-hidden flex-shrink-0 flex items-center justify-center shadow-inner">
                                 {s.coverImageData ? (
-                                    <img src={URL.createObjectURL(s.coverImageData)} alt="Cover" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                    <img src={URL.createObjectURL(s.coverImageData)} alt={t('player.albumCoverAlt')} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                                 ) : (
                                     <svg className="w-6 h-6 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>
                                 )}
                             </div>
                             <div className="flex-grow min-w-0 pr-2">
                                 <h4 className={cn("font-bold truncate text-base", Number(router.query.songId) === s.id ? "text-green-400" : "text-gray-100 group-hover:text-white")}>{s.title}</h4>
-                                <p className="text-xs text-gray-400 truncate mt-0.5">{s.artist || 'Unknown Artist'}</p>
+                                <p className="text-xs text-gray-400 truncate mt-0.5">{s.artist || t('home.unknownArtist')}</p>
                             </div>
                             {Number(router.query.songId) === s.id && (
                                 <div className="flex-shrink-0 flex items-center justify-center w-8 h-8">

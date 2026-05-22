@@ -7,6 +7,7 @@ import useTranslation from '@/hooks/useTranslation';
 import { formatLyricTimings } from '@/utils/lyricsProcessor';
 import toast from 'react-hot-toast';
 import cn from 'classnames';
+import { getJson, postJson } from '@/lib/backendClient';
 
 const LyricsAlignmentPanel: React.FC = () => {
   const { song, setProcessedLyrics, lyrics } = useSongStore();
@@ -36,9 +37,7 @@ const LyricsAlignmentPanel: React.FC = () => {
       intervalId = setInterval(async () => {
         if (!taskId) return;
         try {
-          const res = await fetch(`${settings.backendUrl}/api/lyrics/align-status/${taskId}`);
-          if (!res.ok) throw new Error('Failed to check status');
-          const data = await res.json();
+          const data = await getJson<any>(settings.backendUrl, `/api/lyrics/align-status/${taskId}`);
           
           setStatus(data.status);
           setMessage(data.message);
@@ -72,13 +71,13 @@ const LyricsAlignmentPanel: React.FC = () => {
     }
 
     setStatus('queued');
-    setMessage('Initializing task...');
+    setMessage(t('lyricsAlignment.initializingTask'));
     
     try {
-      const res = await fetch(`${settings.backendUrl}/api/lyrics/align`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const data = await postJson<{ task_id: string }>(
+        settings.backendUrl,
+        '/api/lyrics/align',
+        {
           song_id: song.id,
           source_url: song.sourceUrl,
           local_path: (song as any).local_path,
@@ -86,16 +85,13 @@ const LyricsAlignmentPanel: React.FC = () => {
           align_mode: 'word',
           extract_vocals: extractVocals,
           replace_with_kana: replaceWithKana
-        })
-      });
-
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
+        }
+      );
       setTaskId(data.task_id);
     } catch (err) {
       setStatus('failed');
       setMessage((err as Error).message);
-      toast.error('Failed to start alignment task.');
+      toast.error(t('lyricsAlignment.startTaskFailed'));
     }
   };
 

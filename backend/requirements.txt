@@ -19,3 +19,4 @@ jaconv
 
 demucs
 stable-ts
+pytest

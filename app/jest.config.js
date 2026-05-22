@@ -17,6 +17,8 @@ const customJestConfig = {
     '^@/lib/(.*)$': '<rootDir>/src/lib/$1',
     '^@/stores/(.*)$': '<rootDir>/src/stores/$1',
     '^@/hooks/(.*)$': '<rootDir>/src/hooks/$1',
+    '^@/interfaces/(.*)$': '<rootDir>/src/interfaces/$1',
+    '^@/utils/(.*)$': '<rootDir>/src/utils/$1',
     // Handle zustand import error in Jest
     '^zustand/vanilla$': '<rootDir>/node_modules/zustand/vanilla.js',
   },

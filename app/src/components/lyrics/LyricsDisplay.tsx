@@ -1,6 +1,6 @@
 // app/src/components/lyrics/LyricsDisplay.tsx
 import React, { useRef, useEffect, useState } from 'react';
-import { LyricLine, LyricToken } from '@/interfaces/lyrics';
+import { LyricLine, LyricRubySegment, LyricToken } from '@/interfaces/lyrics';
 import { editorStoreActions } from '@/stores/useEditorStore';
 import useEditorStore from '@/stores/useEditorStore';
 import useTutorStore from '@/stores/useTutorStore';
@@ -13,20 +13,113 @@ import useSongStore from '@/stores/useSongStore';
 import useTranslation from '@/hooks/useTranslation';
 import ContextMenu, { MenuItem } from '@/components/common/ContextMenu';
 import cn from 'classnames';
-import ProgressHighlighter from './ProgressHighlighter';
+import { buildRubySegments, katakanaToHiragana } from '@/utils/lyricsProcessor';
 
 interface Props {
   lyrics: LyricLine[];
   currentTime: number;
 }
 
+const hasLineTiming = (line: LyricLine) => line.startTime > 0 || line.endTime > 0;
+
+const hasTokenTiming = (token: LyricToken) => token.startTime > 0 || token.endTime > 0;
+
+const getTokenRubySegments = (token: LyricToken) => {
+  return token.rubySegments?.some(segment => segment.reading)
+    ? token.rubySegments
+    : buildRubySegments(token.surface, token.reading);
+};
+
+const shouldShowTokenReading = (token: LyricToken) => {
+  return Boolean(token.reading && katakanaToHiragana(token.reading) !== katakanaToHiragana(token.surface));
+};
+
+const getSegmentWeight = (segment: LyricRubySegment) => Math.max(1, Array.from(segment.text || '').length);
+
+const getTokenProgress = (startTime: number, endTime: number, isActive: boolean, currentTime: number) => {
+  const duration = endTime - startTime;
+  if (duration <= 0) return 1;
+  return Math.min(Math.max((currentTime - startTime) / duration, 0), 1);
+};
+
+const getSegmentProgress = (
+  tokenProgress: number,
+  segmentStartRatio: number,
+  segmentEndRatio: number
+) => {
+  if (tokenProgress <= segmentStartRatio) return 0;
+  if (tokenProgress >= segmentEndRatio) return 100;
+  const segmentSpan = segmentEndRatio - segmentStartRatio;
+  return segmentSpan <= 0 ? 100 : ((tokenProgress - segmentStartRatio) / segmentSpan) * 100;
+};
+
+const RubyToken: React.FC<{
+  token: LyricToken;
+  showReading: boolean;
+  isActive: boolean;
+  hasPassed: boolean;
+  isHovered: boolean;
+  fontSizeMultiplier: number;
+  currentTime: number;
+}> = ({ token, showReading, isActive, hasPassed, isHovered, fontSizeMultiplier, currentTime }) => {
+  const rubySegments = getTokenRubySegments(token);
+  const hasSegmentRuby = rubySegments?.some(segment => segment.reading);
+  const segments: LyricRubySegment[] = hasSegmentRuby
+    ? rubySegments!
+    : [{ text: token.surface, reading: shouldShowTokenReading(token) ? token.reading : undefined }];
+
+  const totalWeight = segments.reduce((sum, segment) => sum + getSegmentWeight(segment), 0);
+  const tokenProgress = getTokenProgress(token.startTime, token.endTime, isActive, currentTime);
+  let consumedWeight = 0;
+
+  return (
+    <span className="inline-flex items-end whitespace-nowrap align-bottom">
+      {segments.map((segment, index) => {
+        const weight = getSegmentWeight(segment);
+        const segmentStartRatio = consumedWeight / totalWeight;
+        consumedWeight += weight;
+        const segmentEndRatio = consumedWeight / totalWeight;
+        const segmentProgress = getSegmentProgress(tokenProgress, segmentStartRatio, segmentEndRatio);
+        const greenOverlayProgress = hasPassed ? 100 : segmentProgress;
+        const showGreenOverlay = (isActive || hasPassed) && !isHovered;
+
+        return (
+          <span key={`${segment.text}-${index}`} className="ruby-segment inline-flex flex-col items-center justify-end align-bottom leading-none">
+            <span
+              aria-hidden="true"
+              className={cn(
+                "ruby-reading block text-center text-gray-400 whitespace-nowrap leading-none transition-opacity",
+                showReading && segment.reading ? "opacity-100" : "opacity-0"
+              )}
+              style={{ fontSize: `${0.75 * fontSizeMultiplier}rem`, height: `${1 * fontSizeMultiplier}rem` }}
+            >
+              {segment.reading || '\u00a0'}
+            </span>
+            <span
+              className={cn('ruby-base relative block whitespace-pre text-center leading-tight', {
+                'text-yellow-300': isHovered,
+                'text-white': !isHovered,
+              })}
+              style={{ fontSize: `${1.125 * fontSizeMultiplier}rem` }}
+            >
+              <span>{segment.text}</span>
+              {showGreenOverlay && (
+                <span
+                  className="absolute left-0 top-0 text-green-400 whitespace-pre pointer-events-none"
+                  style={{ clipPath: `inset(0 ${100 - greenOverlayProgress}% 0 0)` }}
+                >
+                  {segment.text}
+                </span>
+              )}
+            </span>
+          </span>
+        );
+      })}
+    </span>
+  );
+};
+
 const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
-  const katakanaToHiragana = (src: string) => {
-    return src.replace(/[\u30a1-\u30f6]/g, (match) => {
-      const chr = match.charCodeAt(0) - 0x60;
-      return String.fromCharCode(chr);
-    });
-  };
 
   const activeLineRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -77,6 +170,12 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
   const displayTime = isDraggingProgress ? dragProgressTime : currentTime;
   const songDuration = usePlayerStore.getState().duration || 1;
 
+  const getEffectiveLineEnd = (line: LyricLine, index: number) => {
+    if (line.endTime > line.startTime) return line.endTime;
+    const nextTimedLine = lyrics.slice(index + 1).find(nextLine => nextLine.startTime > line.startTime);
+    return nextTimedLine?.startTime ?? Infinity;
+  };
+
   const handleScroll = () => {
     setIsUserScrolling(true);
     if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
@@ -120,8 +219,8 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
     let activeIndex: number | null = null;
     for (let i = 0; i < (lyrics || []).length; i++) {
         const l = lyrics[i];
-        if (l.startTime === 0 && l.endTime === 0) continue;
-        let effectiveLineEnd = l.endTime === 0 ? Infinity : l.endTime;
+        if (!hasLineTiming(l)) continue;
+        const effectiveLineEnd = getEffectiveLineEnd(l, i);
         if (displayTime >= l.startTime && displayTime < effectiveLineEnd) { activeIndex = i; break; }
     }
     if (activeIndex !== lastActiveLineId.current) {
@@ -197,8 +296,8 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
   };
 
   const getMenuItems = (token: LyricToken, line: LyricLine, lineIndex: number): MenuItem[] => [
-    { label: '解释词语', action: () => { startExplanation(line, token); setActiveView('tools'); } },
-    { label: '编辑句子', action: () => { clearTutor(); editorStoreActions.setEditingLine(line, lineIndex); setActivePanel('SENTENCE_EDITOR'); setActiveView('tools'); } },
+    { label: t('aiPanel.explainWordButton', { word: token.surface }), action: () => { startExplanation(line, token); setActiveView('tools'); } },
+    { label: t('lyricsDisplay.editSentenceButton'), action: () => { clearTutor(); editorStoreActions.setEditingLine(line, lineIndex); setActivePanel('SENTENCE_EDITOR'); setActiveView('tools'); } },
   ];
 
   const formatTime = (seconds: number) => {
@@ -237,44 +336,33 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
 
       <div ref={scrollContainerRef} className={cn("flex-grow overflow-y-auto overflow-x-hidden pb-16 select-none", (isTimeSyncMode || previewLyrics) ? "pt-24" : "pt-12")} onWheel={handleScroll} onTouchMove={handleScroll}>
         {lyrics.map((line, lineIndex) => {
-          let effectiveLineEnd = line.endTime === 0 ? Infinity : line.endTime;
-          const isLineActive = line.startTime > 0 && displayTime >= line.startTime && displayTime < effectiveLineEnd;
+          const effectiveLineEnd = getEffectiveLineEnd(line, lineIndex);
+          const isLineActive = hasLineTiming(line) && displayTime >= line.startTime && displayTime < effectiveLineEnd;
           return (
             <div key={`line-${lineIndex}`} ref={isLineActive ? activeLineRef : null} className={cn('mb-6 transition-all duration-300 text-center p-2 rounded-lg', { 'opacity-50': !isLineActive, 'scale-105': isLineActive, 'bg-gray-700/50': selectedLineIndex === lineIndex })} onClick={() => setSelectedLineIndex(lineIndex)}>
               <p className="font-semibold tracking-wider mb-2" style={{ fontSize: `${1.5 * fontSizeMultiplier}rem`, lineHeight: 1.2 }}>
                 {line.tokens.map((token, index) => {
-                  const isTokenActive = isLineActive && displayTime >= token.startTime && displayTime < token.endTime;
+                  const isTokenActive = isLineActive && hasTokenTiming(token) && token.endTime > token.startTime && displayTime >= token.startTime && displayTime < token.endTime;
                   const hasTokenPassed = (token.endTime > 0 && displayTime >= token.endTime);
                   const isHovered = hoveredToken === token;
                   return (
                     <span 
                       key={index} 
-                      className="word-span inline-flex flex-col items-center align-bottom mr-1 cursor-pointer" 
-                      onClick={(e) => { e.stopPropagation(); if (token.startTime > 0) playerStoreActions.seek(token.startTime); }} 
+                      className="word-span inline-flex flex-col items-center align-bottom mx-1 cursor-pointer" 
+                      onClick={(e) => { e.stopPropagation(); if (hasTokenTiming(token)) playerStoreActions.seek(token.startTime); }} 
                       onMouseEnter={() => setHoveredToken(token)}
                       onMouseLeave={() => setHoveredToken(null)}
                       onContextMenu={(e) => handleContextMenu(e, token, line, lineIndex)}
                     >
-                      <span className={cn("text-gray-400 block w-full text-center whitespace-nowrap transition-opacity", (settings.showReadings && token.reading && token.reading !== katakanaToHiragana(token.surface)) ? "opacity-100" : "opacity-0")} style={{ fontSize: `${0.75 * fontSizeMultiplier}rem`, height: `${1 * fontSizeMultiplier}rem` }}>{token.reading}</span>
-                      {isTokenActive ? (
-                        <ProgressHighlighter 
-                          surface={token.surface} 
-                          startTime={token.startTime} 
-                          endTime={token.endTime} 
-                          isActive={isTokenActive} 
-                          isHovered={isHovered}
-                          fontSizeMultiplier={fontSizeMultiplier} 
-                          currentTime={displayTime} 
-                        />
-                      ) : (
-                        <span className={cn('block whitespace-pre text-center leading-tight transition-colors', {
-                          'text-green-400': hasTokenPassed && !isHovered,
-                          'text-yellow-300': isHovered,
-                          'text-white': !hasTokenPassed && !isHovered,
-                        })} style={{ fontSize: `${1.125 * fontSizeMultiplier}rem` }}>
-                          {token.surface}
-                        </span>
-                      )}
+                      <RubyToken
+                        token={token}
+                        showReading={settings.showReadings && shouldShowTokenReading(token)}
+                        isActive={isTokenActive}
+                        hasPassed={hasTokenPassed}
+                        isHovered={isHovered}
+                        fontSizeMultiplier={fontSizeMultiplier}
+                        currentTime={displayTime}
+                      />
                     </span>
                   );
                 })}
@@ -285,8 +373,8 @@ const LyricsDisplay: React.FC<Props> = ({ lyrics, currentTime }) => {
                     {isTimeSyncMode ? (
                         <div className="flex items-center gap-3">
                             <span className="text-[10px] font-mono text-green-400 bg-black/30 px-2 py-0.5 rounded-md border border-green-900/30">{line.startTime.toFixed(2)}s</span>
-                            <button className="bg-green-600 text-white py-1 px-3 rounded-full text-[10px]" onClick={(e) => { e.stopPropagation(); updateLineTime(lineIndex, 'start', displayTime); }}>START</button>
-                            <button className="bg-red-600 text-white py-1 px-3 rounded-full text-[10px]" onClick={(e) => { e.stopPropagation(); updateLineTime(lineIndex, 'end', displayTime); }}>END</button>
+                            <button className="bg-green-600 text-white py-1 px-3 rounded-full text-[10px]" onClick={(e) => { e.stopPropagation(); updateLineTime(lineIndex, 'start', displayTime); }}>{t('lyricsDisplay.timeSync.markStart')}</button>
+                            <button className="bg-red-600 text-white py-1 px-3 rounded-full text-[10px]" onClick={(e) => { e.stopPropagation(); updateLineTime(lineIndex, 'end', displayTime); }}>{t('lyricsDisplay.timeSync.markEnd')}</button>
                             <span className="text-[10px] font-mono text-red-400 bg-black/30 px-2 py-0.5 rounded-md border border-red-900/30">{line.endTime.toFixed(2)}s</span>
                         </div>
                     ) : (

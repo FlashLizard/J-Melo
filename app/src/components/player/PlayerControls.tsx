@@ -37,8 +37,7 @@ const PlayerControls: React.FC = () => {
   const isPlaying = usePlayerStore((state) => state.isPlaying);
   const currentTime = usePlayerStore((state) => state.currentTime);
   const duration = usePlayerStore((state) => state.duration);
-  const nextTrack = usePlayerStore((state) => state.nextTrack);
-  const prevTrack = usePlayerStore((state) => state.prevTrack);
+  const currentSongId = usePlayerStore((state) => state.currentSongId);
   const loopA = usePlayerStore((state) => state.loopA);
   const loopB = usePlayerStore((state) => state.loopB);
   const playMode = usePlayerStore((state) => state.playMode);
@@ -215,7 +214,7 @@ const PlayerControls: React.FC = () => {
             </div>
             
             <button 
-                onClick={() => prevTrack ? playerStoreActions.onPrevTrack() : navigateToSong('prev')}
+                onClick={() => currentSongId ? playerStoreActions.onPrevTrack() : navigateToSong('prev')}
                 className="p-2 text-gray-300 hover:text-white transition-colors active:scale-95"
                 title={t('player.previousSong')}
             >
@@ -232,7 +231,7 @@ const PlayerControls: React.FC = () => {
             </button>
 
             <button 
-                onClick={() => nextTrack ? playerStoreActions.onNextTrack() : navigateToSong('next')}
+                onClick={() => currentSongId ? playerStoreActions.onNextTrack() : navigateToSong('next')}
                 className="p-2 text-gray-300 hover:text-white transition-colors active:scale-95"
                 title={t('player.nextSong')}
             >

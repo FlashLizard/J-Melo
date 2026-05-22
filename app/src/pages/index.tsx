@@ -564,7 +564,14 @@ const HomePage = () => {
                                     </button>
                                 </div>
                                 <div className="flex-grow overflow-y-auto custom-scrollbar">
-                                    <SongInput initialMode={activeInputMode === 'search' ? 'search' : 'url'} onComplete={() => { setActiveInputMode('none'); loadSongs(); }} />
+                                    <SongInput
+                                        initialMode={activeInputMode === 'search' ? 'search' : 'url'}
+                                        onComplete={async () => {
+                                            await loadSongs();
+                                            setActiveTab('library');
+                                            setActiveInputMode('none');
+                                        }}
+                                    />
                                 </div>
                             </div>
                         </motion.div>

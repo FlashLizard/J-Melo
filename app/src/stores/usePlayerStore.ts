@@ -2,7 +2,8 @@
 import { create } from 'zustand';
 import { db } from '@/lib/db';
 import useSettingsStore from './useSettingsStore';
-import { buildApiUrl, getJson, headOk } from '@/lib/backendClient';
+import { ensureBackendMediaCache } from '@/lib/mediaCache';
+import { getNeighborCandidateIds, type TrackDirection } from '@/lib/playlistNavigation';
 
 export type PlayMode = 'sequential' | 'shuffle' | 'loop-single';
 
@@ -34,6 +35,8 @@ let rafId: number | null = null;
 let isSeeking = false;
 let isSwitchingSource = false;
 let switchPlaybackRequestId = 0;
+let neighborRequestId = 0;
+let trackActionRequestId = 0;
 
 // Singleton Audio for iOS stability
 let globalAudioInstance: HTMLAudioElement | null = null;
@@ -171,17 +174,20 @@ const handlePause = () => {
 
 const handleEnded = () => {
     if (isSwitchingSource) return;
-    const { playMode, nextTrack } = usePlayerStore.getState();
+    const { playMode } = usePlayerStore.getState();
     if (playMode === 'loop-single') {
         playerStoreActions.seek(0);
         playerStoreActions.play();
         return;
     }
-    if (nextTrack) {
-        playerStoreActions.switchTrack(nextTrack);
-    } else {
+    playerStoreActions.switchByDirection('next').then((switched) => {
+        if (!switched) {
+            usePlayerStore.setState({ isPlaying: false, hasEnded: true });
+        }
+    }).catch((error) => {
+        console.error('Failed to switch to the next track after current track ended:', error);
         usePlayerStore.setState({ isPlaying: false, hasEnded: true });
-    }
+    });
 };
 
 const handleTimeUpdate = () => {
@@ -233,28 +239,17 @@ const resolvePlaylistItem = async (id: number): Promise<PlaylistItem | null> => 
     if (song.audioData) {
         mediaUrl = getCachedBlobUrl(id, 'audio', song.audioData);
     } else if (song.media_url) {
-        let isBackendMediaAvailable = await headOk(backendUrl, song.media_url);
-        if (!isBackendMediaAvailable) {
-            try {
-                const newMediaInfo = await getJson<any>(backendUrl, '/api/media/fetch', { url: song.sourceUrl });
-                const updatePayload = {
-                    media_url: newMediaInfo.media_url,
-                    local_path: newMediaInfo.local_path,
-                    duration: newMediaInfo.duration,
-                    title: newMediaInfo.title,
-                    artist: newMediaInfo.artist,
-                };
-                await db.songs.update(id, updatePayload);
-                playableSong = { ...song, ...updatePayload };
-                isBackendMediaAvailable = Boolean(playableSong.media_url);
-            } catch (error) {
-                console.error(`Failed to refresh media before switching to song ${id}:`, error);
-                isBackendMediaAvailable = false;
+        try {
+            const mediaCacheResult = await ensureBackendMediaCache(backendUrl, song);
+            if (mediaCacheResult.updatePayload) {
+                await db.songs.update(id, mediaCacheResult.updatePayload);
             }
+            playableSong = mediaCacheResult.song;
+            mediaUrl = mediaCacheResult.available ? mediaCacheResult.playableUrl : null;
+        } catch (error) {
+            console.error(`Failed to refresh media before switching to song ${id}:`, error);
+            mediaUrl = null;
         }
-        mediaUrl = isBackendMediaAvailable && playableSong.media_url
-            ? buildApiUrl(backendUrl, playableSong.media_url)
-            : null;
     }
 
     let coverUrl = playableSong.cover_url;
@@ -267,6 +262,14 @@ const resolvePlaylistItem = async (id: number): Promise<PlaylistItem | null> => 
         cover_url: coverUrl || '',
         media_url: mediaUrl,
     };
+};
+
+const resolveFirstPlayable = async (ids: number[]): Promise<PlaylistItem | null> => {
+    for (const id of ids) {
+        const item = await resolvePlaylistItem(id);
+        if (item?.media_url) return item;
+    }
+    return null;
 };
 
 export const playerStoreActions = {
@@ -331,43 +334,18 @@ export const playerStoreActions = {
   },
 
   prepareNeighbors: async (currentId: number) => {
+    const requestId = ++neighborRequestId;
     const { playlist, playMode } = usePlayerStore.getState();
+    usePlayerStore.setState({ nextTrack: null, prevTrack: null });
     if (playlist.length === 0) return;
 
-    const findNeighborCandidates = (direction: 'next' | 'prev'): number[] => {
-        const currentIndex = playlist.indexOf(currentId);
-        if (currentIndex === -1 || playlist.length <= 1) return [];
-
-        if (playMode === 'shuffle') {
-            return playlist
-                .filter(id => id !== currentId)
-                .map(id => ({ id, sort: Math.random() }))
-                .sort((a, b) => a.sort - b.sort)
-                .map(item => item.id);
-        }
-
-        const candidates: number[] = [];
-        for (let offset = 1; offset < playlist.length; offset++) {
-            const index = direction === 'next'
-                ? (currentIndex + offset) % playlist.length
-                : (currentIndex - offset + playlist.length) % playlist.length;
-            candidates.push(playlist[index]);
-        }
-        return candidates;
-    };
-
-    const fetchFirstPlayable = async (ids: number[]): Promise<PlaylistItem | null> => {
-        for (const id of ids) {
-            const item = await resolvePlaylistItem(id);
-            if (item?.media_url) return item;
-        }
-        return null;
-    };
-
     const [next, prev] = await Promise.all([
-        fetchFirstPlayable(findNeighborCandidates('next')),
-        fetchFirstPlayable(findNeighborCandidates('prev')),
+        resolveFirstPlayable(getNeighborCandidateIds({ playlist, currentId, playMode, direction: 'next' })),
+        resolveFirstPlayable(getNeighborCandidateIds({ playlist, currentId, playMode, direction: 'prev' })),
     ]);
+
+    const latest = usePlayerStore.getState();
+    if (requestId !== neighborRequestId || latest.currentSongId !== currentId) return;
     usePlayerStore.setState({ nextTrack: next, prevTrack: prev });
   },
 
@@ -389,12 +367,15 @@ export const playerStoreActions = {
     if (mediaElement === globalAudioInstance) ensureGlobalAudioAttached();
     
     isSwitchingSource = true;
+    const previousSongId = usePlayerStore.getState().currentSongId;
     usePlayerStore.setState({ 
         currentSongId: song.id, 
         isPlaying: true,
         hasEnded: false, 
         currentTime: 0,
-        duration: 0 
+        duration: 0,
+        loopA: null,
+        loopB: null,
     });
     
     const absoluteTargetUrl = new URL(song.media_url, window.location.href).href;
@@ -403,6 +384,8 @@ export const playerStoreActions = {
         mediaElement.autoplay = true;
         mediaElement.src = absoluteTargetUrl;
         mediaElement.load();
+    } else if (previousSongId !== song.id) {
+        mediaElement.currentTime = 0;
     }
     
     mediaElement.muted = false;
@@ -463,13 +446,32 @@ export const playerStoreActions = {
     startAnimationLoop();
   },
 
+  switchByDirection: async (direction: TrackDirection) => {
+      const actionRequestId = ++trackActionRequestId;
+      const { currentSongId, playlist, playMode } = usePlayerStore.getState();
+      if (!currentSongId) return false;
+
+      const candidateIds = getNeighborCandidateIds({ playlist, currentId: currentSongId, playMode, direction });
+      const target = await resolveFirstPlayable(candidateIds);
+
+      if (actionRequestId !== trackActionRequestId || usePlayerStore.getState().currentSongId !== currentSongId) {
+          return false;
+      }
+      if (!target || target.id === currentSongId) return false;
+
+      await playerStoreActions.switchTrack(target);
+      return true;
+  },
+
   onNextTrack: () => {
-      const { nextTrack } = usePlayerStore.getState();
-      if (nextTrack) playerStoreActions.switchTrack(nextTrack);
+      playerStoreActions.switchByDirection('next').catch((error) => {
+          console.error('Failed to switch to next track:', error);
+      });
   },
   onPrevTrack: () => {
-      const { prevTrack } = usePlayerStore.getState();
-      if (prevTrack) playerStoreActions.switchTrack(prevTrack);
+      playerStoreActions.switchByDirection('prev').catch((error) => {
+          console.error('Failed to switch to previous track:', error);
+      });
   },
 
   setPlaylist: (ids: number[]) => {

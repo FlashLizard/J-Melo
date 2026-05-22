@@ -91,6 +91,8 @@ def update_config(request_data):
         "task_db_path",
         "task_worker_enabled",
         "max_upload_mb",
+        "media_command_concurrency",
+        "media_command_queue_timeout_seconds",
         "transcription_model",
         "transcription_compute_type",
         "alignment_model",

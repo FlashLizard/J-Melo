@@ -6,7 +6,8 @@ import { LyricLine, WhisperXOutput } from '@/interfaces/lyrics';
 import { db, SongRecord, WordRecord, base64ToBlob } from '@/lib/db';
 import useSettingsStore from './useSettingsStore';
 import { processWhisperXOutput } from '@/utils/lyricsProcessor';
-import { buildApiUrl, getJson, headOk, postJson } from '@/lib/backendClient';
+import { buildApiUrl, getJson, postJson } from '@/lib/backendClient';
+import { ensureBackendMediaCache, getPlayableMediaUrl } from '@/lib/mediaCache';
 import toast from 'react-hot-toast';
 
 const songStoreMessage = (key: 'cacheSuccess' | 'cacheError' | 'uncacheSuccess' | 'uncacheError', title?: string) => {
@@ -27,7 +28,7 @@ interface SongState {
   whisperData: WhisperXOutput | null;
   isLoading: boolean;
   error: string | null;
-  fetchSong: (url: string) => Promise<void>;
+  fetchSong: (url: string) => Promise<number | null>;
   loadSongById: (id: number) => Promise<void>;
   fetchAllSongs: () => Promise<SongData[]>;
   generateTranscriptionPreview: (song: SongData, t: (key: string) => string) => Promise<void>;
@@ -69,7 +70,7 @@ const useSongStore = create<SongState>()(
             if (existingSong && existingSong.id) {
                 await get().loadSongById(existingSong.id);
                 // loadSongById will handle the rest of the state updates.
-                return;
+                return existingSong.id;
             }
 
             // If it's a new song, fetch its info, create a DB entry, then use the robust loader.
@@ -108,10 +109,11 @@ const useSongStore = create<SongState>()(
             
             // Now that the song is in our database, call the robust loader to handle playback.
             await get().loadSongById(newId as number);
+            return newId as number;
 
         } catch (err) {
             set({ error: (err as Error).message, isLoading: false, song: null, lyrics: null });
-            // No return value to signify failure, the UI should react to the error state.
+            return null;
         }
     },
     loadSongById: async (id: number) => {
@@ -140,29 +142,18 @@ const useSongStore = create<SongState>()(
             return;
           }
 
-          // Path 2: Relying on backend cache. Verify it exists.
-          const isBackendMediaAvailable = await headOk(BACKEND_URL, songFromDb.media_url);
-
-          let finalSongRecord = songFromDb;
-
-          // If backend cache is missing, re-fetch it
-          if (!isBackendMediaAvailable) {
-            console.warn(`Backend cache missing for ${songFromDb.title}. Re-fetching...`);
-            const newMediaInfo = await getJson<any>(BACKEND_URL, '/api/media/fetch', { url: songFromDb.sourceUrl });
-            const updatePayload = {
-                media_url: newMediaInfo.media_url,
-                local_path: newMediaInfo.local_path,
-                duration: newMediaInfo.duration,
-                title: newMediaInfo.title,
-                artist: newMediaInfo.artist,
-            };
-
-            await db.songs.update(id, updatePayload);
-            finalSongRecord = { ...songFromDb, ...updatePayload }; // Use updated info for this session
+          // Path 2: Relying on backend cache. Verify it exists and refresh stale cache entries.
+          const mediaCacheResult = await ensureBackendMediaCache(BACKEND_URL, songFromDb);
+          if (!mediaCacheResult.available) {
+            throw new Error(`Media cache for "${songFromDb.title}" is unavailable and cannot be refreshed.`);
           }
+          if (mediaCacheResult.updatePayload) {
+            await db.songs.update(id, mediaCacheResult.updatePayload);
+          }
+          const finalSongRecord = mediaCacheResult.song;
 
           // Proceed with verified or re-cached data
-          let mediaUrlForPlayback = `${BACKEND_URL}${finalSongRecord.media_url}`;
+          let mediaUrlForPlayback = getPlayableMediaUrl(BACKEND_URL, finalSongRecord.media_url) || '';
           let coverUrlForDisplay = finalSongRecord.cover_url;
           if (finalSongRecord.coverImageData) {
             coverUrlForDisplay = URL.createObjectURL(finalSongRecord.coverImageData);

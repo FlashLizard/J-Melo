@@ -4,6 +4,7 @@ import { SongRecord, WordRecord, db } from '@/lib/db';
 import useTranslation from '@/hooks/useTranslation';
 import cn from 'classnames';
 import { buildApiUrl, getJson } from '@/lib/backendClient';
+import { ensureBackendMediaCache } from '@/lib/mediaCache';
 
 interface CommunitySong {
     id: number;
@@ -29,6 +30,7 @@ const SongPreviewModal: React.FC<SongPreviewModalProps> = ({ communitySong, back
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [songData, setSongData] = useState<SongRecord | null>(null);
+    const [previewMediaUrl, setPreviewMediaUrl] = useState<string | null>(null);
     const [wordsData, setWordsData] = useState<WordRecord[]>([]);
     const [activeTab, setActiveTab] = useState<'lyrics' | 'words'>('lyrics');
     const [mounted, setMounted] = useState(false);
@@ -41,6 +43,10 @@ const SongPreviewModal: React.FC<SongPreviewModalProps> = ({ communitySong, back
     useEffect(() => {
         const fetchDetails = async () => {
             setIsLoading(true);
+            setError(null);
+            setSongData(null);
+            setPreviewMediaUrl(null);
+            setCurrentTime(0);
             try {
                 const parsedData = await getJson<{ songs: SongRecord[]; words: WordRecord[] }>(
                     backendUrl,
@@ -49,8 +55,13 @@ const SongPreviewModal: React.FC<SongPreviewModalProps> = ({ communitySong, back
                 
                 const fetchedSong = (parsedData.songs || [])[0];
                 if (!fetchedSong) throw new Error("No song data found in this package.");
+                const cacheResult = await ensureBackendMediaCache(backendUrl, fetchedSong);
+                if (!cacheResult.available) {
+                    throw new Error(t('explore.preview.audioUnavailable'));
+                }
                 
-                setSongData(fetchedSong);
+                setSongData(cacheResult.song);
+                setPreviewMediaUrl(cacheResult.playableUrl);
                 setWordsData(parsedData.words || []);
             } catch (err) {
                 setError((err as Error).message);
@@ -59,7 +70,7 @@ const SongPreviewModal: React.FC<SongPreviewModalProps> = ({ communitySong, back
             }
         };
         fetchDetails();
-    }, [communitySong.id, backendUrl]);
+    }, [communitySong.id, backendUrl, t]);
 
     const [currentTime, setCurrentTime] = useState(0);
 
@@ -105,12 +116,12 @@ const SongPreviewModal: React.FC<SongPreviewModalProps> = ({ communitySong, back
                     ) : (
                         <>
                             {/* Audio Preview */}
-                            {songData?.media_url && (
+                            {previewMediaUrl && (
                                 <div className="p-4 border-b border-gray-700/50 bg-gray-800/80 flex justify-center flex-shrink-0">
                                     <audio
                                         controls
                                         onTimeUpdate={handleTimeUpdate}
-                                        src={songData.media_url.startsWith('http') ? songData.media_url : buildApiUrl(backendUrl, songData.media_url)}
+                                        src={previewMediaUrl}
                                         className="w-full max-w-md h-10 outline-none"
                                     />
                                 </div>

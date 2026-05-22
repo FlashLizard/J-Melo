@@ -90,11 +90,14 @@ npm run dev
   "load_transcription_model": true,
   "load_alignment_model": true,
   "task_worker_enabled": true,
-  "max_upload_mb": 50
+  "max_upload_mb": 50,
+  "media_command_concurrency": 1,
+  "media_command_queue_timeout_seconds": 30
 }
 ```
 
 公网部署时建议把 `cors_origins` 写成明确域名；如果需要管理后台，请务必设置 `admin_token`。
+`media_command_concurrency` 控制 yt-dlp 抓取、下载和搜索子进程并发数，默认 1，适合小型服务器并可避免文件描述符耗尽。
 测试或 CI 可以设置环境变量 `J_MELO_SKIP_MODELS=1` 暂时跳过转录和对齐模型加载；如需隔离真实配置，可用 `J_MELO_CONFIG_FILE` 指向临时配置文件。
 
 ## API 兼容性

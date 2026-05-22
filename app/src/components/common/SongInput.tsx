@@ -16,7 +16,7 @@ const formatDuration = (seconds: number) => {
 
 interface SongInputProps {
     initialMode?: 'url' | 'search';
-    onComplete?: () => void;
+    onComplete?: (songId: number) => void | Promise<void>;
 }
 
 const SongInput: React.FC<SongInputProps> = ({ initialMode = 'url', onComplete }) => {
@@ -43,12 +43,15 @@ const SongInput: React.FC<SongInputProps> = ({ initialMode = 'url', onComplete }
         const urlToFetch = targetUrl || url;
         if (!urlToFetch.trim()) return;
         try {
-            await fetchSong(urlToFetch);
+            const songId = await fetchSong(urlToFetch);
+            if (!songId) {
+                throw new Error(useSongStore.getState().error || t('index.loadError') || 'Failed to load song.');
+            }
             if (!targetUrl) setUrl('');
             toast.success(t('index.fetchSuccess') || 'Song loaded successfully!');
-            if (onComplete) onComplete();
+            if (onComplete) await onComplete(songId);
         } catch (err) {
-            toast.error(t('index.loadError') || 'Failed to load song.');
+            toast.error((err as Error).message || t('index.loadError') || 'Failed to load song.');
         }
     };
 

@@ -269,6 +269,8 @@ def register_routes(app: FastAPI, runtime: Dict[str, Any]) -> None:
                 "community_db_path",
                 "task_db_path",
                 "task_worker_enabled",
+                "media_command_concurrency",
+                "media_command_queue_timeout_seconds",
                 "media_cache_policy",
                 "token_cache_policy",
                 "transcription_cache_policy",

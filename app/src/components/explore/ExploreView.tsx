@@ -10,6 +10,7 @@ import useSettingsStore from '@/stores/useSettingsStore';
 import toast from 'react-hot-toast';
 import cn from 'classnames';
 import { buildApiUrl, deleteJson, getJson, postJson } from '@/lib/backendClient';
+import { ensureBackendMediaCache } from '@/lib/mediaCache';
 import EmptyState from '@/components/common/EmptyState';
 import SearchDisplayToolbar, { DisplayMode } from '@/components/common/SearchDisplayToolbar';
 
@@ -87,17 +88,22 @@ const ExploreView: React.FC<ExploreViewProps> = ({ onImportSuccess }) => {
 
     const handleImport = async (songData: SongRecord, wordsData: WordRecord[]) => {
         try {
+            const cacheResult = await ensureBackendMediaCache(backendUrl, songData);
+            if (!cacheResult.available) {
+                throw new Error(t('explore.audioUnavailable'));
+            }
+            const importSong = cacheResult.song;
             const allExistingSongs = await db.songs.toArray();
             const existingUrlMap = new Map(allExistingSongs.map(s => [s.sourceUrl, s]));
 
             const foundConflicts: Conflict[] = [];
             const newSongs: SongRecord[] = [];
 
-            const existingSong = existingUrlMap.get(songData.sourceUrl);
+            const existingSong = existingUrlMap.get(importSong.sourceUrl);
             if (existingSong) {
-                foundConflicts.push({ existingSong, importedSong: songData });
+                foundConflicts.push({ existingSong, importedSong: importSong });
             } else {
-                newSongs.push(songData);
+                newSongs.push(importSong);
             }
 
             if (foundConflicts.length > 0) {

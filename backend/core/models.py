@@ -43,6 +43,8 @@ class UpdateConfigRequest(BaseModel):
     task_db_path: Optional[str] = None
     task_worker_enabled: Optional[bool] = None
     max_upload_mb: Optional[int] = None
+    media_command_concurrency: Optional[int] = None
+    media_command_queue_timeout_seconds: Optional[int] = None
     transcription_model: Optional[str] = None
     transcription_compute_type: Optional[str] = None
     alignment_model: Optional[str] = None

@@ -3,6 +3,7 @@ import json
 import re
 import subprocess
 import sys
+import threading
 from urllib.parse import urljoin
 
 import httpx
@@ -15,6 +16,17 @@ IMAGE_PROXY_MAX_BYTES = 8 * 1024 * 1024
 YTDLP_INFO_TIMEOUT_SECONDS = 90
 YTDLP_DOWNLOAD_TIMEOUT_SECONDS = 240
 YTDLP_SEARCH_TIMEOUT_SECONDS = 60
+
+
+def _positive_int_config(key: str, default: int) -> int:
+    try:
+        value = int(ADMIN_CONFIG.get(key, default))
+    except (TypeError, ValueError):
+        return default
+    return max(1, value)
+
+
+_MEDIA_COMMAND_SEMAPHORE = threading.BoundedSemaphore(_positive_int_config("media_command_concurrency", 1))
 
 
 def _yt_dlp_command(*args: str) -> list[str]:
@@ -39,12 +51,38 @@ def _extract_yt_dlp_error(stderr: bytes | str | None, fallback: str) -> str:
     return useful_lines[-1][:500]
 
 
+def _run_media_command(command: list[str], *, timeout: int, text: bool = False, stdout=None) -> subprocess.CompletedProcess:
+    queue_timeout = _positive_int_config("media_command_queue_timeout_seconds", 30)
+    acquired = _MEDIA_COMMAND_SEMAPHORE.acquire(timeout=queue_timeout)
+    if not acquired:
+        raise HTTPException(status_code=503, detail="Media command queue is busy. Please try again later.")
+
+    try:
+        return subprocess.run(
+            command,
+            check=True,
+            stdin=subprocess.DEVNULL,
+            stdout=stdout if stdout is not None else subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=text,
+            encoding="utf-8" if text else None,
+            timeout=timeout,
+        )
+    except OSError as e:
+        if getattr(e, "errno", None) == 24:
+            log_info("Media command failed because the server has too many open files")
+            raise HTTPException(status_code=503, detail="Media worker is busy. Please try again in a moment.")
+        raise HTTPException(status_code=502, detail=f"Failed to start media command: {e}")
+    finally:
+        _MEDIA_COMMAND_SEMAPHORE.release()
+
+
 def fetch_media_info(url: str) -> dict:
     normalized_url = validate_external_http_url(url)
     command = _yt_dlp_command("--dump-json", "--no-playlist", "--socket-timeout", "20", normalized_url)
     command.extend(_proxy_args())
     try:
-        result = subprocess.run(command, capture_output=True, text=True, check=True, encoding="utf-8", timeout=YTDLP_INFO_TIMEOUT_SECONDS)
+        result = _run_media_command(command, timeout=YTDLP_INFO_TIMEOUT_SECONDS, text=True)
         return json.loads(result.stdout)
     except subprocess.TimeoutExpired:
         raise HTTPException(status_code=504, detail="Timed out while fetching media information")
@@ -74,7 +112,7 @@ def download_media(info: dict, destination: str) -> None:
     )
     command.extend(_proxy_args())
     try:
-        subprocess.run(command, check=True, capture_output=True, timeout=YTDLP_DOWNLOAD_TIMEOUT_SECONDS)
+        _run_media_command(command, timeout=YTDLP_DOWNLOAD_TIMEOUT_SECONDS, stdout=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
         raise HTTPException(status_code=504, detail="Timed out while downloading media")
     except subprocess.CalledProcessError as e:
@@ -89,7 +127,7 @@ async def media_search(query: str):
     try:
         import asyncio
         def run():
-            proc = subprocess.run(command, capture_output=True, text=True, check=True, encoding="utf-8", timeout=YTDLP_SEARCH_TIMEOUT_SECONDS)
+            proc = _run_media_command(command, timeout=YTDLP_SEARCH_TIMEOUT_SECONDS, text=True)
             results = []
             for line in proc.stdout.strip().split('\n'):
                 if not line: continue
@@ -109,6 +147,8 @@ async def media_search(query: str):
     except subprocess.CalledProcessError as e:
         log_info(f"Search error: {_extract_yt_dlp_error(e.stderr, 'search failed')}")
         return []
+    except HTTPException:
+        raise
     except Exception as e:
         log_info(f"Search error: {e}")
         return []

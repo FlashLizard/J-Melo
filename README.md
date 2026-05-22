@@ -92,12 +92,14 @@ npm run dev
   "task_worker_enabled": true,
   "max_upload_mb": 50,
   "media_command_concurrency": 1,
-  "media_command_queue_timeout_seconds": 30
+  "media_command_queue_timeout_seconds": 30,
+  "image_proxy_concurrency": 8
 }
 ```
 
 公网部署时建议把 `cors_origins` 写成明确域名；如果需要管理后台，请务必设置 `admin_token`。
-`media_command_concurrency` 控制 yt-dlp 抓取、下载和搜索子进程并发数，默认 1，适合小型服务器并可避免文件描述符耗尽。
+`media_command_concurrency` 控制 yt-dlp 抓取、下载和搜索子进程并发数，默认 1，适合小型服务器并可避免文件描述符耗尽；媒体抓取结果会写入 `media_cache_index.db`，同一 URL 后续导入会直接复用缓存文件。
+`image_proxy_concurrency` 控制社区封面等外部图片代理并发，避免 Explore 页面一次性打开大量外部连接。
 测试或 CI 可以设置环境变量 `J_MELO_SKIP_MODELS=1` 暂时跳过转录和对齐模型加载；如需隔离真实配置，可用 `J_MELO_CONFIG_FILE` 指向临时配置文件。
 
 ## API 兼容性

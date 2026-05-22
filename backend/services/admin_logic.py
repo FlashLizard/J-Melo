@@ -93,6 +93,7 @@ def update_config(request_data):
         "max_upload_mb",
         "media_command_concurrency",
         "media_command_queue_timeout_seconds",
+        "image_proxy_concurrency",
         "transcription_model",
         "transcription_compute_type",
         "alignment_model",
@@ -181,17 +182,21 @@ def _cleanup_directory_by_policy(directory: Path, policy: dict, age_unit: str) -
             current_size -= file_size
 
 
+def _run_cleanup_cycle() -> None:
+    _cleanup_expired_tokens(_utc_now())
+    _cleanup_directory_by_policy(CACHE_PATH, ADMIN_CONFIG["media_cache_policy"], "days")
+    _cleanup_directory_by_policy(TEMP_DATA_PATH, ADMIN_CONFIG["token_cache_policy"], "hours")
+    _cleanup_directory_by_policy(
+        TRANSCRIPTION_CACHE_PATH,
+        ADMIN_CONFIG.get("transcription_cache_policy", {}),
+        "days",
+    )
+
+
 async def background_cleanup_task():
     while True:
         try:
             await asyncio.sleep(3600)
-            _cleanup_expired_tokens(_utc_now())
-            _cleanup_directory_by_policy(CACHE_PATH, ADMIN_CONFIG["media_cache_policy"], "days")
-            _cleanup_directory_by_policy(TEMP_DATA_PATH, ADMIN_CONFIG["token_cache_policy"], "hours")
-            _cleanup_directory_by_policy(
-                TRANSCRIPTION_CACHE_PATH,
-                ADMIN_CONFIG.get("transcription_cache_policy", {}),
-                "days",
-            )
+            await asyncio.to_thread(_run_cleanup_cycle)
         except Exception as e:
             log_info(f"Cleanup error: {e}")

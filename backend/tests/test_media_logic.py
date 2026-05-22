@@ -29,3 +29,42 @@ def test_media_command_emfile_returns_busy_error(monkeypatch):
 
     assert exc.value.status_code == 503
     assert "busy" in exc.value.detail.lower()
+
+
+def test_media_index_returns_existing_cached_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(media_logic, "MEDIA_INDEX_PATH", tmp_path / "media_index.db")
+    monkeypatch.setattr(media_logic, "_media_index_initialized", False)
+    audio_path = tmp_path / "song.mp3"
+    audio_path.write_bytes(b"audio")
+    payload = {
+        "media_type": "audio",
+        "title": "Cached song",
+        "artist": "Artist",
+        "cover_url": None,
+        "duration": 12,
+        "media_url": "/media_cache/song.mp3",
+        "local_path": str(audio_path),
+    }
+
+    media_logic.save_indexed_media("https://example.com/watch?v=1", payload, "song")
+
+    cached = media_logic.get_indexed_media("https://example.com/watch?v=1")
+
+    assert cached == payload
+
+
+def test_media_index_discards_missing_cached_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(media_logic, "MEDIA_INDEX_PATH", tmp_path / "media_index.db")
+    monkeypatch.setattr(media_logic, "_media_index_initialized", False)
+    payload = {
+        "media_type": "audio",
+        "title": "Missing song",
+        "artist": None,
+        "cover_url": None,
+        "duration": 0,
+        "media_url": "/media_cache/missing.mp3",
+        "local_path": str(tmp_path / "missing.mp3"),
+    }
+    media_logic.save_indexed_media("https://example.com/watch?v=missing", payload, "missing")
+
+    assert media_logic.get_indexed_media("https://example.com/watch?v=missing") is None

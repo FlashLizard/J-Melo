@@ -45,6 +45,7 @@ class UpdateConfigRequest(BaseModel):
     max_upload_mb: Optional[int] = None
     media_command_concurrency: Optional[int] = None
     media_command_queue_timeout_seconds: Optional[int] = None
+    image_proxy_concurrency: Optional[int] = None
     transcription_model: Optional[str] = None
     transcription_compute_type: Optional[str] = None
     alignment_model: Optional[str] = None

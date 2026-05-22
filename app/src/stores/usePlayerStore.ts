@@ -41,6 +41,9 @@ let trackActionRequestId = 0;
 // Singleton Audio for iOS stability
 let globalAudioInstance: HTMLAudioElement | null = null;
 const AUDIO_ATTACH_EVENTS = ['click', 'touchstart', 'pointerdown'] as const;
+const MEDIA_READY_STATE = 3;
+const SWITCH_PLAY_RETRY_DELAYS = [0, 250, 700];
+const PLAYBACK_START_TIMEOUT_MS = 1200;
 
 const removeAudioAttachListeners = () => {
     AUDIO_ATTACH_EVENTS.forEach((eventName) => {
@@ -62,7 +65,14 @@ if (typeof window !== 'undefined') {
     globalAudioInstance.setAttribute('playsinline', 'true');
     globalAudioInstance.setAttribute('webkit-playsinline', 'true');
     globalAudioInstance.crossOrigin = 'anonymous';
-    globalAudioInstance.style.display = 'none';
+    globalAudioInstance.style.position = 'fixed';
+    globalAudioInstance.style.left = '0';
+    globalAudioInstance.style.bottom = '0';
+    globalAudioInstance.style.width = '1px';
+    globalAudioInstance.style.height = '1px';
+    globalAudioInstance.style.opacity = '0';
+    globalAudioInstance.style.pointerEvents = 'none';
+    globalAudioInstance.style.zIndex = '-1';
 
     AUDIO_ATTACH_EVENTS.forEach((eventName) => {
         document.addEventListener(eventName, ensureGlobalAudioAttached);
@@ -203,6 +213,109 @@ const handleSeeked = () => {
         usePlayerStore.setState({ currentTime: mediaElement.currentTime });
         syncPositionState();
     }
+};
+
+const wait = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+
+const waitForMediaReady = (element: HTMLMediaElement, timeoutMs: number): Promise<boolean> => {
+    if (element.readyState >= MEDIA_READY_STATE) return Promise.resolve(true);
+
+    return new Promise((resolve) => {
+        let settled = false;
+        const cleanup = () => {
+            element.removeEventListener('canplay', onReady);
+            element.removeEventListener('playing', onReady);
+            element.removeEventListener('loadeddata', onReady);
+            element.removeEventListener('error', onError);
+            window.clearTimeout(timer);
+        };
+        const finish = (ready: boolean) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve(ready);
+        };
+        const onReady = () => finish(element.readyState >= 2);
+        const onError = () => finish(false);
+        const timer = window.setTimeout(() => finish(element.readyState >= 2), timeoutMs);
+
+        element.addEventListener('canplay', onReady, { once: true });
+        element.addEventListener('playing', onReady, { once: true });
+        element.addEventListener('loadeddata', onReady, { once: true });
+        element.addEventListener('error', onError, { once: true });
+    });
+};
+
+const waitForPlaybackStart = (element: HTMLMediaElement, timeoutMs: number): Promise<boolean> => {
+    if (!element.paused && !element.ended && element.readyState >= 2) return Promise.resolve(true);
+
+    return new Promise((resolve) => {
+        let settled = false;
+        const cleanup = () => {
+            element.removeEventListener('playing', onProgress);
+            element.removeEventListener('timeupdate', onProgress);
+            element.removeEventListener('canplay', onProgress);
+            element.removeEventListener('error', onError);
+            window.clearTimeout(timer);
+        };
+        const finish = (started: boolean) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve(started);
+        };
+        const hasStarted = () => !element.paused && !element.ended && element.readyState >= 2;
+        const onProgress = () => {
+            if (hasStarted()) finish(true);
+        };
+        const onError = () => finish(false);
+        const timer = window.setTimeout(() => finish(hasStarted()), timeoutMs);
+
+        element.addEventListener('playing', onProgress, { once: true });
+        element.addEventListener('timeupdate', onProgress, { once: true });
+        element.addEventListener('canplay', onProgress, { once: true });
+        element.addEventListener('error', onError, { once: true });
+    });
+};
+
+const forcePlaybackForSwitch = async (
+    element: HTMLMediaElement,
+    requestId: number,
+    isStale: () => boolean,
+) => {
+    let lastError: unknown = null;
+
+    for (let attempt = 0; attempt < SWITCH_PLAY_RETRY_DELAYS.length; attempt += 1) {
+        if (isStale()) return false;
+
+        const delay = SWITCH_PLAY_RETRY_DELAYS[attempt];
+        if (delay > 0) await wait(delay);
+        if (isStale()) return false;
+
+        try {
+            element.muted = false;
+            element.volume = 1.0;
+        } catch {
+            // iOS may ignore programmatic volume. Muted is the important flag here.
+        }
+
+        if (element.readyState < 2) {
+            await waitForMediaReady(element, attempt === 0 ? 450 : 900);
+        }
+        if (isStale()) return false;
+
+        try {
+            const playPromise = element.play();
+            if (playPromise !== undefined) await playPromise;
+        } catch (error) {
+            lastError = error;
+        }
+
+        if (isStale()) return false;
+        if (await waitForPlaybackStart(element, PLAYBACK_START_TIMEOUT_MS)) return true;
+    }
+
+    throw lastError || new Error(`Playback did not start for switch request ${requestId}`);
 };
 
 const blobUrlCache = new Map<string, string>();
@@ -350,9 +463,12 @@ export const playerStoreActions = {
   },
 
   switchTrack: async (song: PlaylistItem) => {
+    if (!mediaElement && globalAudioInstance) {
+        playerStoreActions.setMediaElement(globalAudioInstance);
+    }
     if (!mediaElement) return;
     const playbackRequestId = ++switchPlaybackRequestId;
-    const resolvedSong = await resolvePlaylistItem(song.id);
+    const resolvedSong = song.media_url ? song : await resolvePlaylistItem(song.id);
     if (playbackRequestId !== switchPlaybackRequestId) return;
 
     if (!resolvedSong?.media_url) {
@@ -368,6 +484,7 @@ export const playerStoreActions = {
     
     isSwitchingSource = true;
     const previousSongId = usePlayerStore.getState().currentSongId;
+    const switchedElement = mediaElement;
     usePlayerStore.setState({ 
         currentSongId: song.id, 
         isPlaying: true,
@@ -379,17 +496,17 @@ export const playerStoreActions = {
     });
     
     const absoluteTargetUrl = new URL(song.media_url, window.location.href).href;
-    const switchedElement = mediaElement;
-    if (mediaElement.src !== absoluteTargetUrl) {
-        mediaElement.autoplay = true;
-        mediaElement.src = absoluteTargetUrl;
-        mediaElement.load();
+    if (switchedElement.src !== absoluteTargetUrl) {
+        switchedElement.autoplay = true;
+        switchedElement.preload = 'auto';
+        switchedElement.src = absoluteTargetUrl;
+        switchedElement.load();
     } else if (previousSongId !== song.id) {
-        mediaElement.currentTime = 0;
+        switchedElement.currentTime = 0;
     }
     
-    mediaElement.muted = false;
-    mediaElement.volume = 1.0;
+    playerStoreActions.updateMetadata(song.title, song.artist || getLocalizedUnknownArtist(), song.cover_url || '');
+    playerStoreActions.prepareNeighbors(song.id);
     
     const markSwitchPlaying = () => {
         if (playbackRequestId !== switchPlaybackRequestId || mediaElement !== switchedElement) return;
@@ -406,41 +523,13 @@ export const playerStoreActions = {
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
     };
 
-    const playSwitchedTrack = (attempt = 0) => {
-        if (playbackRequestId !== switchPlaybackRequestId || mediaElement !== switchedElement) return;
-        const playPromise = switchedElement.play();
-        if (playPromise !== undefined) {
-            playPromise.then(markSwitchPlaying).catch((error) => {
-                if (attempt < 2 && switchedElement.readyState < 3) {
-                    let didRetry = false;
-                    const retry = () => {
-                        if (didRetry) return;
-                        didRetry = true;
-                        playSwitchedTrack(attempt + 1);
-                    };
-                    switchedElement.addEventListener('canplay', retry, { once: true });
-                    window.setTimeout(retry, 350);
-                    return;
-                }
-                markSwitchFailed(error);
-            });
-        } else {
-            markSwitchPlaying();
-        }
-    };
-
-    playSwitchedTrack();
-
-    if (mediaElement.autoplay) {
-        mediaElement.addEventListener('playing', () => {
-            if (playbackRequestId === switchPlaybackRequestId) {
-                isSwitchingSource = false;
-            }
-        }, { once: true });
+    const isStaleSwitch = () => playbackRequestId !== switchPlaybackRequestId || mediaElement !== switchedElement;
+    try {
+        const started = await forcePlaybackForSwitch(switchedElement, playbackRequestId, isStaleSwitch);
+        if (started) markSwitchPlaying();
+    } catch (error) {
+        markSwitchFailed(error);
     }
-    
-    playerStoreActions.updateMetadata(song.title, song.artist || getLocalizedUnknownArtist(), song.cover_url || '');
-    playerStoreActions.prepareNeighbors(song.id);
     
     if (playerStoreActions.onSongSwitch) playerStoreActions.onSongSwitch(song.id);
     startAnimationLoop();
@@ -448,8 +537,14 @@ export const playerStoreActions = {
 
   switchByDirection: async (direction: TrackDirection) => {
       const actionRequestId = ++trackActionRequestId;
-      const { currentSongId, playlist, playMode } = usePlayerStore.getState();
+      const { currentSongId, playlist, playMode, nextTrack, prevTrack } = usePlayerStore.getState();
       if (!currentSongId) return false;
+
+      const preparedTarget = direction === 'next' ? nextTrack : prevTrack;
+      if (preparedTarget?.media_url && preparedTarget.id !== currentSongId) {
+          await playerStoreActions.switchTrack(preparedTarget);
+          return true;
+      }
 
       const candidateIds = getNeighborCandidateIds({ playlist, currentId: currentSongId, playMode, direction });
       const target = await resolveFirstPlayable(candidateIds);

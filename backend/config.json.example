@@ -19,6 +19,7 @@
     "max_upload_mb": 50,
     "media_command_concurrency": 1,
     "media_command_queue_timeout_seconds": 30,
+    "image_proxy_concurrency": 8,
     "media_cache_policy": {
         "max_size_gb": 10,
         "max_age_days": 30

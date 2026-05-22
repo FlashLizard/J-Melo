@@ -29,6 +29,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "max_upload_mb": 50,
     "media_command_concurrency": 1,
     "media_command_queue_timeout_seconds": 30,
+    "image_proxy_concurrency": 8,
     "media_cache_policy": {"max_size_gb": 10, "max_age_days": 30},
     "token_cache_policy": {"max_size_mb": 100, "max_age_hours": 24},
     "transcription_cache_policy": {"max_size_mb": 500, "max_age_days": 30},

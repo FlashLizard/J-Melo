@@ -236,17 +236,17 @@ async def worker_loop(poll_interval: float = 1.0) -> None:
     init_db()
     log_info("SQLite task worker started.")
     while True:
-        task = _claim_next_task()
+        task = await asyncio.to_thread(_claim_next_task)
         if not task:
             await asyncio.sleep(poll_interval)
             continue
         handler = _handlers.get(task.kind)
         if not handler:
-            _fail_task(task.id, f"No handler registered for task kind '{task.kind}'")
+            await asyncio.to_thread(_fail_task, task.id, f"No handler registered for task kind '{task.kind}'")
             continue
         try:
             result = await handler(task)
-            _complete_task(task.id, result, result.get("message", "Success"))
+            await asyncio.to_thread(_complete_task, task.id, result, result.get("message", "Success"))
         except Exception as e:
             log_info(f"Task {task.id} failed: {e}")
-            _fail_task(task.id, str(e))
+            await asyncio.to_thread(_fail_task, task.id, str(e))

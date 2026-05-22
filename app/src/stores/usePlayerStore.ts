@@ -43,6 +43,7 @@ let neighborRequestId = 0;
 let trackActionRequestId = 0;
 let foregroundResumeTimer: number | null = null;
 let lifecycleHandlersInitialized = false;
+let needsPipelineResetAfterMediaSessionPause = false;
 
 // Singleton Audio for iOS stability
 let globalAudioInstance: HTMLAudioElement | null = null;
@@ -65,6 +66,15 @@ const isDocumentHidden = () => typeof document !== 'undefined' && document.hidde
 const setPlaybackIntent = (shouldPlay: boolean) => {
     playbackIntent = shouldPlay;
     if (!shouldPlay) shouldResumeAfterForeground = false;
+};
+
+type PlayOptions = {
+    forcePipelineReset?: boolean;
+    reason?: string;
+};
+
+type PauseOptions = {
+    fromMediaSession?: boolean;
 };
 
 const removeAudioAttachListeners = () => {
@@ -159,8 +169,8 @@ const setupMediaHandlers = () => {
     if (!('mediaSession' in navigator)) return;
     
     const actions: [MediaSessionAction, () => void][] = [
-        ['play', () => playerStoreActions.play()],
-        ['pause', () => playerStoreActions.pause()],
+        ['play', () => playerStoreActions.play({ forcePipelineReset: isIOSWebKit(), reason: 'media-session-play' })],
+        ['pause', () => playerStoreActions.pause({ fromMediaSession: true })],
         ['previoustrack', () => playerStoreActions.onPrevTrack()],
         ['nexttrack', () => playerStoreActions.onNextTrack()],
     ];
@@ -372,6 +382,14 @@ const resetMediaPipelineAtCurrentTime = async (element: HTMLMediaElement) => {
     }
 
     element.preload = 'auto';
+    if (element.src !== source) {
+        element.src = source;
+    } else {
+        element.removeAttribute('src');
+        element.load();
+        await wait(0);
+        element.src = source;
+    }
     element.load();
     await waitForMediaReady(element, 1200);
 
@@ -418,6 +436,7 @@ const recoverPlaybackAfterForeground = async (reason: string, forcePipelineReset
         const started = await forcePlaybackForSwitch(element, requestId, isStale);
         if (started && !isStale()) {
             setPlaybackIntent(true);
+            needsPipelineResetAfterMediaSessionPause = false;
             shouldResumeAfterForeground = false;
             usePlayerStore.setState({ isPlaying: true, hasEnded: false });
             if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
@@ -641,6 +660,7 @@ export const playerStoreActions = {
     if (!resolvedSong?.media_url) {
         console.error(`Cannot switch to song ${song.id}: no playable media URL.`);
         setPlaybackIntent(false);
+        needsPipelineResetAfterMediaSessionPause = false;
         mediaElement.pause();
         isSwitchingSource = false;
         usePlayerStore.setState({ isPlaying: false, hasEnded: true });
@@ -651,6 +671,7 @@ export const playerStoreActions = {
     if (mediaElement === globalAudioInstance) ensureGlobalAudioAttached();
     
     setPlaybackIntent(true);
+    needsPipelineResetAfterMediaSessionPause = false;
     isSwitchingSource = true;
     const previousSongId = usePlayerStore.getState().currentSongId;
     const switchedElement = mediaElement;
@@ -752,10 +773,29 @@ export const playerStoreActions = {
       if (id) playerStoreActions.prepareNeighbors(id);
   },
 
-  play: () => { 
+  play: (options: PlayOptions = {}) => {
       if (mediaElement) {
           setPlaybackIntent(true);
           if (mediaElement === globalAudioInstance) ensureGlobalAudioAttached();
+          const shouldForceRecovery =
+              options.forcePipelineReset ||
+              (isIOSWebKit() && isDocumentHidden()) ||
+              (isIOSWebKit() && needsPipelineResetAfterMediaSessionPause);
+
+          if (shouldForceRecovery) {
+              recoverPlaybackAfterForeground(options.reason || 'play', true).then((started) => {
+                  if (!started) {
+                      throw new Error('Forced playback recovery did not start playback.');
+                  }
+              }).catch(e => {
+                  console.error("Play error", e);
+                  setPlaybackIntent(false);
+                  usePlayerStore.setState({ isPlaying: false });
+                  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+              });
+              return;
+          }
+
           const playPromise = mediaElement.play();
           if (playPromise !== undefined) {
               playPromise.catch(e => {
@@ -771,7 +811,10 @@ export const playerStoreActions = {
           syncPositionState();
       }
   },
-  pause: () => { 
+  pause: (options: PauseOptions = {}) => {
+      if (options.fromMediaSession) {
+          needsPipelineResetAfterMediaSessionPause = true;
+      }
       setPlaybackIntent(false);
       mediaElement?.pause();
       usePlayerStore.setState({ isPlaying: false });

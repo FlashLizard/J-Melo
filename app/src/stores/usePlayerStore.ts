@@ -47,11 +47,13 @@ let needsPipelineResetAfterMediaSessionPause = false;
 
 // Singleton Audio for iOS stability
 let globalAudioInstance: HTMLAudioElement | null = null;
+let iosSilentAudioElement: HTMLAudioElement | null = null;
 const AUDIO_ATTACH_EVENTS = ['click', 'touchstart', 'pointerdown'] as const;
 const MEDIA_READY_STATE = 3;
 const SWITCH_PLAY_RETRY_DELAYS = [0, 250, 700];
 const PLAYBACK_START_TIMEOUT_MS = 1200;
 const IOS_FOREGROUND_RECOVERY_DELAY_MS = 120;
+const IOS_SILENT_AUDIO_URL = '/silent-audio.mp3';
 
 const isIOSWebKit = () => {
     if (typeof navigator === 'undefined') return false;
@@ -77,16 +79,53 @@ type PauseOptions = {
     fromMediaSession?: boolean;
 };
 
+type AudioSessionNavigator = Navigator & {
+    audioSession?: {
+        type?: string;
+    };
+};
+
+const configureAudioSessionForPlayback = () => {
+    if (typeof navigator === 'undefined') return;
+    const audioSession = (navigator as AudioSessionNavigator).audioSession;
+    if (!audioSession) return;
+
+    try {
+        audioSession.type = 'playback';
+    } catch (error) {
+        console.warn('Failed to set navigator.audioSession.type to playback:', error);
+    }
+};
+
 const removeAudioAttachListeners = () => {
     AUDIO_ATTACH_EVENTS.forEach((eventName) => {
         document.removeEventListener(eventName, ensureGlobalAudioAttached);
     });
 };
 
+const styleHiddenAudioElement = (element: HTMLAudioElement) => {
+    element.style.position = 'fixed';
+    element.style.left = '0';
+    element.style.bottom = '0';
+    element.style.width = '1px';
+    element.style.height = '1px';
+    element.style.opacity = '0';
+    element.style.pointerEvents = 'none';
+    element.style.zIndex = '-1';
+};
+
 const ensureGlobalAudioAttached = () => {
     if (typeof document === 'undefined' || !globalAudioInstance || globalAudioInstance.parentElement) return;
     if (document.body) {
         document.body.appendChild(globalAudioInstance);
+        if (iosSilentAudioElement && !iosSilentAudioElement.parentElement) {
+            document.body.appendChild(iosSilentAudioElement);
+            try {
+                iosSilentAudioElement.load();
+            } catch {
+                // The element only needs to exist for WebKit's suspended media workaround.
+            }
+        }
         removeAudioAttachListeners();
     }
 };
@@ -97,14 +136,17 @@ if (typeof window !== 'undefined') {
     globalAudioInstance.setAttribute('playsinline', 'true');
     globalAudioInstance.setAttribute('webkit-playsinline', 'true');
     globalAudioInstance.crossOrigin = 'anonymous';
-    globalAudioInstance.style.position = 'fixed';
-    globalAudioInstance.style.left = '0';
-    globalAudioInstance.style.bottom = '0';
-    globalAudioInstance.style.width = '1px';
-    globalAudioInstance.style.height = '1px';
-    globalAudioInstance.style.opacity = '0';
-    globalAudioInstance.style.pointerEvents = 'none';
-    globalAudioInstance.style.zIndex = '-1';
+    styleHiddenAudioElement(globalAudioInstance);
+
+    if (isIOSWebKit()) {
+        configureAudioSessionForPlayback();
+        iosSilentAudioElement = new Audio(IOS_SILENT_AUDIO_URL);
+        iosSilentAudioElement.preload = 'auto';
+        iosSilentAudioElement.setAttribute('playsinline', 'true');
+        iosSilentAudioElement.setAttribute('webkit-playsinline', 'true');
+        iosSilentAudioElement.setAttribute('aria-hidden', 'true');
+        styleHiddenAudioElement(iosSilentAudioElement);
+    }
 
     AUDIO_ATTACH_EVENTS.forEach((eventName) => {
         document.addEventListener(eventName, ensureGlobalAudioAttached);
@@ -585,6 +627,7 @@ export const playerStoreActions = {
 
   setMediaElement: (element: HTMLAudioElement | HTMLVideoElement | null) => {
     if (mediaElement === element) return;
+    if (isIOSWebKit()) configureAudioSessionForPlayback();
     if (element === globalAudioInstance) ensureGlobalAudioAttached();
     if (mediaElement) {
         mediaElement.removeEventListener('loadedmetadata', handleLoadedMetadata);

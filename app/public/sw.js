@@ -1,4 +1,4 @@
-const CACHE_NAME = 'j-melo-cache-v10';
+const CACHE_NAME = 'j-melo-cache-v11';
 const APP_SHELL_URL = '/';
 
 const PRECACHE_ASSETS = [
@@ -9,6 +9,7 @@ const PRECACHE_ASSETS = [
   '/icon-192.png',
   '/icon-512.png',
   '/apple-touch-icon.png',
+  '/silent-audio.mp3',
   '/i18n/zh.json',
   '/i18n/en.json'
 ];
@@ -122,6 +123,17 @@ self.addEventListener('fetch', (event) => {
   const isSameOrigin = url.origin === self.location.origin;
 
   if (!isSameOrigin) return;
+  if (url.pathname === '/silent-audio.mp3') {
+    event.respondWith(
+      caches.match(event.request).then((cachedResponse) => {
+        if (cachedResponse) return cachedResponse;
+        return fetch(event.request).then((response) => {
+          return cacheRuntimeResponse(event, event.request, response);
+        }).catch(() => new Response('', { status: 404 }));
+      })
+    );
+    return;
+  }
   if (event.request.destination === 'audio' || event.request.destination === 'video') return;
 
   if (url.pathname.startsWith('/api/') && !url.pathname.includes('/api/media/proxy-image')) {

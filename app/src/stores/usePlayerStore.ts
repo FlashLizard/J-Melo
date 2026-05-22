@@ -34,9 +34,15 @@ let mediaElement: HTMLAudioElement | HTMLVideoElement | null = null;
 let rafId: number | null = null;
 let isSeeking = false;
 let isSwitchingSource = false;
+let isRecoveringPlayback = false;
+let playbackIntent = false;
+let shouldResumeAfterForeground = false;
 let switchPlaybackRequestId = 0;
+let playbackRecoveryRequestId = 0;
 let neighborRequestId = 0;
 let trackActionRequestId = 0;
+let foregroundResumeTimer: number | null = null;
+let lifecycleHandlersInitialized = false;
 
 // Singleton Audio for iOS stability
 let globalAudioInstance: HTMLAudioElement | null = null;
@@ -44,6 +50,22 @@ const AUDIO_ATTACH_EVENTS = ['click', 'touchstart', 'pointerdown'] as const;
 const MEDIA_READY_STATE = 3;
 const SWITCH_PLAY_RETRY_DELAYS = [0, 250, 700];
 const PLAYBACK_START_TIMEOUT_MS = 1200;
+const IOS_FOREGROUND_RECOVERY_DELAY_MS = 120;
+
+const isIOSWebKit = () => {
+    if (typeof navigator === 'undefined') return false;
+    const platform = navigator.platform || '';
+    const userAgent = navigator.userAgent || '';
+    const isTouchMac = platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+    return /iP(hone|ad|od)/.test(platform) || /iP(hone|ad|od)/.test(userAgent) || isTouchMac;
+};
+
+const isDocumentHidden = () => typeof document !== 'undefined' && document.hidden;
+
+const setPlaybackIntent = (shouldPlay: boolean) => {
+    playbackIntent = shouldPlay;
+    if (!shouldPlay) shouldResumeAfterForeground = false;
+};
 
 const removeAudioAttachListeners = () => {
     AUDIO_ATTACH_EVENTS.forEach((eventName) => {
@@ -164,6 +186,7 @@ const handleLoadedMetadata = () => {
 };
 
 const handlePlay = () => {
+    setPlaybackIntent(true);
     usePlayerStore.setState({ isPlaying: true, hasEnded: false });
     startAnimationLoop();
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
@@ -171,7 +194,10 @@ const handlePlay = () => {
 };
 
 const handlePause = () => {
-    if (isSwitchingSource) return;
+    if (isSwitchingSource || isRecoveringPlayback) return;
+    if (isDocumentHidden() && playbackIntent) {
+        shouldResumeAfterForeground = true;
+    }
     usePlayerStore.setState({ isPlaying: false });
     if (rafId) cancelAnimationFrame(rafId);
     rafId = null;
@@ -192,10 +218,12 @@ const handleEnded = () => {
     }
     playerStoreActions.switchByDirection('next').then((switched) => {
         if (!switched) {
+            setPlaybackIntent(false);
             usePlayerStore.setState({ isPlaying: false, hasEnded: true });
         }
     }).catch((error) => {
         console.error('Failed to switch to the next track after current track ended:', error);
+        setPlaybackIntent(false);
         usePlayerStore.setState({ isPlaying: false, hasEnded: true });
     });
 };
@@ -316,6 +344,145 @@ const forcePlaybackForSwitch = async (
     }
 
     throw lastError || new Error(`Playback did not start for switch request ${requestId}`);
+};
+
+const shouldRecoverPlayback = () => {
+    const state = usePlayerStore.getState();
+    return Boolean(
+        mediaElement?.src &&
+        !state.hasEnded &&
+        (playbackIntent || state.isPlaying)
+    );
+};
+
+const resetMediaPipelineAtCurrentTime = async (element: HTMLMediaElement) => {
+    const source = element.currentSrc || element.src;
+    if (!source) return;
+
+    const state = usePlayerStore.getState();
+    const resumeAt = Number.isFinite(element.currentTime) && element.currentTime > 0
+        ? element.currentTime
+        : state.currentTime;
+    const playbackRate = state.playbackRate;
+
+    try {
+        element.pause();
+    } catch {
+        // Ignore platform-specific pause failures during lifecycle recovery.
+    }
+
+    element.preload = 'auto';
+    element.load();
+    await waitForMediaReady(element, 1200);
+
+    if (Number.isFinite(resumeAt) && resumeAt > 0) {
+        const duration = Number.isFinite(element.duration) ? element.duration : state.duration;
+        const safeResumeAt = duration > 0 ? Math.min(resumeAt, Math.max(0, duration - 0.25)) : resumeAt;
+        try {
+            element.currentTime = safeResumeAt;
+            usePlayerStore.setState({ currentTime: safeResumeAt });
+        } catch (error) {
+            console.warn('Failed to restore media position after iOS foreground recovery:', error);
+        }
+    }
+
+    element.playbackRate = playbackRate;
+};
+
+const recoverPlaybackAfterForeground = async (reason: string, forcePipelineReset: boolean) => {
+    const element = mediaElement;
+    if (!element || !shouldRecoverPlayback()) return false;
+
+    const requestId = ++playbackRecoveryRequestId;
+    const isStale = () => (
+        requestId !== playbackRecoveryRequestId ||
+        mediaElement !== element ||
+        !shouldRecoverPlayback()
+    );
+
+    isRecoveringPlayback = true;
+    try {
+        if (element === globalAudioInstance) ensureGlobalAudioAttached();
+        try {
+            element.muted = false;
+            element.volume = 1.0;
+        } catch {
+            // iOS ignores programmatic volume. Clearing muted is still useful.
+        }
+
+        if (forcePipelineReset) {
+            await resetMediaPipelineAtCurrentTime(element);
+            if (isStale()) return false;
+        }
+
+        const started = await forcePlaybackForSwitch(element, requestId, isStale);
+        if (started && !isStale()) {
+            setPlaybackIntent(true);
+            shouldResumeAfterForeground = false;
+            usePlayerStore.setState({ isPlaying: true, hasEnded: false });
+            if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+            startAnimationLoop();
+            syncPositionState();
+            return true;
+        }
+    } catch (error) {
+        console.warn(`Failed to recover playback after ${reason}:`, error);
+    } finally {
+        isRecoveringPlayback = false;
+    }
+
+    return false;
+};
+
+const scheduleForegroundPlaybackRecovery = (reason: string) => {
+    if (typeof window === 'undefined' || !shouldRecoverPlayback()) return;
+    if (foregroundResumeTimer !== null) {
+        window.clearTimeout(foregroundResumeTimer);
+    }
+
+    foregroundResumeTimer = window.setTimeout(() => {
+        foregroundResumeTimer = null;
+        const forcePipelineReset = isIOSWebKit() && shouldResumeAfterForeground;
+        recoverPlaybackAfterForeground(reason, forcePipelineReset).catch((error) => {
+            console.warn(`Unhandled playback recovery failure after ${reason}:`, error);
+        });
+    }, IOS_FOREGROUND_RECOVERY_DELAY_MS);
+};
+
+const initPlaybackLifecycleHandlers = () => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    if (lifecycleHandlersInitialized) return;
+    lifecycleHandlersInitialized = true;
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            if (playbackIntent || usePlayerStore.getState().isPlaying) {
+                shouldResumeAfterForeground = true;
+            }
+            return;
+        }
+        if (shouldResumeAfterForeground || playbackIntent) {
+            scheduleForegroundPlaybackRecovery('visibilitychange');
+        }
+    });
+
+    window.addEventListener('pagehide', () => {
+        if (playbackIntent || usePlayerStore.getState().isPlaying) {
+            shouldResumeAfterForeground = true;
+        }
+    });
+
+    window.addEventListener('pageshow', () => {
+        if (shouldResumeAfterForeground || playbackIntent) {
+            scheduleForegroundPlaybackRecovery('pageshow');
+        }
+    });
+
+    window.addEventListener('focus', () => {
+        if (shouldResumeAfterForeground) {
+            scheduleForegroundPlaybackRecovery('focus');
+        }
+    });
 };
 
 const blobUrlCache = new Map<string, string>();
@@ -473,6 +640,7 @@ export const playerStoreActions = {
 
     if (!resolvedSong?.media_url) {
         console.error(`Cannot switch to song ${song.id}: no playable media URL.`);
+        setPlaybackIntent(false);
         mediaElement.pause();
         isSwitchingSource = false;
         usePlayerStore.setState({ isPlaying: false, hasEnded: true });
@@ -482,6 +650,7 @@ export const playerStoreActions = {
     song = resolvedSong;
     if (mediaElement === globalAudioInstance) ensureGlobalAudioAttached();
     
+    setPlaybackIntent(true);
     isSwitchingSource = true;
     const previousSongId = usePlayerStore.getState().currentSongId;
     const switchedElement = mediaElement;
@@ -511,6 +680,7 @@ export const playerStoreActions = {
     const markSwitchPlaying = () => {
         if (playbackRequestId !== switchPlaybackRequestId || mediaElement !== switchedElement) return;
         isSwitchingSource = false;
+        setPlaybackIntent(true);
         usePlayerStore.setState({ isPlaying: true, hasEnded: false });
         syncPositionState();
     };
@@ -519,6 +689,7 @@ export const playerStoreActions = {
         if (playbackRequestId !== switchPlaybackRequestId || mediaElement !== switchedElement) return;
         console.error("Switch play failed", error);
         isSwitchingSource = false;
+        setPlaybackIntent(false);
         usePlayerStore.setState({ isPlaying: false, hasEnded: true });
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
     };
@@ -583,11 +754,13 @@ export const playerStoreActions = {
 
   play: () => { 
       if (mediaElement) {
+          setPlaybackIntent(true);
           if (mediaElement === globalAudioInstance) ensureGlobalAudioAttached();
           const playPromise = mediaElement.play();
           if (playPromise !== undefined) {
               playPromise.catch(e => {
                   console.error("Play error", e);
+                  setPlaybackIntent(false);
                   usePlayerStore.setState({ isPlaying: false });
                   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
               });
@@ -599,6 +772,7 @@ export const playerStoreActions = {
       }
   },
   pause: () => { 
+      setPlaybackIntent(false);
       mediaElement?.pause();
       usePlayerStore.setState({ isPlaying: false });
       syncPositionState();
@@ -636,5 +810,7 @@ export const playerStoreActions = {
   },
   clearHasEnded: () => usePlayerStore.setState({ hasEnded: false }),
 };
+
+initPlaybackLifecycleHandlers();
 
 export default usePlayerStore;

@@ -167,17 +167,23 @@ const startAnimationLoop = () => {
 
 const setupMediaHandlers = () => {
     if (!('mediaSession' in navigator)) return;
-    
-    const actions: [MediaSessionAction, () => void][] = [
-        ['play', () => playerStoreActions.play({ forcePipelineReset: isIOSWebKit(), reason: 'media-session-play' })],
-        ['pause', () => playerStoreActions.pause({ fromMediaSession: true })],
-        ['previoustrack', () => playerStoreActions.onPrevTrack()],
-        ['nexttrack', () => playerStoreActions.onNextTrack()],
-    ];
 
-    actions.forEach(([action, handler]) => {
+    const setAction = (action: MediaSessionAction, handler: MediaSessionActionHandler | null) => {
         try { navigator.mediaSession.setActionHandler(action, handler); } catch(e) {}
-    });
+    };
+
+    if (isIOSWebKit()) {
+        // Let iOS resume the active HTMLAudioElement natively from the lock screen.
+        // Replaying through JS action handlers can leave WebKit in a logical-playing
+        // but silent-output state after lock-screen pause -> play.
+        setAction('play', null);
+    } else {
+        setAction('play', () => playerStoreActions.play());
+    }
+
+    setAction('pause', () => playerStoreActions.pause({ fromMediaSession: true }));
+    setAction('previoustrack', () => playerStoreActions.onPrevTrack());
+    setAction('nexttrack', () => playerStoreActions.onNextTrack());
 
     // Seek action (Enables progress bar dragging on iOS)
     // We REMOVED seekbackward/seekforward to let previoustrack/nexttrack take the button slots
@@ -197,6 +203,7 @@ const handleLoadedMetadata = () => {
 
 const handlePlay = () => {
     setPlaybackIntent(true);
+    needsPipelineResetAfterMediaSessionPause = false;
     usePlayerStore.setState({ isPlaying: true, hasEnded: false });
     startAnimationLoop();
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';

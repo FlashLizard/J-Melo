@@ -5,17 +5,24 @@ import useUIPanelStore from '@/stores/useUIPanelStore';
 import useMobileViewStore from '@/stores/useMobileViewStore';
 import useSongStore from '@/stores/useSongStore';
 import { LyricLine } from '@/interfaces/lyrics';
-import { formatLyricTimings } from '@/utils/lyricsProcessor';
 import useTranslation from '@/hooks/useTranslation';
 import { db } from '@/lib/db';
 import { copyToClipboard } from '@/utils/copyToClipboard';
-import { parseLyricsFromLlmOutput } from '@/lib/aiJson';
+import { parseLyricTranslationsFromLlmOutput, type LyricTranslationUpdate } from '@/lib/aiJson';
 import { requestChatCompletion } from '@/lib/llmClient';
 import cn from 'classnames';
 import toast from 'react-hot-toast';
 
 type TranslationMode = 'current' | 'mapProvided';
 type MainMode = 'generate' | 'import';
+type TranslationPreviewLine = Pick<LyricLine, 'startTime' | 'endTime' | 'text' | 'translation'> & {
+  index: number;
+};
+type TranslationPreviewData = {
+  translatedLyrics: TranslationPreviewLine[];
+  translationUpdates: LyricTranslationUpdate[];
+  rawLLMOutput: string;
+};
 
 const Modal: React.FC<{ 
   title: string; 
@@ -68,7 +75,7 @@ const Modal: React.FC<{
 };
 
 const LyricPreviewModal: React.FC<{
-  newLyrics: LyricLine[];
+  newLyrics: TranslationPreviewLine[];
   rawLLMOutput: string;
   onConfirm: () => void;
   onCancel: () => void;
@@ -122,8 +129,23 @@ const getSimplifiedLyricsJson = (lyrics: LyricLine[]) => {
   }));
 };
 
+const buildTranslationPreview = (
+  sourceLyrics: LyricLine[],
+  updates: LyricTranslationUpdate[]
+): TranslationPreviewLine[] => {
+  const updateByIndex = new Map(updates.map(update => [update.index, update.translation]));
+
+  return sourceLyrics.map((line, index) => ({
+    index,
+    startTime: line.startTime,
+    endTime: line.endTime,
+    text: line.text,
+    translation: updateByIndex.get(index) ?? line.translation ?? '',
+  }));
+};
+
 const LyricTranslationPanel: React.FC = () => {
-  const { lyrics, song, updateLyricTranslations } = useSongStore();
+  const { lyrics, updateLyricTranslations } = useSongStore();
   const { setActivePanel } = useUIPanelStore();
   const { setActiveView } = useMobileViewStore();
   const { t } = useTranslation();
@@ -136,7 +158,7 @@ const LyricTranslationPanel: React.FC = () => {
   const [isPromptDirty, setIsPromptDirty] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [previewData, setPreviewData] = useState<{ translatedLyrics: LyricLine[], rawLLMOutput: string } | null>(null);
+  const [previewData, setPreviewData] = useState<TranslationPreviewData | null>(null);
   const [promptPreview, setPromptPreview] = useState<string | null>(null);
   const [editableLlmOutput, setEditableLlmOutput] = useState<string>('');
 
@@ -150,7 +172,14 @@ const LyricTranslationPanel: React.FC = () => {
     }
   }, [translationMode, t, isPromptDirty]);
 
-  const parseLlmOutput = (output: string) => parseLyricsFromLlmOutput(output);
+  const parseLlmOutput = (output: string): Omit<TranslationPreviewData, 'rawLLMOutput'> => {
+    const currentLyrics = lyrics ?? [];
+    const translationUpdates = parseLyricTranslationsFromLlmOutput(output, currentLyrics.length);
+    return {
+      translatedLyrics: buildTranslationPreview(currentLyrics, translationUpdates),
+      translationUpdates,
+    };
+  };
 
   const handleTranslate = async () => {
     if (!lyrics || lyrics.length === 0) {
@@ -197,7 +226,7 @@ const LyricTranslationPanel: React.FC = () => {
 
       try {
         const parsedJson = parseLlmOutput(llmOutput);
-        setPreviewData({ translatedLyrics: parsedJson, rawLLMOutput: llmOutput });
+        setPreviewData({ ...parsedJson, rawLLMOutput: llmOutput });
       } catch (e) {
         setError((e as Error).message);
         setEditableLlmOutput(llmOutput);
@@ -213,7 +242,7 @@ const LyricTranslationPanel: React.FC = () => {
   const handleRevalidate = () => {
     try {
       const parsedJson = parseLlmOutput(editableLlmOutput);
-      setPreviewData({ translatedLyrics: parsedJson, rawLLMOutput: editableLlmOutput });
+      setPreviewData({ ...parsedJson, rawLLMOutput: editableLlmOutput });
       setError(null);
       setEditableLlmOutput('');
     } catch (e) {
@@ -239,11 +268,7 @@ const LyricTranslationPanel: React.FC = () => {
   
   const handleConfirm = async () => {
     if (previewData) {
-      const formattedForStore = previewData.translatedLyrics.map((line, idx) => ({
-          index: idx,
-          translation: line.translation || ''
-      }));
-      await updateLyricTranslations(formattedForStore);
+      await updateLyricTranslations(previewData.translationUpdates);
       toast.success(t('lyricTranslationPanel.translationAppliedSuccess') || 'Translation applied!');
     }
     setPreviewData(null);
@@ -252,12 +277,11 @@ const LyricTranslationPanel: React.FC = () => {
 
   const handleDirectImport = async () => {
     try {
-        const parsedLyrics = JSON.parse(jsonInput);
-        const formattedForStore = parsedLyrics.map((line: any, idx: number) => ({
-            index: idx,
-            translation: line.translation || ''
-        }));
-        await updateLyricTranslations(formattedForStore);
+        if (!lyrics || lyrics.length === 0) {
+            throw new Error(t('lyricTranslationPanel.noSongLoaded'));
+        }
+        const translationUpdates = parseLyricTranslationsFromLlmOutput(jsonInput, lyrics.length);
+        await updateLyricTranslations(translationUpdates);
         toast.success(t('lyricTranslationPanel.translationAppliedSuccess') || 'Translation applied!');
         setActivePanel('TOOL_PANEL');
     } catch (e) {

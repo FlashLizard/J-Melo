@@ -66,6 +66,21 @@ def is_pure_kana_or_punct(s: str) -> bool:
 def ms_to_seconds(ms):
     return round(int(ms) / 1000.0, 2)
 
+def _node_text(node: ET.Element, child_name: str) -> str:
+    child = node.find(child_name)
+    return child.text.strip() if child is not None and child.text else ""
+
+def _duration_ms_to_seconds(raw_duration: str) -> float | None:
+    if not raw_duration:
+        return None
+    try:
+        duration_ms = int(raw_duration)
+    except (TypeError, ValueError):
+        return None
+    if duration_ms <= 0:
+        return None
+    return round(duration_ms / 1000.0, 2)
+
 def lsy_decoder(lsy_base64_lyric, lyrics_text_base64):
     """Decodes PetitLyrics Type 2 (LSY) format into timestamps and text lines."""
     try:
@@ -199,15 +214,14 @@ async def search_petitlyrics(title: str, artist: str = ""):
                 avail_node = song.find('availableLyricsType')
                 avail_types = avail_node.text if avail_node is not None and avail_node.text else "1"
                 
-                title_node = song.find('title')
-                artist_node = song.find('artist')
-                album_node = song.find('album')
+                duration_seconds = _duration_ms_to_seconds(_node_text(song, 'duration'))
                 
                 results.append({
                     'lyricsId': lid,
-                    'title': title_node.text if title_node is not None else "",
-                    'artist': artist_node.text if artist_node is not None else "",
-                    'album': album_node.text if album_node is not None else "",
+                    'title': _node_text(song, 'title'),
+                    'artist': _node_text(song, 'artist'),
+                    'album': _node_text(song, 'album'),
+                    'duration': duration_seconds,
                     'lyricsType': 'word' if '3' in avail_types else ('sentence' if '2' in avail_types else 'none')
                 })
                 

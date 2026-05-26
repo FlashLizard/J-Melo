@@ -9,6 +9,23 @@ import toast from 'react-hot-toast';
 import cn from 'classnames';
 import { getJson } from '@/lib/backendClient';
 
+type PetitLyricsSearchResult = {
+  lyricsId: string;
+  title: string;
+  artist: string;
+  album?: string;
+  duration?: number | null;
+  lyricsType: 'word' | 'sentence' | 'none';
+};
+
+const formatDuration = (duration?: number | null) => {
+  if (typeof duration !== 'number' || !Number.isFinite(duration) || duration <= 0) return null;
+  const totalSeconds = Math.round(duration);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+};
+
 const PetitLyricsImporter: React.FC = () => {
   const { song, setProcessedLyrics, updateSongInfo } = useSongStore();
   const { settings } = useSettingsStore();
@@ -18,7 +35,7 @@ const PetitLyricsImporter: React.FC = () => {
   const [step, setStep] = useState<'title' | 'search' | 'loading' | 'success'>('title');
   const [songTitle, setSongTitle] = useState('');
   const [songArtist, setSongArtist] = useState('');
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<PetitLyricsSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,7 +65,7 @@ const PetitLyricsImporter: React.FC = () => {
     setIsSearching(true);
     setError(null);
     try {
-      const data = await getJson<{ results: any[] }>(settings.backendUrl, '/api/lyrics/search-petitlyrics', {
+      const data = await getJson<{ results: PetitLyricsSearchResult[] }>(settings.backendUrl, '/api/lyrics/search-petitlyrics', {
         q: songTitle,
         artist: songArtist,
       });
@@ -160,25 +177,35 @@ const PetitLyricsImporter: React.FC = () => {
               </div>
             ) : (
               <div className="space-y-2">
-                {results.map((res, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => handleSelectLyric(res.lyricsId)}
-                    className="w-full text-left p-4 rounded-xl bg-gray-700/40 hover:bg-gray-700 border border-gray-700 hover:border-indigo-500 transition-all group"
-                  >
-                    <div className="flex justify-between items-start mb-1">
-                        <span className="font-bold text-gray-100 group-hover:text-indigo-300 transition-colors line-clamp-1">{res.title}</span>
-                        <span className={cn("text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ml-2 shrink-0", 
-                            res.lyricsType === 'word' ? "bg-emerald-900/40 text-emerald-400 border border-emerald-800/50" : 
-                            res.lyricsType === 'sentence' ? "bg-blue-900/40 text-blue-400 border border-blue-800/50" : 
-                            "bg-gray-800 text-gray-500"
-                        )}>
-                            {res.lyricsType === 'word' ? 'Word-level' : (res.lyricsType === 'sentence' ? 'Sentence-level' : 'No Timeline')}
-                        </span>
-                    </div>
-                    <p className="text-xs text-gray-400 line-clamp-1">{res.artist} {res.album && `• ${res.album}`}</p>
-                  </button>
-                ))}
+                {results.map((res, idx) => {
+                  const durationText = formatDuration(res.duration);
+                  return (
+                    <button
+                      key={res.lyricsId || idx}
+                      onClick={() => handleSelectLyric(res.lyricsId)}
+                      className="w-full text-left p-4 rounded-xl bg-gray-700/40 hover:bg-gray-700 border border-gray-700 hover:border-indigo-500 transition-all group"
+                    >
+                      <div className="flex justify-between items-start gap-3 mb-1">
+                          <span className="font-bold text-gray-100 group-hover:text-indigo-300 transition-colors line-clamp-1 min-w-0">{res.title}</span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {durationText && (
+                              <span className="text-[10px] px-2 py-0.5 rounded font-bold tabular-nums bg-gray-900/70 text-gray-300 border border-gray-600/70">
+                                  {durationText}
+                              </span>
+                            )}
+                            <span className={cn("text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider",
+                                res.lyricsType === 'word' ? "bg-emerald-900/40 text-emerald-400 border border-emerald-800/50" :
+                                res.lyricsType === 'sentence' ? "bg-blue-900/40 text-blue-400 border border-blue-800/50" :
+                                "bg-gray-800 text-gray-500"
+                            )}>
+                                {res.lyricsType === 'word' ? 'Word-level' : (res.lyricsType === 'sentence' ? 'Sentence-level' : 'No Timeline')}
+                            </span>
+                          </div>
+                      </div>
+                      <p className="text-xs text-gray-400 line-clamp-1">{res.artist} {res.album && `• ${res.album}`}</p>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>

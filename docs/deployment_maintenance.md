@@ -78,7 +78,7 @@ sudo journalctl -u j-melo-backend -n 100 --no-pager
 `media_command_concurrency` 控制 yt-dlp 信息抓取、搜索和下载子进程的并发数，默认 1。小型 VPS 或共享环境建议保持默认值；若服务器资源充足可适度调高，并配合 `media_command_queue_timeout_seconds` 控制排队等待时间。
 媒体抓取接口使用异步子进程，不会长期占用 FastAPI 请求线程池；成功抓取后会写入 `media_cache_index.db`，重复 URL 会直接命中本地缓存。社区封面等外部图片代理由 `image_proxy_concurrency` 限制并发。
 
-YouTube 导入在云服务器上更容易遇到地区、登录态、PO Token、JS challenge 或出口 IP 风控。后端支持这些 yt-dlp 相关配置：
+YouTube 导入在云服务器上更容易遇到地区、登录态、PO Token、JS challenge 或出口 IP 风控；Bilibili 也可能因为非浏览器请求、出口地区或登录态返回 `HTTP Error 412: Precondition Failed`。后端支持这些 yt-dlp 相关配置：
 
 ```json
 {
@@ -96,6 +96,7 @@ YouTube 导入在云服务器上更容易遇到地区、登录态、PO Token、J
 ```
 
 `yt_dlp_cookies_file` 是 Netscape cookies.txt 文件路径，可相对 `backend/`。`yt_dlp_extractor_args` 每项会作为一次 `--extractor-args` 传给 yt-dlp；`yt_dlp_extra_args` 每项会原样作为一个命令行参数传给 yt-dlp。修改这些配置后需要重启后端服务。
+J-Melo 会对 Bilibili URL 自动附加浏览器风格的 `Referer`、`Origin` 和 `User-Agent` 头，以规避常见 412；如果仍失败，通常需要升级 yt-dlp、调整代理出口或提供能观看该视频的 cookies。
 
 建议定期更新 yt-dlp：
 
@@ -132,6 +133,7 @@ python -m uvicorn --app-dir . main:app --host 127.0.0.1 --port 8000
 - 后端提示 `Could not import module "main"`：确认启动目录是 `/opt/J-Melo/backend`，并使用 `/opt/J-Melo/backend/venv/bin/python -m uvicorn --app-dir /opt/J-Melo/backend main:app`；再用 `J_MELO_SKIP_MODELS=1 python -c "import main"` 查看缺失依赖或路径错误。
 - 后端空闲一段时间后不可用：确认进程不是跑在会断开的 SSH/终端会话里；给 systemd/Docker 配置自动重启；在 Nginx、云平台或外部监控中用 `/api/health` 做健康检查或低频保活。
 - YouTube 返回 `Video unavailable`：先升级 yt-dlp；确认服务器出口地区能观看该视频；必要时配置 `proxy`、`yt_dlp_cookies_file`、`yt_dlp_js_runtimes`、`yt_dlp_extractor_args` 或 `yt_dlp_extra_args`。如果某个视频本身已下架、私有或地区不可见，后端无法绕过平台限制。
+- Bilibili 返回 `HTTP Error 412: Precondition Failed`：新版后端会自动添加浏览器请求头；如果仍失败，先升级 yt-dlp，再确认服务器出口能正常打开该视频，必要时配置 `proxy` 或 `yt_dlp_cookies_file`。
 - 媒体导入返回 503 或日志出现 `Too many open files`：保持 `media_command_concurrency` 为 1，稍后重试；若长期出现，检查系统文件描述符限制和是否有卡住的 yt-dlp/ffmpeg 进程。
 - Explore 页面加载很慢：适当降低 `image_proxy_concurrency`，并确认反向代理没有禁用浏览器缓存。
 - 转录任务一直排队：检查 `task_worker_enabled`、后端日志和模型是否加载成功。

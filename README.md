@@ -201,6 +201,7 @@ cd E:\apps\J-Melo\app; npm run start -- --hostname 127.0.0.1 --port 3000
 `media_command_concurrency` 控制 yt-dlp 抓取、下载和搜索子进程并发数，默认 1，适合小型服务器并可避免文件描述符耗尽；媒体抓取结果会写入 `media_cache_index.db`，同一 URL 后续导入会直接复用缓存文件。
 `image_proxy_concurrency` 控制社区封面等外部图片代理并发，避免 Explore 页面一次性打开大量外部连接。
 YouTube 在 VPS 或代理出口上经常会因地区、登录态、PO Token、JS challenge 或 yt-dlp 版本过旧返回 `Video unavailable`。建议保持 `yt_dlp_force_ipv4` 开启；如果浏览器能看但后端不能抓，优先升级 yt-dlp，然后配置 `yt_dlp_cookies_file`、`yt_dlp_js_runtimes`、`yt_dlp_extractor_args` 或 `yt_dlp_extra_args`。这些字段也可以在后台管理页保存。
+Bilibili 有时会对非浏览器请求返回 `HTTP Error 412: Precondition Failed`。J-Melo 会对 Bilibili URL 自动附加浏览器风格的 `Referer`、`Origin` 和 `User-Agent` 头；如果仍失败，优先升级 yt-dlp，并检查代理出口地区或配置登录 cookies。
 测试或 CI 可以设置环境变量 `J_MELO_SKIP_MODELS=1` 暂时跳过转录和对齐模型加载；如需隔离真实配置，可用 `J_MELO_CONFIG_FILE` 指向临时配置文件。
 
 ## Linux 部署教程
@@ -325,7 +326,7 @@ source venv/bin/activate
 J_MELO_SKIP_MODELS=1 python -c "import main; print('backend import ok')"
 ```
 
-如果 YouTube 导入经常返回 `yt-dlp info error: Video unavailable`，先在后端虚拟环境中升级 yt-dlp：
+如果 YouTube 导入经常返回 `yt-dlp info error: Video unavailable`，或 Bilibili 返回 `HTTP Error 412: Precondition Failed`，先在后端虚拟环境中升级 yt-dlp：
 
 ```bash
 cd /opt/J-Melo/backend

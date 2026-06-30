@@ -26,6 +26,11 @@ YTDLP_DOWNLOAD_TIMEOUT_SECONDS = 240
 YTDLP_SEARCH_TIMEOUT_SECONDS = 60
 MEDIA_INDEX_PATH = BASE_DIR / "media_cache_index.db"
 YOUTUBE_FALLBACK_EXTRACTOR_ARGS = ["youtube:player_client=mweb,web_safari,web_embedded,android,ios"]
+BILIBILI_BROWSER_HEADERS = [
+    ("Referer", "https://www.bilibili.com"),
+    ("Origin", "https://www.bilibili.com"),
+    ("User-Agent", DEFAULT_USER_AGENT),
+]
 
 
 def _positive_int_config(key: str, default: int) -> int:
@@ -113,6 +118,28 @@ def _is_youtube_url(url: str) -> bool:
     return host.endswith("youtube.com") or host.endswith("youtu.be") or host.endswith("youtube-nocookie.com")
 
 
+def _is_bilibili_url(url: str) -> bool:
+    host = urlparse(url).netloc.lower()
+    return (
+        host.endswith("bilibili.com")
+        or host.endswith("bilibili.tv")
+        or host.endswith("b23.tv")
+    )
+
+
+def _bilibili_browser_header_args(url: str) -> list[str]:
+    if not _is_bilibili_url(url):
+        return []
+    args: list[str] = []
+    for key, value in BILIBILI_BROWSER_HEADERS:
+        args.extend(["--add-header", f"{key}:{value}"])
+    return args
+
+
+def _provider_initial_args(url: str) -> list[str]:
+    return _bilibili_browser_header_args(url)
+
+
 def _has_configured_youtube_player_client() -> bool:
     return any("youtube:" in arg and "player_client" in arg for arg in _string_list_config("yt_dlp_extractor_args"))
 
@@ -147,6 +174,21 @@ def _with_youtube_hint(url: str, detail: str) -> str:
         "set yt_dlp_extractor_args/yt_dlp_extra_args for PO token or player-client workarounds",
     ]
     return f"{detail}. YouTube often returns this when the server IP, region, login state, PO token, or yt-dlp version is unsuitable; try to {', '.join(hints)}."
+
+
+def _with_bilibili_hint(url: str, detail: str) -> str:
+    if not _is_bilibili_url(url):
+        return detail
+    hints = [
+        "update yt-dlp in the backend venv, preferably to the latest release or nightly",
+        "configure a backend proxy whose exit region can access BiliBili normally",
+        "set yt_dlp_cookies_file to a Netscape cookies.txt exported from a browser that can watch this video",
+    ]
+    return f"{detail}. BiliBili may return HTTP 412 when it rejects non-browser or unsuitable-region requests; J-Melo sends browser Referer/Origin/User-Agent headers automatically, and if it still fails, try to {', '.join(hints)}."
+
+
+def _with_provider_hint(url: str, detail: str) -> str:
+    return _with_bilibili_hint(url, _with_youtube_hint(url, detail))
 
 
 def safe_media_id(raw_id: str | None, fallback: str = "media") -> str:
@@ -410,7 +452,7 @@ async def _get_fetch_lock(source_url: str) -> asyncio.Lock:
 
 def fetch_media_info(url: str) -> dict:
     normalized_url = validate_external_http_url(url, resolve_hostname=False)
-    command = _yt_dlp_command("--dump-json", "--no-playlist", "--socket-timeout", "20", normalized_url)
+    command = _yt_dlp_command("--dump-json", "--no-playlist", "--socket-timeout", "20", normalized_url, extra_args=_provider_initial_args(normalized_url))
     try:
         result = _run_media_command(command, timeout=YTDLP_INFO_TIMEOUT_SECONDS, text=True)
         return json.loads(result.stdout)
@@ -430,14 +472,14 @@ def fetch_media_info(url: str) -> dict:
             except subprocess.TimeoutExpired:
                 raise HTTPException(status_code=504, detail="Timed out while fetching media information")
         log_info(f"yt-dlp info error: {detail}")
-        raise HTTPException(status_code=400, detail=_with_youtube_hint(normalized_url, detail))
+        raise HTTPException(status_code=400, detail=_with_provider_hint(normalized_url, detail))
     except json.JSONDecodeError:
         raise HTTPException(status_code=502, detail="Media provider returned an invalid response")
 
 
 async def fetch_media_info_async(url: str) -> dict:
     normalized_url = validate_external_http_url(url, resolve_hostname=False)
-    command = _yt_dlp_command("--dump-json", "--no-playlist", "--socket-timeout", "20", normalized_url)
+    command = _yt_dlp_command("--dump-json", "--no-playlist", "--socket-timeout", "20", normalized_url, extra_args=_provider_initial_args(normalized_url))
     try:
         result = await _run_media_command_async(command, timeout=YTDLP_INFO_TIMEOUT_SECONDS, text=True)
         return json.loads(result.stdout)
@@ -457,7 +499,7 @@ async def fetch_media_info_async(url: str) -> dict:
             except subprocess.TimeoutExpired:
                 raise HTTPException(status_code=504, detail="Timed out while fetching media information")
         log_info(f"yt-dlp info error: {detail}")
-        raise HTTPException(status_code=400, detail=_with_youtube_hint(normalized_url, detail))
+        raise HTTPException(status_code=400, detail=_with_provider_hint(normalized_url, detail))
     except json.JSONDecodeError:
         raise HTTPException(status_code=502, detail="Media provider returned an invalid response")
 
@@ -478,6 +520,7 @@ def download_media(info: dict, destination: str) -> None:
         "-o",
         destination,
         url,
+        extra_args=_provider_initial_args(url),
     )
     try:
         _run_media_command(command, timeout=YTDLP_DOWNLOAD_TIMEOUT_SECONDS, stdout=subprocess.DEVNULL)
@@ -510,7 +553,7 @@ def download_media(info: dict, destination: str) -> None:
                 detail = _extract_yt_dlp_error(retry_error.stderr, detail)
             except subprocess.TimeoutExpired:
                 raise HTTPException(status_code=504, detail="Timed out while downloading media")
-        raise HTTPException(status_code=502, detail=f"Download failed: {_with_youtube_hint(url, detail)}")
+        raise HTTPException(status_code=502, detail=f"Download failed: {_with_provider_hint(url, detail)}")
 
 
 async def download_media_async(info: dict, destination: str) -> None:
@@ -529,6 +572,7 @@ async def download_media_async(info: dict, destination: str) -> None:
         "-o",
         destination,
         url,
+        extra_args=_provider_initial_args(url),
     )
     try:
         await _run_media_command_async(command, timeout=YTDLP_DOWNLOAD_TIMEOUT_SECONDS, stdout=subprocess.DEVNULL)
@@ -561,7 +605,7 @@ async def download_media_async(info: dict, destination: str) -> None:
                 detail = _extract_yt_dlp_error(retry_error.stderr, detail)
             except subprocess.TimeoutExpired:
                 raise HTTPException(status_code=504, detail="Timed out while downloading media")
-        raise HTTPException(status_code=502, detail=f"Download failed: {_with_youtube_hint(url, detail)}")
+        raise HTTPException(status_code=502, detail=f"Download failed: {_with_provider_hint(url, detail)}")
 
 
 async def fetch_media(url: str) -> dict:

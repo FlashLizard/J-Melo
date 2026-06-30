@@ -53,6 +53,26 @@ def test_youtube_retry_args_respect_configured_player_client(monkeypatch):
     assert retry_args == []
 
 
+def test_bilibili_urls_get_browser_headers():
+    args = media_logic._provider_initial_args("https://www.bilibili.com/video/BV1Vs411j7nQ")
+
+    assert "--add-header" in args
+    assert "Referer:https://www.bilibili.com" in args
+    assert "Origin:https://www.bilibili.com" in args
+    assert any(item.startswith("User-Agent:Mozilla/5.0") for item in args)
+
+
+def test_bilibili_hint_explains_412_workaround():
+    detail = media_logic._with_provider_hint(
+        "https://www.bilibili.com/video/BV1Vs411j7nQ",
+        "HTTP Error 412: Precondition Failed",
+    )
+
+    assert "BiliBili" in detail
+    assert "HTTP 412" in detail
+    assert "Referer/Origin/User-Agent" in detail
+
+
 def test_safe_media_id_removes_path_and_shell_characters():
     assert media_logic.safe_media_id("../bad;id?.mp4") == "bad_id_mp4"
     assert media_logic.safe_media_id("") == "media"

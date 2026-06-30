@@ -2,6 +2,9 @@
 
 J-Melo 是一个面向“自托管小圈子”的日语歌学习工具：前端负责本地歌曲库、歌词编辑、词卡和复习；后端负责媒体抓取、语音转录、歌词对齐、社区分享与管理。它不假设大型公开平台，也不引入 Redis、Celery 或账号体系，核心目标是轻量、可迁移、可自管。
 
+- 官网：[j-melo.flashlizard.top](https://j-melo.flashlizard.top/)
+- 演示视频：[Bilibili BV16AADzPExn](https://www.bilibili.com/video/BV16AADzPExn/)
+
 ## 功能概览
 
 - 歌曲导入：通过 URL 抓取 YouTube、Bilibili、网易云等 yt-dlp 支持的媒体，并缓存为本地音频。
@@ -101,6 +104,224 @@ npm run dev
 `media_command_concurrency` 控制 yt-dlp 抓取、下载和搜索子进程并发数，默认 1，适合小型服务器并可避免文件描述符耗尽；媒体抓取结果会写入 `media_cache_index.db`，同一 URL 后续导入会直接复用缓存文件。
 `image_proxy_concurrency` 控制社区封面等外部图片代理并发，避免 Explore 页面一次性打开大量外部连接。
 测试或 CI 可以设置环境变量 `J_MELO_SKIP_MODELS=1` 暂时跳过转录和对齐模型加载；如需隔离真实配置，可用 `J_MELO_CONFIG_FILE` 指向临时配置文件。
+
+## Linux 部署教程
+
+下面以 Ubuntu/Debian、前后端同一台服务器、Nginx 反向代理为例。示例域名请替换为自己的域名，例如前端 `https://j-melo.example.com`、后端 `https://j-melo-api.example.com`。
+
+### 1. 安装系统依赖
+
+```bash
+sudo apt update
+sudo apt install -y git curl nginx ffmpeg python3 python3-venv python3-pip build-essential
+
+# Node.js 需要 20 或更高版本；如果系统源版本过旧，可使用 NodeSource 或 nvm。
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+node -v
+npm -v
+```
+
+### 2. 拉取代码
+
+```bash
+sudo mkdir -p /opt/J-Melo
+sudo chown -R "$USER:$USER" /opt/J-Melo
+git clone https://github.com/FlashLizard/J-Melo.git /opt/J-Melo
+cd /opt/J-Melo
+```
+
+如果是私有部署或 fork，也可以把仓库地址替换为自己的远程仓库。
+
+### 3. 部署后端
+
+```bash
+cd /opt/J-Melo/backend
+python3 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+cp config.json.example config.json
+```
+
+编辑 `backend/config.json`，至少修改下面几项：
+
+```json
+{
+  "admin_token": "replace-with-a-long-random-token",
+  "cors_origins": ["https://j-melo.example.com"],
+  "load_transcription_model": true,
+  "load_alignment_model": true,
+  "media_command_concurrency": 1
+}
+```
+
+小内存服务器可以先把 `load_transcription_model` 和 `load_alignment_model` 设为 `false`，确认媒体导入、歌词导入和社区功能正常后再开启模型。
+
+创建 systemd 服务：
+
+```bash
+sudo tee /etc/systemd/system/j-melo-backend.service >/dev/null <<'EOF'
+[Unit]
+Description=J-Melo backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=YOUR_LINUX_USER
+WorkingDirectory=/opt/J-Melo/backend
+Environment=J_MELO_SKIP_MODELS=0
+ExecStart=/opt/J-Melo/backend/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000 --proxy-headers
+Restart=always
+RestartSec=5
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+把 `YOUR_LINUX_USER` 替换成实际部署用户，然后启动：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now j-melo-backend
+sudo systemctl status j-melo-backend
+curl http://127.0.0.1:8000/api/health
+```
+
+### 4. 部署前端
+
+```bash
+cd /opt/J-Melo/app
+npm ci
+cp public/config.json.example public/config.json
+```
+
+编辑 `app/public/config.json`，把后端地址指向公网 HTTPS 后端：
+
+```json
+{
+  "backendUrl": "https://j-melo-api.example.com"
+}
+```
+
+构建前端：
+
+```bash
+npm run build
+```
+
+创建 systemd 服务：
+
+```bash
+sudo tee /etc/systemd/system/j-melo-frontend.service >/dev/null <<'EOF'
+[Unit]
+Description=J-Melo frontend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=YOUR_LINUX_USER
+WorkingDirectory=/opt/J-Melo/app
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm run start -- --hostname 127.0.0.1 --port 3000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+启动前端：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now j-melo-frontend
+sudo systemctl status j-melo-frontend
+curl http://127.0.0.1:3000
+```
+
+### 5. 配置 Nginx 反向代理
+
+前端站点：
+
+```nginx
+server {
+    listen 80;
+    server_name j-melo.example.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+后端站点：
+
+```nginx
+server {
+    listen 80;
+    server_name j-melo-api.example.com;
+
+    client_max_body_size 80m;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+    }
+}
+```
+
+保存到 `/etc/nginx/sites-available/j-melo` 后启用：
+
+```bash
+sudo ln -s /etc/nginx/sites-available/j-melo /etc/nginx/sites-enabled/j-melo
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+生产环境请用 Certbot、云厂商证书或其他方式开启 HTTPS。开启 HTTPS 后，记得同步修改：
+
+- `backend/config.json` 的 `cors_origins`
+- `app/public/config.json` 的 `backendUrl`
+- Nginx 的 `server_name` 和证书配置
+
+### 6. 更新部署
+
+```bash
+cd /opt/J-Melo
+git pull --ff-only
+
+cd backend
+source venv/bin/activate
+pip install -r requirements.txt
+python -m py_compile main.py api/routes.py core/config.py core/models.py core/utils.py services/*.py
+sudo systemctl restart j-melo-backend
+
+cd ../app
+npm ci
+npm run build
+sudo systemctl restart j-melo-frontend
+```
+
+如果更新后前端连不上后端，先检查 `https://你的后端域名/api/health`。如果公网返回 502/504，通常是后端进程或 Nginx upstream 问题；如果 health 正常但浏览器报 CORS，再检查 `cors_origins` 是否包含当前前端域名。
 
 ## API 兼容性
 

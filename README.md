@@ -49,29 +49,121 @@ backend/                 FastAPI 后端
 docs/                    中文专题文档
 ```
 
-## 开发启动
+## Windows 部署教程
 
-后端：
+Windows 适合本机学习、局域网共享或小型自托管。下面命令使用 PowerShell；如果要长期公网运行，更推荐参考后面的 Linux systemd + Nginx 部署方式。
 
-```bash
+### 1. 安装依赖
+
+先安装 Git、Python、Node.js 和 FFmpeg。可以使用安装包，也可以用 winget：
+
+```powershell
+winget install --id Git.Git -e
+winget install --id Python.Python.3.12 -e
+winget install --id OpenJS.NodeJS.LTS -e
+winget install --id Gyan.FFmpeg -e
+```
+
+安装后重新打开 PowerShell，确认命令可用：
+
+```powershell
+git --version
+python --version
+node --version
+npm --version
+ffmpeg -version
+```
+
+### 2. 拉取代码
+
+```powershell
+git clone https://github.com/FlashLizard/J-Melo.git E:\apps\J-Melo
+cd E:\apps\J-Melo
+```
+
+如果使用自己的 fork，把仓库地址替换为自己的远程仓库即可。
+
+### 3. 部署后端
+
+第一次部署：
+
+```powershell
 cd backend
 python -m venv venv
 .\venv\Scripts\activate
+python -m pip install --upgrade pip
 pip install -r requirements.txt
-copy config.json.example config.json
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+Copy-Item config.json.example config.json
 ```
 
-前端：
+编辑 `backend/config.json`，本机使用时至少保留：
 
-```bash
+```json
+{
+  "admin_token": "replace-with-a-long-random-token",
+  "cors_origins": ["http://localhost:3000", "http://127.0.0.1:3000"],
+  "media_command_concurrency": 1
+}
+```
+
+启动后端：
+
+```powershell
+cd E:\apps\J-Melo\backend
+.\venv\Scripts\activate
+uvicorn main:app --host 127.0.0.1 --port 8000
+```
+
+开发调试时可以改用：
+
+```powershell
+uvicorn main:app --reload --host 127.0.0.1 --port 8000
+```
+
+### 4. 部署前端
+
+第一次部署：
+
+```powershell
 cd app
-npm install
-copy public\config.json.example public\config.json
+npm ci
+Copy-Item public\config.json.example public\config.json
+```
+
+编辑 `app/public/config.json`：
+
+```json
+{
+  "backendUrl": "http://127.0.0.1:8000"
+}
+```
+
+生产模式构建并启动：
+
+```powershell
+cd E:\apps\J-Melo\app
+npm run build
+npm run start -- --hostname 127.0.0.1 --port 3000
+```
+
+开发调试时可以改用：
+
+```powershell
 npm run dev
 ```
 
-打开 `http://localhost:3000`。如果后端不在 `http://localhost:8000`，请修改 `app/public/config.json` 或前端设置页里的后端地址。
+打开 `http://localhost:3000`。如果后端不在 `http://127.0.0.1:8000`，请修改 `app/public/config.json` 或前端设置页里的后端地址。
+
+### 5. Windows 后台常驻
+
+最简单的方式是保留两个 PowerShell 窗口分别运行后端和前端。如果需要开机自启或无人值守，可以把下面两条命令交给 NSSM、任务计划程序、PM2 或其他进程管理器：
+
+```powershell
+cd E:\apps\J-Melo\backend; .\venv\Scripts\activate; uvicorn main:app --host 127.0.0.1 --port 8000
+cd E:\apps\J-Melo\app; npm run start -- --hostname 127.0.0.1 --port 3000
+```
+
+公网访问时请在反向代理或网关上启用 HTTPS，并把 `backend/config.json` 的 `cors_origins` 改成真实前端域名。
 
 ## 后端配置
 
@@ -107,7 +199,7 @@ npm run dev
 
 ## Linux 部署教程
 
-下面以 Ubuntu/Debian、前后端同一台服务器、Nginx 反向代理为例。示例域名请替换为自己的域名，例如前端 `https://j-melo.example.com`、后端 `https://j-melo-api.example.com`。
+Linux 是推荐的生产部署方式。下面以 Ubuntu/Debian、前后端同一台服务器、systemd 后台守护、Nginx 反向代理为例。示例域名请替换为自己的域名，例如前端 `https://j-melo.example.com`、后端 `https://j-melo-api.example.com`。
 
 ### 1. 安装系统依赖
 

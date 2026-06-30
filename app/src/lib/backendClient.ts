@@ -34,13 +34,31 @@ export const buildApiUrl = (backendUrl: string, path: string, params?: Record<st
 };
 
 const readErrorMessage = async (response: Response) => {
-  try {
-    const body = await response.json();
-    const message = body.detail || body.error?.message || response.statusText;
+  const parseBody = (body: unknown) => {
+    const record = body as { detail?: unknown; error?: { message?: unknown } };
+    const message = record.detail || record.error?.message || response.statusText;
     return { message: typeof message === 'string' ? message : JSON.stringify(message), detail: body };
+  };
+
+  let text = '';
+  try {
+    text = await response.text();
   } catch {
-    const text = await response.text().catch(() => '');
-    return { message: text || response.statusText, detail: text };
+    text = '';
+  }
+
+  if (text) {
+    try {
+      return parseBody(JSON.parse(text));
+    } catch {
+      return { message: text || response.statusText, detail: text };
+    }
+  }
+
+  try {
+    return parseBody(await response.json());
+  } catch {
+    return { message: response.statusText || 'Backend request failed', detail: text };
   }
 };
 
@@ -88,6 +106,10 @@ export async function requestJson<T>(
       });
     } catch (error) {
       if ((error as Error).name === 'AbortError') {
+        if (!fetchOptions.signal && attempt < maxRetries) {
+          await wait(retryDelay(retryDelayMs, attempt));
+          continue;
+        }
         throw new ApiError('Backend request timed out', 408);
       }
       if (attempt < maxRetries) {

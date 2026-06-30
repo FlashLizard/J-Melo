@@ -31,5 +31,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
 
 # Run uvicorn when the container launches
 # The host is set to 0.0.0.0 to allow external connections
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "uvicorn", "--app-dir", "/code", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 

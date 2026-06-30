@@ -188,13 +188,19 @@ cd E:\apps\J-Melo\app; npm run start -- --hostname 127.0.0.1 --port 3000
   "max_upload_mb": 50,
   "media_command_concurrency": 1,
   "media_command_queue_timeout_seconds": 30,
-  "image_proxy_concurrency": 8
+  "image_proxy_concurrency": 8,
+  "yt_dlp_cookies_file": null,
+  "yt_dlp_force_ipv4": true,
+  "yt_dlp_js_runtimes": null,
+  "yt_dlp_extractor_args": [],
+  "yt_dlp_extra_args": []
 }
 ```
 
 公网部署时建议把 `cors_origins` 写成明确域名；如果需要管理后台，请务必设置 `admin_token`。
 `media_command_concurrency` 控制 yt-dlp 抓取、下载和搜索子进程并发数，默认 1，适合小型服务器并可避免文件描述符耗尽；媒体抓取结果会写入 `media_cache_index.db`，同一 URL 后续导入会直接复用缓存文件。
 `image_proxy_concurrency` 控制社区封面等外部图片代理并发，避免 Explore 页面一次性打开大量外部连接。
+YouTube 在 VPS 或代理出口上经常会因地区、登录态、PO Token、JS challenge 或 yt-dlp 版本过旧返回 `Video unavailable`。建议保持 `yt_dlp_force_ipv4` 开启；如果浏览器能看但后端不能抓，优先升级 yt-dlp，然后配置 `yt_dlp_cookies_file`、`yt_dlp_js_runtimes`、`yt_dlp_extractor_args` 或 `yt_dlp_extra_args`。这些字段也可以在后台管理页保存。
 测试或 CI 可以设置环境变量 `J_MELO_SKIP_MODELS=1` 暂时跳过转录和对齐模型加载；如需隔离真实配置，可用 `J_MELO_CONFIG_FILE` 指向临时配置文件。
 
 ## Linux 部署教程
@@ -224,6 +230,7 @@ cd /opt/J-Melo
 ```
 
 如果是私有部署或 fork，也可以把仓库地址替换为自己的远程仓库。
+如果准备使用专门的服务用户运行 J-Melo，请在后续命令中把文件属主和 systemd 的 `User=` 改成同一个用户，避免服务启动后无法写入配置、SQLite 和缓存目录。
 
 ### 3. 部署后端
 
@@ -234,6 +241,9 @@ source venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 cp config.json.example config.json
+
+# 先验证 Python 能在 backend 目录导入 main.py；这一步不加载模型。
+J_MELO_SKIP_MODELS=1 python -c "import main; print('backend import ok')"
 ```
 
 编辑 `backend/config.json`，至少修改下面几项：
@@ -244,11 +254,21 @@ cp config.json.example config.json
   "cors_origins": ["https://j-melo.example.com"],
   "load_transcription_model": true,
   "load_alignment_model": true,
-  "media_command_concurrency": 1
+  "media_command_concurrency": 1,
+  "yt_dlp_force_ipv4": true
 }
 ```
 
 小内存服务器可以先把 `load_transcription_model` 和 `load_alignment_model` 设为 `false`，确认媒体导入、歌词导入和社区功能正常后再开启模型。
+
+创建运行时目录，并确保服务用户可写：
+
+```bash
+mkdir -p /opt/J-Melo/.runtime /opt/J-Melo/backend/media_cache /opt/J-Melo/backend/temp_data /opt/J-Melo/backend/transcription_cache
+sudo chown -R YOUR_LINUX_USER:YOUR_LINUX_USER /opt/J-Melo
+```
+
+这里和下面 systemd 文件中的 `YOUR_LINUX_USER` 都要替换为实际 Linux 用户；如果你直接使用当前用户部署，可以用 `whoami` 查看用户名。
 
 创建 systemd 服务：
 
@@ -263,8 +283,14 @@ Wants=network-online.target
 Type=simple
 User=YOUR_LINUX_USER
 WorkingDirectory=/opt/J-Melo/backend
+Environment=PATH=/opt/J-Melo/backend/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin
+Environment=HOME=/opt/J-Melo/.runtime
+Environment=XDG_CACHE_HOME=/opt/J-Melo/.runtime/.cache
+Environment=HF_HOME=/opt/J-Melo/.runtime/.cache/huggingface
+Environment=TORCH_HOME=/opt/J-Melo/.runtime/.cache/torch
 Environment=J_MELO_SKIP_MODELS=0
-ExecStart=/opt/J-Melo/backend/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000 --proxy-headers
+Environment=PYTHONPATH=/opt/J-Melo/backend
+ExecStart=/opt/J-Melo/backend/venv/bin/python -m uvicorn --app-dir /opt/J-Melo/backend main:app --host 127.0.0.1 --port 8000 --proxy-headers
 Restart=always
 RestartSec=5
 LimitNOFILE=65535
@@ -282,6 +308,50 @@ sudo systemctl enable --now j-melo-backend
 sudo systemctl status j-melo-backend
 curl http://127.0.0.1:8000/api/health
 ```
+
+如果日志出现 `Error loading ASGI app. Could not import module "main"`，通常是 systemd 没在 `backend/` 目录启动，或没有使用后端虚拟环境。按上面的 `ExecStart` 使用 `python -m uvicorn --app-dir /opt/J-Melo/backend main:app` 后，再执行：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart j-melo-backend
+sudo journalctl -u j-melo-backend -n 100 --no-pager
+```
+
+也可以在交互式 shell 中复现真实导入错误：
+
+```bash
+cd /opt/J-Melo/backend
+source venv/bin/activate
+J_MELO_SKIP_MODELS=1 python -c "import main; print('backend import ok')"
+```
+
+如果 YouTube 导入经常返回 `yt-dlp info error: Video unavailable`，先在后端虚拟环境中升级 yt-dlp：
+
+```bash
+cd /opt/J-Melo/backend
+source venv/bin/activate
+python -m pip install -U yt-dlp
+python -m yt_dlp --version
+```
+
+然后按需在 `backend/config.json` 或后台管理页配置：
+
+```json
+{
+  "proxy": "http://127.0.0.1:7890",
+  "yt_dlp_cookies_file": "private/cookies.txt",
+  "yt_dlp_force_ipv4": true,
+  "yt_dlp_js_runtimes": "node:/usr/bin/node",
+  "yt_dlp_extractor_args": [
+    "youtube:player_client=web_safari,android"
+  ],
+  "yt_dlp_extra_args": [
+    "--geo-bypass"
+  ]
+}
+```
+
+`yt_dlp_cookies_file` 使用 Netscape cookies.txt 格式，路径可以相对 `backend/`。如果视频只在你的浏览器登录态下可播放，cookies 通常比单纯更换 player client 更有效。修改配置后重启后端服务。
 
 ### 4. 部署前端
 

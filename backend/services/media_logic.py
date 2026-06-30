@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import re
+import shlex
 import sqlite3
 import subprocess
 import sys
@@ -10,12 +11,12 @@ import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from fastapi import HTTPException
 
-from core.config import ADMIN_CONFIG, BASE_DIR, CACHE_PATH, MEDIA_ROUTE
+from core.config import ADMIN_CONFIG, BASE_DIR, CACHE_PATH, MEDIA_ROUTE, resolve_backend_path
 from core.utils import log_info
 from services.network import DEFAULT_USER_AGENT, async_client, normalize_non_empty_query, validate_external_http_url
 
@@ -24,6 +25,7 @@ YTDLP_INFO_TIMEOUT_SECONDS = 90
 YTDLP_DOWNLOAD_TIMEOUT_SECONDS = 240
 YTDLP_SEARCH_TIMEOUT_SECONDS = 60
 MEDIA_INDEX_PATH = BASE_DIR / "media_cache_index.db"
+YOUTUBE_FALLBACK_EXTRACTOR_ARGS = ["youtube:player_client=mweb,web_safari,web_embedded,android,ios"]
 
 
 def _positive_int_config(key: str, default: int) -> int:
@@ -50,18 +52,106 @@ _async_image_proxy_loop: asyncio.AbstractEventLoop | None = None
 _async_image_proxy_limit = 0
 
 
-def _yt_dlp_command(*args: str) -> list[str]:
-    return [sys.executable, "-m", "yt_dlp", *args]
+def _bool_config(key: str, default: bool = False) -> bool:
+    value = ADMIN_CONFIG.get(key, default)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
+def _string_config(key: str) -> str | None:
+    value = ADMIN_CONFIG.get(key)
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _string_list_config(key: str) -> list[str]:
+    value = ADMIN_CONFIG.get(key) or []
+    if isinstance(value, str):
+        return shlex.split(value)
+    if isinstance(value, (list, tuple)):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return []
+
+
+def _yt_dlp_common_args(extra_args: list[str] | None = None) -> list[str]:
+    args: list[str] = []
+    if _bool_config("yt_dlp_force_ipv4", True):
+        args.append("--force-ipv4")
+
+    proxy = ADMIN_CONFIG.get("proxy")
+    if proxy:
+        args.extend(["--proxy", str(proxy)])
+
+    cookies_file = _string_config("yt_dlp_cookies_file")
+    if cookies_file:
+        args.extend(["--cookies", str(resolve_backend_path(cookies_file))])
+
+    js_runtimes = _string_config("yt_dlp_js_runtimes")
+    if js_runtimes:
+        args.extend(["--js-runtimes", js_runtimes])
+
+    for extractor_arg in _string_list_config("yt_dlp_extractor_args"):
+        args.extend(["--extractor-args", extractor_arg])
+
+    args.extend(_string_list_config("yt_dlp_extra_args"))
+    if extra_args:
+        args.extend(extra_args)
+    return args
+
+
+def _yt_dlp_command(*args: str, extra_args: list[str] | None = None) -> list[str]:
+    return [sys.executable, "-m", "yt_dlp", *_yt_dlp_common_args(extra_args), *args]
+
+
+def _is_youtube_url(url: str) -> bool:
+    host = urlparse(url).netloc.lower()
+    return host.endswith("youtube.com") or host.endswith("youtu.be") or host.endswith("youtube-nocookie.com")
+
+
+def _has_configured_youtube_player_client() -> bool:
+    return any("youtube:" in arg and "player_client" in arg for arg in _string_list_config("yt_dlp_extractor_args"))
+
+
+def _youtube_retry_args(url: str, detail: str) -> list[str]:
+    if not _is_youtube_url(url) or _has_configured_youtube_player_client():
+        return []
+    normalized = detail.lower()
+    retryable_markers = [
+        "video unavailable",
+        "not available",
+        "sign in",
+        "confirm",
+        "bot",
+        "po token",
+        "sabr",
+        "missing a url",
+    ]
+    if any(marker in normalized for marker in retryable_markers):
+        return ["--extractor-args", YOUTUBE_FALLBACK_EXTRACTOR_ARGS[0]]
+    return []
+
+
+def _with_youtube_hint(url: str, detail: str) -> str:
+    if not _is_youtube_url(url):
+        return detail
+    hints = [
+        "update yt-dlp in the backend venv",
+        "configure a backend proxy whose exit region can watch this video",
+        "set yt_dlp_cookies_file to a Netscape cookies.txt exported from a browser that can watch it",
+        "install a JS runtime and set yt_dlp_js_runtimes, for example node:/usr/bin/node",
+        "set yt_dlp_extractor_args/yt_dlp_extra_args for PO token or player-client workarounds",
+    ]
+    return f"{detail}. YouTube often returns this when the server IP, region, login state, PO token, or yt-dlp version is unsuitable; try to {', '.join(hints)}."
 
 
 def safe_media_id(raw_id: str | None, fallback: str = "media") -> str:
     cleaned = re.sub(r"[^A-Za-z0-9_-]+", "_", (raw_id or "").strip()).strip("._-")
     return (cleaned or fallback)[:120]
-
-
-def _proxy_args() -> list[str]:
-    proxy = ADMIN_CONFIG.get("proxy")
-    return ["--proxy", proxy] if proxy else []
 
 
 def _extract_yt_dlp_error(stderr: bytes | str | None, fallback: str) -> str:
@@ -319,9 +409,8 @@ async def _get_fetch_lock(source_url: str) -> asyncio.Lock:
 
 
 def fetch_media_info(url: str) -> dict:
-    normalized_url = validate_external_http_url(url)
+    normalized_url = validate_external_http_url(url, resolve_hostname=False)
     command = _yt_dlp_command("--dump-json", "--no-playlist", "--socket-timeout", "20", normalized_url)
-    command.extend(_proxy_args())
     try:
         result = _run_media_command(command, timeout=YTDLP_INFO_TIMEOUT_SECONDS, text=True)
         return json.loads(result.stdout)
@@ -329,16 +418,26 @@ def fetch_media_info(url: str) -> dict:
         raise HTTPException(status_code=504, detail="Timed out while fetching media information")
     except subprocess.CalledProcessError as e:
         detail = _extract_yt_dlp_error(e.stderr, "Failed to fetch media information")
+        retry_args = _youtube_retry_args(normalized_url, detail)
+        if retry_args:
+            log_info(f"yt-dlp info error: {detail}; retrying with YouTube fallback clients")
+            try:
+                retry_command = _yt_dlp_command("--dump-json", "--no-playlist", "--socket-timeout", "20", normalized_url, extra_args=retry_args)
+                result = _run_media_command(retry_command, timeout=YTDLP_INFO_TIMEOUT_SECONDS, text=True)
+                return json.loads(result.stdout)
+            except subprocess.CalledProcessError as retry_error:
+                detail = _extract_yt_dlp_error(retry_error.stderr, detail)
+            except subprocess.TimeoutExpired:
+                raise HTTPException(status_code=504, detail="Timed out while fetching media information")
         log_info(f"yt-dlp info error: {detail}")
-        raise HTTPException(status_code=400, detail=detail)
+        raise HTTPException(status_code=400, detail=_with_youtube_hint(normalized_url, detail))
     except json.JSONDecodeError:
         raise HTTPException(status_code=502, detail="Media provider returned an invalid response")
 
 
 async def fetch_media_info_async(url: str) -> dict:
-    normalized_url = validate_external_http_url(url)
+    normalized_url = validate_external_http_url(url, resolve_hostname=False)
     command = _yt_dlp_command("--dump-json", "--no-playlist", "--socket-timeout", "20", normalized_url)
-    command.extend(_proxy_args())
     try:
         result = await _run_media_command_async(command, timeout=YTDLP_INFO_TIMEOUT_SECONDS, text=True)
         return json.loads(result.stdout)
@@ -346,14 +445,25 @@ async def fetch_media_info_async(url: str) -> dict:
         raise HTTPException(status_code=504, detail="Timed out while fetching media information")
     except subprocess.CalledProcessError as e:
         detail = _extract_yt_dlp_error(e.stderr, "Failed to fetch media information")
+        retry_args = _youtube_retry_args(normalized_url, detail)
+        if retry_args:
+            log_info(f"yt-dlp info error: {detail}; retrying with YouTube fallback clients")
+            try:
+                retry_command = _yt_dlp_command("--dump-json", "--no-playlist", "--socket-timeout", "20", normalized_url, extra_args=retry_args)
+                result = await _run_media_command_async(retry_command, timeout=YTDLP_INFO_TIMEOUT_SECONDS, text=True)
+                return json.loads(result.stdout)
+            except subprocess.CalledProcessError as retry_error:
+                detail = _extract_yt_dlp_error(retry_error.stderr, detail)
+            except subprocess.TimeoutExpired:
+                raise HTTPException(status_code=504, detail="Timed out while fetching media information")
         log_info(f"yt-dlp info error: {detail}")
-        raise HTTPException(status_code=400, detail=detail)
+        raise HTTPException(status_code=400, detail=_with_youtube_hint(normalized_url, detail))
     except json.JSONDecodeError:
         raise HTTPException(status_code=502, detail="Media provider returned an invalid response")
 
 
 def download_media(info: dict, destination: str) -> None:
-    url = validate_external_http_url(info.get("webpage_url") or info.get("original_url") or "")
+    url = validate_external_http_url(info.get("webpage_url") or info.get("original_url") or "", resolve_hostname=False)
     os.makedirs(os.path.dirname(destination), exist_ok=True)
     command = _yt_dlp_command(
         "-f",
@@ -369,18 +479,42 @@ def download_media(info: dict, destination: str) -> None:
         destination,
         url,
     )
-    command.extend(_proxy_args())
     try:
         _run_media_command(command, timeout=YTDLP_DOWNLOAD_TIMEOUT_SECONDS, stdout=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
         raise HTTPException(status_code=504, detail="Timed out while downloading media")
     except subprocess.CalledProcessError as e:
         detail = _extract_yt_dlp_error(e.stderr, "Download failed")
-        raise HTTPException(status_code=502, detail=f"Download failed: {detail}")
+        retry_args = _youtube_retry_args(url, detail)
+        if retry_args:
+            log_info(f"yt-dlp download error: {detail}; retrying with YouTube fallback clients")
+            try:
+                retry_command = _yt_dlp_command(
+                    "-f",
+                    "bestaudio/best",
+                    "--socket-timeout",
+                    "20",
+                    "--extract-audio",
+                    "--audio-format",
+                    "mp3",
+                    "--audio-quality",
+                    "128K",
+                    "-o",
+                    destination,
+                    url,
+                    extra_args=retry_args,
+                )
+                _run_media_command(retry_command, timeout=YTDLP_DOWNLOAD_TIMEOUT_SECONDS, stdout=subprocess.DEVNULL)
+                return
+            except subprocess.CalledProcessError as retry_error:
+                detail = _extract_yt_dlp_error(retry_error.stderr, detail)
+            except subprocess.TimeoutExpired:
+                raise HTTPException(status_code=504, detail="Timed out while downloading media")
+        raise HTTPException(status_code=502, detail=f"Download failed: {_with_youtube_hint(url, detail)}")
 
 
 async def download_media_async(info: dict, destination: str) -> None:
-    url = validate_external_http_url(info.get("webpage_url") or info.get("original_url") or "")
+    url = validate_external_http_url(info.get("webpage_url") or info.get("original_url") or "", resolve_hostname=False)
     os.makedirs(os.path.dirname(destination), exist_ok=True)
     command = _yt_dlp_command(
         "-f",
@@ -396,18 +530,42 @@ async def download_media_async(info: dict, destination: str) -> None:
         destination,
         url,
     )
-    command.extend(_proxy_args())
     try:
         await _run_media_command_async(command, timeout=YTDLP_DOWNLOAD_TIMEOUT_SECONDS, stdout=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
         raise HTTPException(status_code=504, detail="Timed out while downloading media")
     except subprocess.CalledProcessError as e:
         detail = _extract_yt_dlp_error(e.stderr, "Download failed")
-        raise HTTPException(status_code=502, detail=f"Download failed: {detail}")
+        retry_args = _youtube_retry_args(url, detail)
+        if retry_args:
+            log_info(f"yt-dlp download error: {detail}; retrying with YouTube fallback clients")
+            try:
+                retry_command = _yt_dlp_command(
+                    "-f",
+                    "bestaudio/best",
+                    "--socket-timeout",
+                    "20",
+                    "--extract-audio",
+                    "--audio-format",
+                    "mp3",
+                    "--audio-quality",
+                    "128K",
+                    "-o",
+                    destination,
+                    url,
+                    extra_args=retry_args,
+                )
+                await _run_media_command_async(retry_command, timeout=YTDLP_DOWNLOAD_TIMEOUT_SECONDS, stdout=subprocess.DEVNULL)
+                return
+            except subprocess.CalledProcessError as retry_error:
+                detail = _extract_yt_dlp_error(retry_error.stderr, detail)
+            except subprocess.TimeoutExpired:
+                raise HTTPException(status_code=504, detail="Timed out while downloading media")
+        raise HTTPException(status_code=502, detail=f"Download failed: {_with_youtube_hint(url, detail)}")
 
 
 async def fetch_media(url: str) -> dict:
-    normalized_url = validate_external_http_url(url)
+    normalized_url = validate_external_http_url(url, resolve_hostname=False)
     cached = await asyncio.to_thread(get_indexed_media, normalized_url)
     if cached:
         return cached
@@ -429,7 +587,7 @@ async def fetch_media(url: str) -> dict:
         for extra_url in [info.get("webpage_url"), info.get("original_url")]:
             if extra_url:
                 try:
-                    extra_normalized = validate_external_http_url(extra_url)
+                    extra_normalized = validate_external_http_url(extra_url, resolve_hostname=False)
                     await asyncio.to_thread(save_indexed_media, extra_normalized, payload, media_id)
                 except HTTPException:
                     pass
@@ -439,7 +597,6 @@ async def fetch_media(url: str) -> dict:
 async def media_search(query: str):
     query = normalize_non_empty_query(query)
     command = _yt_dlp_command("--dump-json", "--no-playlist", "--flat-playlist", "--socket-timeout", "20", f"ytsearch5:{query}")
-    command.extend(_proxy_args())
 
     try:
         proc = await _run_media_command_async(command, timeout=YTDLP_SEARCH_TIMEOUT_SECONDS, text=True)
@@ -493,8 +650,14 @@ async def proxy_image(url: str):
                             raise HTTPException(status_code=415, detail="Proxied URL did not return an image")
 
                         content_length = resp.headers.get("Content-Length")
-                        if content_length and int(content_length) > IMAGE_PROXY_MAX_BYTES:
-                            raise HTTPException(status_code=413, detail="Image is too large to proxy")
+                        if content_length:
+                            try:
+                                declared_size = int(content_length)
+                            except ValueError:
+                                log_info(f"Image proxy upstream sent invalid Content-Length for {current_url}: {content_length}")
+                                declared_size = 0
+                            if declared_size > IMAGE_PROXY_MAX_BYTES:
+                                raise HTTPException(status_code=413, detail="Image is too large to proxy")
 
                         chunks: list[bytes] = []
                         total = 0

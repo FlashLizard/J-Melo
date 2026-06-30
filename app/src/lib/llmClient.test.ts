@@ -34,4 +34,18 @@ describe('llmClient', () => {
       message: 'rate limited',
     });
   });
+
+  it('surfaces json provider errors without cloning the response body', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      statusText: 'Bad Request',
+      text: jest.fn().mockResolvedValue(JSON.stringify({ error: { message: 'invalid model' } })),
+    }) as unknown as typeof fetch;
+
+    await expect(requestChatCompletion({ ...baseOptions, apiUrl: 'https://api.example.com/v1/chat/completions' })).rejects.toMatchObject({
+      status: 400,
+      message: 'invalid model',
+    });
+  });
 });

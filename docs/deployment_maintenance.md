@@ -9,7 +9,7 @@ cd backend
 python -m venv venv
 .\venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+python -m uvicorn --app-dir . main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ```bash
@@ -20,7 +20,7 @@ npm run dev
 
 ## 生产建议
 
-- 后端使用固定 Python 虚拟环境运行 `uvicorn main:app --host 0.0.0.0 --port 8000`。
+- 后端使用固定 Python 虚拟环境运行 `python -m uvicorn --app-dir /opt/J-Melo/backend main:app --host 127.0.0.1 --port 8000`，并确保服务用户可以写入 `config.json`、SQLite 文件和缓存目录。
 - 前端运行 `npm run build` 后用 `npm start` 或平台托管。
 - 反向代理建议开启 HTTPS。
 - `cors_origins` 写明确前端域名。
@@ -37,14 +37,37 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+User=YOUR_LINUX_USER
 WorkingDirectory=/opt/J-Melo/backend
+Environment=PATH=/opt/J-Melo/backend/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin
+Environment=HOME=/opt/J-Melo/.runtime
+Environment=XDG_CACHE_HOME=/opt/J-Melo/.runtime/.cache
+Environment=HF_HOME=/opt/J-Melo/.runtime/.cache/huggingface
+Environment=TORCH_HOME=/opt/J-Melo/.runtime/.cache/torch
 Environment=J_MELO_SKIP_MODELS=0
-ExecStart=/opt/J-Melo/backend/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000 --proxy-headers
+Environment=PYTHONPATH=/opt/J-Melo/backend
+ExecStart=/opt/J-Melo/backend/venv/bin/python -m uvicorn --app-dir /opt/J-Melo/backend main:app --host 127.0.0.1 --port 8000 --proxy-headers
 Restart=always
 RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
+```
+
+启动前建议先创建并授权运行时目录：
+
+```bash
+mkdir -p /opt/J-Melo/.runtime /opt/J-Melo/backend/media_cache /opt/J-Melo/backend/temp_data /opt/J-Melo/backend/transcription_cache
+sudo chown -R YOUR_LINUX_USER:YOUR_LINUX_USER /opt/J-Melo
+```
+
+如果出现 `Error loading ASGI app. Could not import module "main"`，优先确认 systemd 使用的是后端虚拟环境，并显式指定了 `--app-dir /opt/J-Melo/backend`。可用下面命令查看真实 traceback：
+
+```bash
+cd /opt/J-Melo/backend
+source venv/bin/activate
+J_MELO_SKIP_MODELS=1 python -c "import main; print('backend import ok')"
+sudo journalctl -u j-melo-backend -n 100 --no-pager
 ```
 
 ## 模型与依赖
@@ -55,12 +78,40 @@ WantedBy=multi-user.target
 `media_command_concurrency` 控制 yt-dlp 信息抓取、搜索和下载子进程的并发数，默认 1。小型 VPS 或共享环境建议保持默认值；若服务器资源充足可适度调高，并配合 `media_command_queue_timeout_seconds` 控制排队等待时间。
 媒体抓取接口使用异步子进程，不会长期占用 FastAPI 请求线程池；成功抓取后会写入 `media_cache_index.db`，重复 URL 会直接命中本地缓存。社区封面等外部图片代理由 `image_proxy_concurrency` 限制并发。
 
+YouTube 导入在云服务器上更容易遇到地区、登录态、PO Token、JS challenge 或出口 IP 风控。后端支持这些 yt-dlp 相关配置：
+
+```json
+{
+  "proxy": "http://127.0.0.1:7890",
+  "yt_dlp_cookies_file": "private/cookies.txt",
+  "yt_dlp_force_ipv4": true,
+  "yt_dlp_js_runtimes": "node:/usr/bin/node",
+  "yt_dlp_extractor_args": [
+    "youtube:player_client=web_safari,android"
+  ],
+  "yt_dlp_extra_args": [
+    "--geo-bypass"
+  ]
+}
+```
+
+`yt_dlp_cookies_file` 是 Netscape cookies.txt 文件路径，可相对 `backend/`。`yt_dlp_extractor_args` 每项会作为一次 `--extractor-args` 传给 yt-dlp；`yt_dlp_extra_args` 每项会原样作为一个命令行参数传给 yt-dlp。修改这些配置后需要重启后端服务。
+
+建议定期更新 yt-dlp：
+
+```bash
+cd /opt/J-Melo/backend
+source venv/bin/activate
+python -m pip install -U yt-dlp
+python -m yt_dlp --version
+```
+
 测试环境可以临时跳过模型加载：
 
 ```powershell
 $env:J_MELO_SKIP_MODELS='1'
 $env:J_MELO_CONFIG_FILE='E:\tmp\jmelo-test-config.json'
-uvicorn main:app --host 127.0.0.1 --port 8000
+python -m uvicorn --app-dir . main:app --host 127.0.0.1 --port 8000
 ```
 
 也可以在 `config.json` 中设置 `load_transcription_model` 或 `load_alignment_model` 为 `false`。
@@ -78,7 +129,9 @@ uvicorn main:app --host 127.0.0.1 --port 8000
 ## 故障排查
 
 - 前端连不上后端：先直接访问 `https://你的后端域名/api/health`。如果返回 502/504，说明请求没有到 FastAPI，重点检查后端进程、容器、systemd、反向代理 upstream 和平台是否有空闲休眠策略；浏览器里的 CORS 报错只是网关 502 没有应用 CORS 头导致的表象。
+- 后端提示 `Could not import module "main"`：确认启动目录是 `/opt/J-Melo/backend`，并使用 `/opt/J-Melo/backend/venv/bin/python -m uvicorn --app-dir /opt/J-Melo/backend main:app`；再用 `J_MELO_SKIP_MODELS=1 python -c "import main"` 查看缺失依赖或路径错误。
 - 后端空闲一段时间后不可用：确认进程不是跑在会断开的 SSH/终端会话里；给 systemd/Docker 配置自动重启；在 Nginx、云平台或外部监控中用 `/api/health` 做健康检查或低频保活。
+- YouTube 返回 `Video unavailable`：先升级 yt-dlp；确认服务器出口地区能观看该视频；必要时配置 `proxy`、`yt_dlp_cookies_file`、`yt_dlp_js_runtimes`、`yt_dlp_extractor_args` 或 `yt_dlp_extra_args`。如果某个视频本身已下架、私有或地区不可见，后端无法绕过平台限制。
 - 媒体导入返回 503 或日志出现 `Too many open files`：保持 `media_command_concurrency` 为 1，稍后重试；若长期出现，检查系统文件描述符限制和是否有卡住的 yt-dlp/ffmpeg 进程。
 - Explore 页面加载很慢：适当降低 `image_proxy_concurrency`，并确认反向代理没有禁用浏览器缓存。
 - 转录任务一直排队：检查 `task_worker_enabled`、后端日志和模型是否加载成功。

@@ -10,7 +10,47 @@ def test_yt_dlp_command_uses_current_python_module():
     command = media_logic._yt_dlp_command("--version")
 
     assert command[:3] == [sys.executable, "-m", "yt_dlp"]
-    assert command[3] == "--version"
+    assert "--version" in command
+
+
+def test_yt_dlp_command_includes_backend_media_config(monkeypatch):
+    monkeypatch.setitem(media_logic.ADMIN_CONFIG, "proxy", "http://127.0.0.1:7890")
+    monkeypatch.setitem(media_logic.ADMIN_CONFIG, "yt_dlp_force_ipv4", True)
+    monkeypatch.setitem(media_logic.ADMIN_CONFIG, "yt_dlp_cookies_file", "private/cookies.txt")
+    monkeypatch.setitem(media_logic.ADMIN_CONFIG, "yt_dlp_js_runtimes", "node:/usr/bin/node")
+    monkeypatch.setitem(media_logic.ADMIN_CONFIG, "yt_dlp_extractor_args", ["youtube:player_client=web_safari"])
+    monkeypatch.setitem(media_logic.ADMIN_CONFIG, "yt_dlp_extra_args", ["--geo-bypass"])
+
+    command = media_logic._yt_dlp_command("--dump-json", "https://www.youtube.com/watch?v=abc")
+
+    assert "--force-ipv4" in command
+    assert command[command.index("--proxy") + 1] == "http://127.0.0.1:7890"
+    assert command[command.index("--cookies") + 1].endswith("private\\cookies.txt") or command[command.index("--cookies") + 1].endswith("private/cookies.txt")
+    assert command[command.index("--js-runtimes") + 1] == "node:/usr/bin/node"
+    assert command[command.index("--extractor-args") + 1] == "youtube:player_client=web_safari"
+    assert "--geo-bypass" in command
+
+
+def test_youtube_retry_args_added_for_unavailable_without_player_override(monkeypatch):
+    monkeypatch.setitem(media_logic.ADMIN_CONFIG, "yt_dlp_extractor_args", [])
+
+    retry_args = media_logic._youtube_retry_args(
+        "https://www.youtube.com/watch?v=fgT8pbHVaOU",
+        "ERROR: Video unavailable. This video is not available",
+    )
+
+    assert retry_args == ["--extractor-args", "youtube:player_client=mweb,web_safari,web_embedded,android,ios"]
+
+
+def test_youtube_retry_args_respect_configured_player_client(monkeypatch):
+    monkeypatch.setitem(media_logic.ADMIN_CONFIG, "yt_dlp_extractor_args", ["youtube:player_client=ios"])
+
+    retry_args = media_logic._youtube_retry_args(
+        "https://www.youtube.com/watch?v=fgT8pbHVaOU",
+        "ERROR: Video unavailable. This video is not available",
+    )
+
+    assert retry_args == []
 
 
 def test_safe_media_id_removes_path_and_shell_characters():

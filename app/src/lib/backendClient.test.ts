@@ -37,6 +37,22 @@ describe('backendClient', () => {
     expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
+  it('retries idempotent requests after a client-side timeout', async () => {
+    const abortError = Object.assign(new Error('aborted'), { name: 'AbortError' });
+    global.fetch = jest
+      .fn()
+      .mockRejectedValueOnce(abortError)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockResolvedValue({ recovered: true }),
+      }) as unknown as typeof fetch;
+
+    await expect(requestJson('http://localhost:8000', '/api/test', { retryAttempts: 1, retryDelayMs: 0 }))
+      .resolves.toEqual({ recovered: true });
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
   it('retries transient gateway responses for GET requests', async () => {
     global.fetch = jest
       .fn()

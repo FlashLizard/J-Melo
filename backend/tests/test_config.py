@@ -1,3 +1,4 @@
+import builtins
 import json
 import os
 import subprocess
@@ -47,3 +48,56 @@ def test_config_file_can_be_overridden_by_environment(tmp_path):
 
     assert str(config_file) in result.stdout
     assert "isolated-task.db" in result.stdout
+
+
+def test_detect_device_falls_back_to_cpu_when_torch_is_unavailable(monkeypatch):
+    monkeypatch.delenv("J_MELO_SKIP_MODELS", raising=False)
+    monkeypatch.setitem(config.ADMIN_CONFIG, "load_transcription_model", True)
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "torch":
+            raise ModuleNotFoundError("No module named 'torch'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    assert config._detect_device() == "cpu"
+
+
+def test_detect_device_uses_cuda_when_available(monkeypatch):
+    monkeypatch.delenv("J_MELO_SKIP_MODELS", raising=False)
+    monkeypatch.setitem(config.ADMIN_CONFIG, "load_transcription_model", True)
+    real_import = builtins.__import__
+
+    class FakeCuda:
+        @staticmethod
+        def is_available():
+            return True
+
+    class FakeTorch:
+        cuda = FakeCuda()
+
+    def fake_import(name, *args, **kwargs):
+        if name == "torch":
+            return FakeTorch()
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    assert config._detect_device() == "cuda"
+
+
+def test_detect_device_skips_torch_when_models_are_skipped(monkeypatch):
+    monkeypatch.setenv("J_MELO_SKIP_MODELS", "1")
+    monkeypatch.setitem(config.ADMIN_CONFIG, "load_transcription_model", True)
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "torch":
+            raise AssertionError("torch should not be imported when models are skipped")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    assert config._detect_device() == "cpu"

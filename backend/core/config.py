@@ -5,8 +5,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 
-import torch
-
 BASE_DIR = Path(__file__).resolve().parents[1]
 _config_file_env = os.environ.get("J_MELO_CONFIG_FILE")
 CONFIG_FILE = (BASE_DIR / _config_file_env).resolve() if _config_file_env and not Path(_config_file_env).is_absolute() else Path(_config_file_env or BASE_DIR / "config.json")
@@ -30,6 +28,11 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "media_command_concurrency": 1,
     "media_command_queue_timeout_seconds": 30,
     "image_proxy_concurrency": 8,
+    "yt_dlp_cookies_file": None,
+    "yt_dlp_force_ipv4": True,
+    "yt_dlp_js_runtimes": None,
+    "yt_dlp_extractor_args": [],
+    "yt_dlp_extra_args": [],
     "media_cache_policy": {"max_size_gb": 10, "max_age_days": 30},
     "token_cache_policy": {"max_size_mb": 100, "max_age_hours": 24},
     "transcription_cache_policy": {"max_size_mb": 500, "max_age_days": 30},
@@ -60,9 +63,28 @@ def _load_config() -> Dict[str, Any]:
         return deepcopy(DEFAULT_CONFIG)
 
 
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 ADMIN_CONFIG = _load_config()
 
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+def _detect_device() -> str:
+    if _env_flag("J_MELO_SKIP_MODELS") or not ADMIN_CONFIG.get("load_transcription_model", True):
+        return "cpu"
+
+    try:
+        import torch
+
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    except Exception as e:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[{timestamp}] WARNING: Could not inspect torch device. Falling back to CPU: {e}")
+        return "cpu"
+
+
+DEVICE = _detect_device()
 CACHE_DIR = ADMIN_CONFIG["media_cache_dir"]
 TEMP_DATA_DIR = ADMIN_CONFIG["temp_data_dir"]
 TRANSCRIPTION_CACHE_DIR = ADMIN_CONFIG["transcription_cache_dir"]

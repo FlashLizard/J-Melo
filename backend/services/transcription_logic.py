@@ -3,7 +3,8 @@ import asyncio
 import jaconv
 from datetime import datetime
 from pathlib import Path
-from faster_whisper import WhisperModel
+from typing import Any
+
 from core.config import resolve_backend_path
 from core.utils import log_info, sudachi_tokenizer, sudachi_split_mode, is_pure_kana_or_punct
 
@@ -57,14 +58,14 @@ def format_whisper_output(segments, segment_start_base=0):
         })
     return {"segments": formatted_segments}
 
-def run_transcription_blocking(audio_path: str, whisper_model: WhisperModel):
+def run_transcription_blocking(audio_path: str, whisper_model: Any):
     log_info(f"Starting transcription for {audio_path}...")
     if whisper_model is None: raise RuntimeError("Whisper model not loaded")
     segments, _ = whisper_model.transcribe(audio_path, language="ja", word_timestamps=True)
     return format_whisper_output(list(segments))
 
 
-def transcribe_to_cache(audio_path: str, cache_path: str, model: WhisperModel):
+def transcribe_to_cache(audio_path: str, cache_path: str, model: Any):
     resolved_audio = resolve_backend_path(audio_path)
     resolved_cache = Path(cache_path)
     if not resolved_cache.is_absolute():
@@ -76,7 +77,7 @@ def transcribe_to_cache(audio_path: str, cache_path: str, model: WhisperModel):
     return result
 
 
-async def process_transcription_task(media_id: str, audio_path: str, cache_path: str, model: WhisperModel):
+async def process_transcription_task(media_id: str, audio_path: str, cache_path: str, model: Any):
     try:
         async with TRANSCRIPTION_SEMAPHORE:
             TRANSCRIPTION_TASKS[media_id]["status"] = "processing"

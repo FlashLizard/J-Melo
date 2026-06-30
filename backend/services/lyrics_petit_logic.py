@@ -14,6 +14,7 @@ from core.utils import log_info
 from services.network import async_client, normalize_non_empty_query
 
 PETIT_LYRICS_API_URL = 'https://on.petitlyrics.com/api/GetPetitLyricsData.php'
+PETIT_LYRICS_INDEX_CONCURRENCY = 5
 
 REQUEST_BODY_BASE = {
     'sdkVer': '1.3.4',
@@ -156,13 +157,18 @@ async def _fetch_from_api(client: httpx.AsyncClient, title: str, artist: str, ly
         if not songs: return[]
         
         matched_node = songs_node.find('matchedCount')
-        matched_count = int(matched_node.text) if matched_node is not None and matched_node.text else 1
+        try:
+            matched_count = int(matched_node.text) if matched_node is not None and matched_node.text else 1
+        except ValueError:
+            matched_count = len(songs)
         
         results = list(songs)
         
         if len(results) < matched_count and len(results) < max_items:
             fetch_limit = min(matched_count, max_items)
             
+            semaphore = asyncio.Semaphore(PETIT_LYRICS_INDEX_CONCURRENCY)
+
             async def fetch_single_index(idx: int):
                 req_body = REQUEST_BODY_BASE.copy()
                 req_body.update({
@@ -172,7 +178,8 @@ async def _fetch_from_api(client: httpx.AsyncClient, title: str, artist: str, ly
                     'lyricsType': lyrics_type
                 })
                 try:
-                    r = await client.post(PETIT_LYRICS_API_URL, data=req_body, headers=REQUEST_HEADERS, timeout=15.0)
+                    async with semaphore:
+                        r = await client.post(PETIT_LYRICS_API_URL, data=req_body, headers=REQUEST_HEADERS, timeout=15.0)
                     if r.status_code == 200:
                         r_root = ET.fromstring(r.text)
                         s_node = r_root.find('songs')

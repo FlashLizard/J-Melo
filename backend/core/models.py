@@ -46,6 +46,11 @@ class UpdateConfigRequest(BaseModel):
     media_command_concurrency: Optional[int] = None
     media_command_queue_timeout_seconds: Optional[int] = None
     image_proxy_concurrency: Optional[int] = None
+    yt_dlp_cookies_file: Optional[str] = None
+    yt_dlp_force_ipv4: Optional[bool] = None
+    yt_dlp_js_runtimes: Optional[str] = None
+    yt_dlp_extractor_args: Optional[List[str]] = None
+    yt_dlp_extra_args: Optional[List[str]] = None
     transcription_model: Optional[str] = None
     transcription_compute_type: Optional[str] = None
     alignment_model: Optional[str] = None

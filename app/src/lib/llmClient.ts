@@ -18,6 +18,35 @@ export class LlmError extends Error {
   }
 }
 
+const readProviderErrorMessage = async (response: Response) => {
+  let text = '';
+  try {
+    text = await response.text();
+  } catch {
+    text = '';
+  }
+
+  if (text) {
+    try {
+      const body = JSON.parse(text);
+      const message = body?.error?.message || body?.detail || body?.message;
+      if (typeof message === 'string' && message.trim()) return message;
+    } catch {
+      return text;
+    }
+  }
+
+  try {
+    const body = await response.json();
+    const message = body?.error?.message || body?.detail || body?.message;
+    if (typeof message === 'string' && message.trim()) return message;
+  } catch {
+    // The body may already be consumed or not be JSON; statusText is the best fallback.
+  }
+
+  return response.statusText || 'Failed to fetch LLM response';
+};
+
 export async function requestChatCompletion({
   apiUrl,
   apiKey,
@@ -60,8 +89,7 @@ export async function requestChatCompletion({
   }
 
   if (!response.ok) {
-    const errorData = await response.clone().json().catch(async () => ({ error: { message: await response.text().catch(() => '') } }));
-    throw new LlmError(errorData?.error?.message || response.statusText || 'Failed to fetch LLM response', response.status);
+    throw new LlmError(await readProviderErrorMessage(response), response.status);
   }
 
   const result = await response.json();

@@ -38,6 +38,11 @@ interface ServerPolicies {
   community: CleanupPolicy;
   proxy: string | null;
   admin_token: string;
+  yt_dlp_cookies_file: string | null;
+  yt_dlp_force_ipv4: boolean;
+  yt_dlp_js_runtimes: string | null;
+  yt_dlp_extractor_args: string[];
+  yt_dlp_extra_args: string[];
 }
 
 interface TaskStatus {
@@ -64,6 +69,9 @@ const SectionCard: React.FC<{ title: string; icon?: React.ReactNode; children: R
       {children}
   </section>
 );
+
+const linesToArgs = (value: string) => value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+const argsToLines = (value: string[] | undefined) => (value || []).join('\n');
 
 const AdminPage = () => {
   const { t } = useTranslation();
@@ -129,7 +137,12 @@ const AdminPage = () => {
           transcription: configData.transcription_cache_policy || { max_size_gb: 2, max_age_days: 30 },
           community: configData.community_policy || { max_size_mb: 500 },
           proxy: configData.proxy,
-          admin_token: configData.admin_token
+          admin_token: configData.admin_token,
+          yt_dlp_cookies_file: configData.yt_dlp_cookies_file || '',
+          yt_dlp_force_ipv4: configData.yt_dlp_force_ipv4 ?? true,
+          yt_dlp_js_runtimes: configData.yt_dlp_js_runtimes || '',
+          yt_dlp_extractor_args: configData.yt_dlp_extractor_args || [],
+          yt_dlp_extra_args: configData.yt_dlp_extra_args || []
       });
 
       const tasksList: TaskStatus[] = Object.entries(tasksData).map(([id, info]: [string, any]) => ({
@@ -219,6 +232,11 @@ const AdminPage = () => {
       const payload = {
           admin_token: policies.admin_token,
           proxy: policies.proxy,
+          yt_dlp_cookies_file: policies.yt_dlp_cookies_file || null,
+          yt_dlp_force_ipv4: policies.yt_dlp_force_ipv4,
+          yt_dlp_js_runtimes: policies.yt_dlp_js_runtimes || null,
+          yt_dlp_extractor_args: policies.yt_dlp_extractor_args,
+          yt_dlp_extra_args: policies.yt_dlp_extra_args,
           media_cache_policy: policies.media,
           token_cache_policy: policies.tokens,
           transcription_cache_policy: policies.transcription,
@@ -293,6 +311,63 @@ const AdminPage = () => {
                           onChange={(e) => setPolicies({ ...policies, admin_token: e.target.value })}
                           className="jm-input w-full p-3"
                         />
+                      </div>
+                    </div>
+
+                    <div className="mt-6 border-t border-gray-700/50 pt-6 space-y-5">
+                      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">{t('admin.ytDlpSettingsTitle')}</h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-400 mb-2 ml-1">{t('admin.ytDlpCookiesFileLabel')}</label>
+                          <input
+                            type="text"
+                            value={policies.yt_dlp_cookies_file || ''}
+                            onChange={(e) => setPolicies({ ...policies, yt_dlp_cookies_file: e.target.value })}
+                            placeholder={t('admin.ytDlpCookiesFilePlaceholder')}
+                            className="jm-input w-full p-3"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-400 mb-2 ml-1">{t('admin.ytDlpJsRuntimesLabel')}</label>
+                          <input
+                            type="text"
+                            value={policies.yt_dlp_js_runtimes || ''}
+                            onChange={(e) => setPolicies({ ...policies, yt_dlp_js_runtimes: e.target.value })}
+                            placeholder={t('admin.ytDlpJsRuntimesPlaceholder')}
+                            className="jm-input w-full p-3"
+                          />
+                        </div>
+                      </div>
+                      <label className="flex items-center gap-3 text-sm text-gray-300">
+                        <input
+                          type="checkbox"
+                          checked={policies.yt_dlp_force_ipv4}
+                          onChange={(e) => setPolicies({ ...policies, yt_dlp_force_ipv4: e.target.checked })}
+                          className="h-4 w-4 rounded border-gray-600 bg-gray-900 text-indigo-500 focus:ring-indigo-500"
+                        />
+                        {t('admin.ytDlpForceIpv4Label')}
+                      </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-400 mb-2 ml-1">{t('admin.ytDlpExtractorArgsLabel')}</label>
+                          <textarea
+                            value={argsToLines(policies.yt_dlp_extractor_args)}
+                            onChange={(e) => setPolicies({ ...policies, yt_dlp_extractor_args: linesToArgs(e.target.value) })}
+                            placeholder="youtube:player_client=web_safari,android"
+                            className="jm-input w-full p-3 min-h-[92px] resize-y"
+                          />
+                          <p className="mt-2 text-xs text-gray-500">{t('admin.ytDlpArgsHint')}</p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-400 mb-2 ml-1">{t('admin.ytDlpExtraArgsLabel')}</label>
+                          <textarea
+                            value={argsToLines(policies.yt_dlp_extra_args)}
+                            onChange={(e) => setPolicies({ ...policies, yt_dlp_extra_args: linesToArgs(e.target.value) })}
+                            placeholder="--geo-bypass"
+                            className="jm-input w-full p-3 min-h-[92px] resize-y"
+                          />
+                          <p className="mt-2 text-xs text-gray-500">{t('admin.ytDlpExtraArgsHint')}</p>
+                        </div>
                       </div>
                     </div>
                   </SectionCard>

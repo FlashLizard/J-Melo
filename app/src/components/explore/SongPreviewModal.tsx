@@ -91,7 +91,7 @@ const SongPreviewModal: React.FC<SongPreviewModalProps> = ({ communitySong, back
                     <div className="flex items-center gap-4">
                         <div className="w-14 h-14 rounded-lg bg-gray-700 overflow-hidden flex-shrink-0">
                             {communitySong.cover_url ? (
-                                <img src={communitySong.cover_url.startsWith('/') ? buildApiUrl(backendUrl, communitySong.cover_url) : communitySong.cover_url} alt={t('player.albumCoverAlt')} className="w-full h-full object-cover" />
+                                <img src={communitySong.cover_url.startsWith('/') ? buildApiUrl(backendUrl, communitySong.cover_url) : buildApiUrl(backendUrl, '/api/media/proxy-image', { url: communitySong.cover_url })} alt={t('player.albumCoverAlt')} className="w-full h-full object-cover" />
                             ) : (
                                 <div className="flex items-center justify-center w-full h-full text-gray-500">{t('explore.preview.noCover')}</div>
                             )}

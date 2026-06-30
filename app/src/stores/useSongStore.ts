@@ -173,7 +173,7 @@ const useSongStore = create<SongState>()(
         try {
           const allSongs = await db.songs.toArray();
           const processedSongs = allSongs.map(s => {
-            let mediaUrl = `${BACKEND_URL}${s.media_url}`;
+            let mediaUrl = getPlayableMediaUrl(BACKEND_URL, s.media_url) || '';
             if (s.audioData) mediaUrl = URL.createObjectURL(s.audioData);
             let coverUrl = s.cover_url;
             if (s.coverImageData) coverUrl = URL.createObjectURL(s.coverImageData);
@@ -288,7 +288,14 @@ const useSongStore = create<SongState>()(
             const songRecord = await db.songs.get(song.id);
             if (!songRecord) throw new Error("Song record not found in DB.");
             const { settings } = useSettingsStore.getState();
-            const audioUrlToFetch = buildApiUrl(settings.backendUrl, songRecord.media_url);
+            const mediaCacheResult = await ensureBackendMediaCache(settings.backendUrl, songRecord);
+            if (mediaCacheResult.updatePayload) {
+              await db.songs.update(song.id, mediaCacheResult.updatePayload);
+            }
+            if (!mediaCacheResult.available || !mediaCacheResult.playableUrl) {
+              throw new Error('Backend media cache is unavailable and cannot be refreshed.');
+            }
+            const audioUrlToFetch = mediaCacheResult.playableUrl;
             const audioResponse = await fetch(audioUrlToFetch);
             if (!audioResponse.ok) throw new Error('Failed to download audio.');
             const audioBlob = await audioResponse.blob();
@@ -317,7 +324,7 @@ const useSongStore = create<SongState>()(
             await db.songs.update(song.id, { audioData: undefined, is_cached: false });
 
             const { settings } = useSettingsStore.getState();
-            const backendMediaUrl = `${settings.backendUrl}${songRecord.media_url}`;
+            const backendMediaUrl = getPlayableMediaUrl(settings.backendUrl, songRecord.media_url) || '';
 
             // Update state
             set(state => {
